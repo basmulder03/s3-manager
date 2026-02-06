@@ -75,7 +75,10 @@ affinity: {}
 
 # Application configuration
 config:
-  secretKey: "change-me-in-production"
+  # IMPORTANT: Generate a secure random secret key
+  # Example: python3 -c "import secrets; print(secrets.token_hex(32))"
+  # DO NOT use the default value in production
+  secretKey: "CHANGE-ME-GENERATE-A-SECURE-RANDOM-KEY"
   sessionCookieSecure: true
   
   # Microsoft Entra ID (Azure AD) configuration

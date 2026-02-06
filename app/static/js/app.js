@@ -64,8 +64,8 @@ async function loadBuckets() {
         const html = `
             <div class="bucket-list">
                 ${data.buckets.map(bucket => `
-                    <div class="bucket-item" onclick="loadObjects('${bucket.name}')">
-                        <div class="bucket-name">📦 ${bucket.name}</div>
+                    <div class="bucket-item" data-bucket="${escapeHtml(bucket.name)}">
+                        <div class="bucket-name">📦 ${escapeHtml(bucket.name)}</div>
                         <div class="bucket-date">Created: ${new Date(bucket.creationDate).toLocaleString()}</div>
                     </div>
                 `).join('')}
@@ -73,6 +73,13 @@ async function loadBuckets() {
         `;
         
         container.innerHTML = html;
+        
+        // Add event listeners to bucket items
+        container.querySelectorAll('.bucket-item').forEach(item => {
+            item.addEventListener('click', () => {
+                loadObjects(item.dataset.bucket);
+            });
+        });
     } catch (error) {
         container.innerHTML = `<p class="error">Failed to load buckets: ${error.message}</p>`;
     }
@@ -99,17 +106,17 @@ async function loadObjects(bucketName) {
         const html = `
             <div class="object-list">
                 ${data.objects.map(obj => `
-                    <div class="object-item">
-                        <div class="object-name">📄 ${obj.key}</div>
+                    <div class="object-item" data-key="${escapeHtml(obj.key)}">
+                        <div class="object-name">📄 ${escapeHtml(obj.key)}</div>
                         <div class="object-meta">
                             Size: ${formatBytes(obj.size)} | 
                             Modified: ${new Date(obj.lastModified).toLocaleString()}
                         </div>
                         <div class="object-actions">
-                            <button onclick="downloadObject('${bucketName}', '${obj.key}')" class="btn btn-primary">
+                            <button class="btn btn-primary download-btn">
                                 Download
                             </button>
-                            <button onclick="deleteObject('${bucketName}', '${obj.key}')" class="btn btn-danger">
+                            <button class="btn btn-danger delete-btn">
                                 Delete
                             </button>
                         </div>
@@ -119,6 +126,19 @@ async function loadObjects(bucketName) {
         `;
         
         container.innerHTML = html;
+        
+        // Add event listeners
+        container.querySelectorAll('.object-item').forEach(item => {
+            const objectKey = item.dataset.key;
+            item.querySelector('.download-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                downloadObject(bucketName, objectKey);
+            });
+            item.querySelector('.delete-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteObject(bucketName, objectKey);
+            });
+        });
     } catch (error) {
         container.innerHTML = `<p class="error">Failed to load objects: ${error.message}</p>`;
     }
@@ -157,6 +177,15 @@ function closeBucket() {
 }
 
 // Utility functions
+function escapeHtml(unsafe) {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 function formatBytes(bytes) {
     if (bytes === 0) return '0 Bytes';
     

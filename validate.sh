@@ -53,8 +53,12 @@ echo
 
 # Check Docker build
 echo "✓ Testing Docker build..."
-docker build -t s3-manager:test . > /dev/null
-echo "✓ Docker image builds successfully"
+if docker build -t s3-manager:test . 2>&1 | tee /tmp/docker-build.log | tail -1 | grep -q "naming to"; then
+    echo "✓ Docker image builds successfully"
+else
+    echo "✗ Docker build failed. See /tmp/docker-build.log for details"
+    exit 1
+fi
 echo
 
 # Check image size

@@ -112,7 +112,9 @@ def callback():
     access_token = result.get('access_token')
     
     try:
-        # Decode without verification for demo (in production, verify the signature)
+        # Decode token - in production, you should verify the signature with proper keys
+        # For now, we extract claims without full verification as Azure AD has already validated it
+        # TODO: Implement proper signature verification using Microsoft's public keys
         user_info = jwt.decode(id_token, options={"verify_signature": False})
         
         # Fetch user roles
