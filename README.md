@@ -217,6 +217,16 @@ The application will be available at `http://localhost:8080`.
 docker build -t s3-manager:latest .
 ```
 
+### Automated GitHub Container Registry Builds
+
+This repository includes a GitHub Actions workflow that builds and pushes the Docker image to the free GitHub Container Registry (GHCR) on every push to `main` and on version tags (`v*`):
+
+```bash
+ghcr.io/<owner>/s3-manager
+```
+
+Use the published image in your Helm values or Kubernetes manifests.
+
 ### Testing Helm Chart
 
 ```bash
