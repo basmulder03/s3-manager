@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "s3-manager.fullname" . }}
+  labels:
+    {{- include "s3-manager.labels" . | nindent 4 }}
+data:
+  DEFAULT_ROLE: {{ .Values.config.defaultRole | quote }}
+  PIM_ENABLED: {{ .Values.config.pim.enabled | quote }}
+  S3_ENDPOINT: {{ .Values.config.s3.endpoint | quote }}
+  S3_REGION: {{ .Values.config.s3.region | quote }}
+  S3_USE_SSL: {{ .Values.config.s3.useSSL | quote }}
+  S3_VERIFY_SSL: {{ .Values.config.s3.verifySSL | quote }}
+  SESSION_COOKIE_SECURE: {{ .Values.config.sessionCookieSecure | quote }}
+  ROLE_PERMISSIONS: {{ .Values.config.rolePermissions | toJson | quote }}

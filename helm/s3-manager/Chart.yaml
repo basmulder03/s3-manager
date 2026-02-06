@@ -1,0 +1,14 @@
+apiVersion: v2
+name: s3-manager
+description: A lightweight S3 bucket manager with Microsoft Entra ID authentication and PIM support
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - s3
+  - storage
+  - rook-ceph
+  - azure-ad
+  - pim
+maintainers:
+  - name: S3 Manager Team
