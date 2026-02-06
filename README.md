@@ -21,6 +21,10 @@ The application consists of:
 - **Storage**: Rook-Ceph S3 (via boto3)
 - **Deployment**: Helm chart for Kubernetes
 
+## Language Choice
+
+Go can be lighter at runtime, but this project sticks with Python/Flask because it keeps the implementation small while leveraging mature SDKs (MSAL for Entra ID + boto3 for S3). The container uses a slim Python base image, and the primary resource cost comes from network-bound S3 and Graph API calls rather than the web framework itself.
+
 ## Prerequisites
 
 - Kubernetes cluster (1.20+)
