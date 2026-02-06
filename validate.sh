@@ -53,10 +53,11 @@ echo
 
 # Check Docker build
 echo "✓ Testing Docker build..."
-if docker build -t s3-manager:test . 2>&1 | tee /tmp/docker-build.log | tail -1 | grep -q "naming to"; then
+if docker build -t s3-manager:test . > /tmp/docker-build.log 2>&1; then
     echo "✓ Docker image builds successfully"
 else
     echo "✗ Docker build failed. See /tmp/docker-build.log for details"
+    tail -20 /tmp/docker-build.log
     exit 1
 fi
 echo
