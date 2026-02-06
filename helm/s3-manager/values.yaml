@@ -1,0 +1,118 @@
+# Default values for s3-manager.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 2
+
+image:
+  repository: s3-manager
+  pullPolicy: IfNotPresent
+  tag: "1.0.0"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  allowPrivilegeEscalation: false
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: s3-manager.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: s3-manager-tls
+      hosts:
+        - s3-manager.example.com
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Application configuration
+config:
+  secretKey: "change-me-in-production"
+  sessionCookieSecure: true
+  
+  # Microsoft Entra ID (Azure AD) configuration
+  azureAd:
+    tenantId: ""
+    clientId: ""
+    clientSecret: ""
+  
+  # PIM configuration
+  pim:
+    enabled: true
+  
+  # Role-based permissions
+  rolePermissions:
+    S3-Viewer:
+      - view
+    S3-Editor:
+      - view
+      - write
+    S3-Admin:
+      - view
+      - write
+      - delete
+  
+  defaultRole: "S3-Viewer"
+  
+  # S3/Rook-Ceph configuration
+  s3:
+    endpoint: "http://rook-ceph-rgw.rook-ceph.svc.cluster.local:8080"
+    accessKey: ""
+    secretKey: ""
+    region: "us-east-1"
+    useSSL: false
+    verifySSL: false
+
+# External secrets (if using external-secrets operator)
+externalSecrets:
+  enabled: false
+  secretStore: cluster-secret-store
+  secrets: []

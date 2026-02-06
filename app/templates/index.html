@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S3 Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <h1>🗄️ S3 Manager</h1>
+                <div class="user-info" id="userInfo">
+                    {% if user %}
+                        <span class="user-name">{{ user.name }}</span>
+                        <button onclick="logout()" class="btn btn-secondary">Logout</button>
+                    {% else %}
+                        <button onclick="login()" class="btn btn-primary">Login with Microsoft</button>
+                    {% endif %}
+                </div>
+            </div>
+        </header>
+
+        {% if user %}
+        <div class="user-panel">
+            <div class="permissions-info">
+                <h3>Your Permissions</h3>
+                <div class="roles">
+                    <strong>Roles:</strong>
+                    {% for role in user.roles %}
+                        <span class="badge">{{ role }}</span>
+                    {% endfor %}
+                </div>
+                <div class="permissions">
+                    <strong>Permissions:</strong>
+                    {% for permission in user.permissions %}
+                        <span class="badge badge-permission">{{ permission }}</span>
+                    {% endfor %}
+                </div>
+                <button onclick="requestPIMElevation()" class="btn btn-warning" id="pimButton">
+                    🔐 Request Elevated Access (PIM)
+                </button>
+            </div>
+        </div>
+
+        <main>
+            <div class="buckets-section">
+                <h2>S3 Buckets</h2>
+                <div id="bucketsContainer" class="loading">
+                    <p>Loading buckets...</p>
+                </div>
+            </div>
+
+            <div class="objects-section" id="objectsSection" style="display: none;">
+                <div class="section-header">
+                    <h2>Objects in <span id="currentBucket"></span></h2>
+                    <button onclick="closeBucket()" class="btn btn-secondary">Close</button>
+                </div>
+                <div id="objectsContainer" class="loading">
+                    <p>Loading objects...</p>
+                </div>
+            </div>
+        </main>
+        {% else %}
+        <main>
+            <div class="welcome">
+                <h2>Welcome to S3 Manager</h2>
+                <p>Please log in with your Microsoft account to access S3 buckets.</p>
+                <button onclick="login()" class="btn btn-primary btn-large">Login with Microsoft</button>
+            </div>
+        </main>
+        {% endif %}
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
