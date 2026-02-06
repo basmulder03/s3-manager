@@ -222,8 +222,10 @@ docker build -t s3-manager:latest .
 This repository includes a GitHub Actions workflow that builds and pushes the Docker image to the free GitHub Container Registry (GHCR) on every push to `main` and on version tags (`v*`):
 
 ```bash
-ghcr.io/<owner>/s3-manager
+ghcr.io/basmulder03/s3-manager
 ```
+
+If you publish from a fork, use the image path for your GitHub organization or username.
 
 Use the published image in your Helm values or Kubernetes manifests.
 
