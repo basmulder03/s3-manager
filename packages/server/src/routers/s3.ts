@@ -1,9 +1,9 @@
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { deleteProcedure, router, viewProcedure, writeProcedure } from '../trpc';
-import { S3Service } from '../services/s3/service';
-import { isS3ServiceError } from '../services/s3/errors';
-import { buildUploadCookbook } from '../services/s3/upload-cookbook';
+import { deleteProcedure, router, viewProcedure, writeProcedure } from '@/trpc';
+import { S3Service } from '@/services/s3/service';
+import { isS3ServiceError } from '@/services/s3/errors';
+import { buildUploadCookbook } from '@/services/s3/upload-cookbook';
 
 const s3Service = new S3Service();
 

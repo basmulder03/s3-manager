@@ -1,10 +1,10 @@
-import type { Permission } from '../trpc';
-import { config } from '../config';
-import { getLogger } from '../telemetry';
-import { safeVerifyAccessToken } from './jwt';
-import { localDevPermissions, mapRolesToPermissions } from './permissions';
-import { providerName } from './provider';
-import type { AuthUser } from './types';
+import type { Permission } from '@/trpc';
+import { config } from '@/config';
+import { getLogger } from '@/telemetry';
+import { safeVerifyAccessToken } from '@/auth/jwt';
+import { localDevPermissions, mapRolesToPermissions } from '@/auth/permissions';
+import { providerName } from '@/auth/provider';
+import type { AuthUser } from '@/auth/types';
 
 const authLogger = () => getLogger('Auth');
 

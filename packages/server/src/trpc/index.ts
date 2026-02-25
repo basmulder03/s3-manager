@@ -1,8 +1,8 @@
 import { initTRPC } from '@trpc/server';
 import type { FetchCreateContextFnOptions } from '@trpc/server/adapters/fetch';
 import { TRPCError } from '@trpc/server';
-import { resolveAuthUser, resolvePermissions, shouldRequireAuth } from '../auth/context';
-import type { AuthUser } from '../auth/types';
+import { resolveAuthUser, resolvePermissions, shouldRequireAuth } from '@/auth/context';
+import type { AuthUser } from '@/auth/types';
 
 export type Permission = 'view' | 'write' | 'delete';
 

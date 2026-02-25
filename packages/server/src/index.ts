@@ -6,9 +6,9 @@ const rootDir = resolve(import.meta.dir, '../../..');  // src -> server -> packa
 loadDotenv({ path: resolve(rootDir, '.env.local') });
 loadDotenv({ path: resolve(rootDir, '.env') });
 
-import { config } from './config';
-import { createApp } from './app';
-import { getLogger, initTelemetry, shutdownTelemetry } from './telemetry';
+import { config } from '@/config';
+import { createApp } from '@/app';
+import { getLogger, initTelemetry, shutdownTelemetry } from '@/telemetry';
 
 const telemetryStatus = await initTelemetry(config);
 const startupLogger = getLogger('Server');

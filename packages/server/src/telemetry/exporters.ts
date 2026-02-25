@@ -10,7 +10,7 @@ import {
   type SpanExporter,
 } from '@opentelemetry/sdk-trace-base';
 import type { SpanProcessor } from '@opentelemetry/sdk-trace-base';
-import type { Config } from '../config';
+import type { Config } from '@/config';
 
 class NoopSpanExporter implements SpanExporter {
   export(_spans: ReadableSpan[], resultCallback: (result: { code: ExportResultCode }) => void): void {

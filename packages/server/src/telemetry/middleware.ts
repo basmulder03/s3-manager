@@ -1,8 +1,8 @@
 import type { Context as HonoContext, Next } from 'hono';
 import { context as otelContext, trace } from '@opentelemetry/api';
-import { getLogger } from './logger';
-import { recordHttpRequest } from './metrics';
-import { getTracer, SpanStatusCode } from './tracer';
+import { getLogger } from '@/telemetry/logger';
+import { recordHttpRequest } from '@/telemetry/metrics';
+import { getTracer, SpanStatusCode } from '@/telemetry/tracer';
 
 const httpLogger = () => getLogger('HTTP');
 

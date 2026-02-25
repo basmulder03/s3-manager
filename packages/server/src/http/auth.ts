@@ -1,21 +1,21 @@
 import type { Context, Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
-import { config } from '../config';
-import { getLogger } from '../telemetry';
+import { config } from '@/config';
+import { getLogger } from '@/telemetry';
 import {
   ACCESS_TOKEN_COOKIE,
   ID_TOKEN_COOKIE,
   REFRESH_TOKEN_COOKIE,
   resolveAuthUser,
-} from '../auth/context';
+} from '@/auth/context';
 import {
   buildAuthorizationUrl,
   buildLogoutUrl,
   exchangeAuthorizationCode,
   refreshAccessToken,
   revokeToken,
-} from '../auth/oidc';
-import { createAuthState, consumeAuthState } from '../auth/state';
+} from '@/auth/oidc';
+import { createAuthState, consumeAuthState } from '@/auth/state';
 
 const authLogger = () => getLogger('Auth');
 

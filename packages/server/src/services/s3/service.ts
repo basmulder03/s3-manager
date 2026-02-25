@@ -15,11 +15,11 @@ import {
   type S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { getLogger } from '../../telemetry';
-import { recordS3FileAccess } from '../../telemetry/metrics';
-import { getS3Client } from './client';
-import { S3ServiceError } from './errors';
-import { buildBreadcrumbs, joinObjectKey, normalizeVirtualPath, parseVirtualPath } from './path';
+import { getLogger } from '@/telemetry';
+import { recordS3FileAccess } from '@/telemetry/metrics';
+import { getS3Client } from '@/services/s3/client';
+import { S3ServiceError } from '@/services/s3/errors';
+import { buildBreadcrumbs, joinObjectKey, normalizeVirtualPath, parseVirtualPath } from '@/services/s3/path';
 import type {
   AbortMultipartUploadInput,
   BrowseItem,
@@ -42,7 +42,7 @@ import type {
   PresignedUploadResult,
   S3BucketSummary,
   S3ObjectSummary,
-} from './types';
+} from '@/services/s3/types';
 
 const s3Logger = () => getLogger('S3');
 

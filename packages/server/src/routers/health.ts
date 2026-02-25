@@ -1,6 +1,6 @@
-import { router, publicProcedure } from '../trpc';
-import { config } from '../config';
-import { getTelemetryStatus } from '../telemetry';
+import { router, publicProcedure } from '@/trpc';
+import { config } from '@/config';
+import { getTelemetryStatus } from '@/telemetry';
 
 /**
  * Health check router

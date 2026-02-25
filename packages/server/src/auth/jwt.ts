@@ -1,8 +1,8 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
-import { config } from '../config';
-import { getLogger } from '../telemetry';
-import { providerName, resolveAudience, resolveIssuer } from './provider';
-import type { VerifiedToken } from './types';
+import { config } from '@/config';
+import { getLogger } from '@/telemetry';
+import { providerName, resolveAudience, resolveIssuer } from '@/auth/provider';
+import type { VerifiedToken } from '@/auth/types';
 
 const authLogger = () => getLogger('Auth');
 

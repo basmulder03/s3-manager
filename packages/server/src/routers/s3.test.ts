@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { S3ServiceError } from '../services/s3/errors';
-import { mapS3ErrorToTrpc } from './s3';
+import { S3ServiceError } from '@/services/s3/errors';
+import { mapS3ErrorToTrpc } from '@/routers/s3';
 
 describe('mapS3ErrorToTrpc', () => {
   it('maps missing object/bucket errors to NOT_FOUND', () => {

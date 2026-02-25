@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { protectedProcedure, publicProcedure, router } from '../trpc';
-import { config } from '../config';
-import { providerName, resolveAudience, resolveIssuer } from '../auth/provider';
-import { introspectToken } from '../auth/oidc';
+import { protectedProcedure, publicProcedure, router } from '@/trpc';
+import { config } from '@/config';
+import { providerName, resolveAudience, resolveIssuer } from '@/auth/provider';
+import { introspectToken } from '@/auth/oidc';
 
 export const authRouter = router({
   status: publicProcedure.query(({ ctx }) => {

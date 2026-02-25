@@ -1,6 +1,6 @@
 import { metrics, type Counter, type Histogram, ValueType } from '@opentelemetry/api';
-import type { Config } from '../config';
-import type { HttpMetricAttributes, S3AccessMetricAttributes } from './types';
+import type { Config } from '@/config';
+import type { HttpMetricAttributes, S3AccessMetricAttributes } from '@/telemetry/types';
 
 interface MetricState {
   httpRequestsTotal: Counter;

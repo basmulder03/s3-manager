@@ -1,5 +1,5 @@
-import { config } from '../config';
-import { providerName, resolveAudience, resolveIssuer } from './provider';
+import { config } from '@/config';
+import { providerName, resolveAudience, resolveIssuer } from '@/auth/provider';
 
 interface OidcDiscoveryDocument {
   authorization_endpoint: string;

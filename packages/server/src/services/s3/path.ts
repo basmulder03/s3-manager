@@ -1,5 +1,5 @@
-import { S3ServiceError } from './errors';
-import type { Breadcrumb } from './types';
+import { S3ServiceError } from '@/services/s3/errors';
+import type { Breadcrumb } from '@/services/s3/types';
 
 const normalizePath = (input: string): string => {
   return input

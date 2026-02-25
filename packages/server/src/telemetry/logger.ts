@@ -1,7 +1,7 @@
 import { Writable } from 'node:stream';
 import pino, { type Logger as PinoLogger, type LoggerOptions } from 'pino';
 import { trace } from '@opentelemetry/api';
-import type { Config } from '../config';
+import type { Config } from '@/config';
 
 type LogRecord = Record<string, unknown>;
 

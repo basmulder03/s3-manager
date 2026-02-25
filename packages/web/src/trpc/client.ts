@@ -1,6 +1,6 @@
 import { createTRPCReact } from '@trpc/react-query';
 import { httpBatchLink } from '@trpc/client';
-import type { AppRouter } from '../../../server/src/trpc/router';
+import type { AppRouter } from '@server/trpc/router';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/trpc';
 

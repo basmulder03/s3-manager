@@ -1,5 +1,5 @@
 import { context, trace, SpanStatusCode, type Tracer } from '@opentelemetry/api';
-import type { Config } from '../config';
+import type { Config } from '@/config';
 
 let tracer: Tracer | null = null;
 

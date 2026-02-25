@@ -1,7 +1,7 @@
-import { Panel } from './components/Panel';
-import { KeyValue } from './components/KeyValue';
-import { trpc } from './trpc/client';
-import { useUiStore } from './state/ui';
+import { Panel } from '@web/components/Panel';
+import { KeyValue } from '@web/components/KeyValue';
+import { trpc } from '@web/trpc/client';
+import { useUiStore } from '@web/state/ui';
 
 const formatDate = (value: string | null): string => {
   if (!value) {

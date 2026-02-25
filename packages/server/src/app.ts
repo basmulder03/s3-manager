@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { trpcServer } from '@hono/trpc-server';
-import { appRouter } from './trpc/router';
-import { createContext } from './trpc';
-import { config } from './config';
-import { getLogger, getTelemetryStatus, telemetryMiddleware } from './telemetry';
-import { registerAuthHttpRoutes } from './http/auth';
+import { appRouter } from '@/trpc/router';
+import { createContext } from '@/trpc';
+import { config } from '@/config';
+import { getLogger, getTelemetryStatus, telemetryMiddleware } from '@/telemetry';
+import { registerAuthHttpRoutes } from '@/http/auth';
 
 /**
  * Create and configure Hono application

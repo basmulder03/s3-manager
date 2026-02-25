@@ -1,4 +1,4 @@
-import type { Permission } from '../trpc';
+import type { Permission } from '@/trpc';
 
 export interface AuthUser {
   id: string;

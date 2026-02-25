@@ -1,9 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { trpc, trpcClient } from './trpc/client';
-import { App } from './App';
-import './styles.css';
+import { trpc, trpcClient } from '@web/trpc/client';
+import { App } from '@web/App';
+import '@web/styles.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {

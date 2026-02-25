@@ -1,6 +1,6 @@
 export {
   uploadObjectWithCookbook,
-} from '../../shared/upload/client';
+} from '@/shared/upload/client';
 
 export type {
   BrowserFileLike,
@@ -10,4 +10,4 @@ export type {
   UploadHelperOptions,
   UploadHelperResult,
   UploadProgressEvent,
-} from '../../shared/upload/contracts';
+} from '@/shared/upload/contracts';

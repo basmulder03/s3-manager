@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { resetConfigForTests } from '../config';
-import { appRouter } from './router';
-import type { Context } from './index';
+import { resetConfigForTests } from '@/config';
+import { appRouter } from '@/trpc/router';
+import type { Context } from '@/trpc/index';
 
 const getErrorCode = (error: unknown): string => {
   if (typeof error === 'object' && error !== null) {

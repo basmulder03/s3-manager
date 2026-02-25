@@ -3,7 +3,7 @@ import {
   MIN_MULTIPART_SIZE_BYTES,
   type UploadCookbookInput,
   type UploadCookbookResponse,
-} from '../../shared/upload/contracts';
+} from '@/shared/upload/contracts';
 
 export const buildUploadCookbook = (input: UploadCookbookInput): UploadCookbookResponse => {
   const resolvedPartSize = Math.max(input.preferredPartSizeBytes ?? DEFAULT_MULTIPART_SIZE_BYTES, MIN_MULTIPART_SIZE_BYTES);

@@ -5,12 +5,12 @@ import {
   SEMRESATTRS_SERVICE_NAME,
   SEMRESATTRS_SERVICE_VERSION,
 } from '@opentelemetry/semantic-conventions';
-import type { Config } from '../config';
-import { createExporterSetup } from './exporters';
-import { initRootLogger, getLogger, isLoggerInitialized } from './logger';
-import { initMetrics } from './metrics';
-import { initTracer } from './tracer';
-import type { TelemetryRuntime, TelemetryStatus } from './types';
+import type { Config } from '@/config';
+import { createExporterSetup } from '@/telemetry/exporters';
+import { initRootLogger, getLogger, isLoggerInitialized } from '@/telemetry/logger';
+import { initMetrics } from '@/telemetry/metrics';
+import { initTracer } from '@/telemetry/tracer';
+import type { TelemetryRuntime, TelemetryStatus } from '@/telemetry/types';
 
 const defaultStatus: TelemetryStatus = {
   enabled: false,
@@ -133,6 +133,6 @@ export const shutdownTelemetry = async (): Promise<void> => {
 
 export const getTelemetryStatus = (): TelemetryStatus => runtime.status;
 
-export { getLogger } from './logger';
-export { telemetryMiddleware } from './middleware';
-export { recordS3FileAccess } from './metrics';
+export { getLogger } from '@/telemetry/logger';
+export { telemetryMiddleware } from '@/telemetry/middleware';
+export { recordS3FileAccess } from '@/telemetry/metrics';

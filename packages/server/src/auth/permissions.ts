@@ -1,5 +1,5 @@
-import type { Permission } from '../trpc';
-import { config } from '../config';
+import type { Permission } from '@/trpc';
+import { config } from '@/config';
 
 const VALID_PERMISSIONS: Permission[] = ['view', 'write', 'delete'];
 
