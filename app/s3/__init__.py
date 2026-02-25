@@ -3,6 +3,8 @@ import boto3
 from botocore.client import Config as BotoConfig
 from botocore.exceptions import ClientError
 from app.auth import login_required, permission_required
+import mimetypes
+import magic
 
 s3_bp = Blueprint('s3', __name__)
 
@@ -18,6 +20,35 @@ def get_s3_client():
         use_ssl=current_app.config['S3_USE_SSL'],
         verify=current_app.config['S3_VERIFY_SSL']
     )
+
+def detect_mime_type(filename, file_content=None):
+    """
+    Detect MIME type for a file using multiple methods.
+    
+    Args:
+        filename: Name of the file
+        file_content: Optional file content (bytes) for magic number detection
+    
+    Returns:
+        MIME type string (e.g., 'image/png', 'text/plain')
+    """
+    # Try python-magic first if content is available (most accurate)
+    if file_content:
+        try:
+            mime = magic.Magic(mime=True)
+            detected_type = mime.from_buffer(file_content)
+            if detected_type and detected_type != 'application/octet-stream':
+                return detected_type
+        except Exception as e:
+            current_app.logger.warning(f"python-magic detection failed: {e}")
+    
+    # Fallback to mimetypes based on filename extension
+    guessed_type, _ = mimetypes.guess_type(filename)
+    if guessed_type:
+        return guessed_type
+    
+    # Default fallback
+    return 'application/octet-stream'
 
 @s3_bp.route('/buckets', methods=['GET'])
 @login_required
@@ -330,55 +361,89 @@ def get_file_icon(filename):
 @permission_required('write')
 def upload_to_path():
     """
-    Upload file(s) to a virtual path.
+    Upload file(s) to a virtual path with automatic MIME type detection.
     
     Form data:
-      - file: The file to upload (required)
+      - files[]: One or more files to upload (required)
       - path: Virtual path (e.g., 'bucket-name/folder1/folder2')
+      - relativePaths[]: Optional relative paths for folder uploads
     """
     try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file provided'}), 400
+        # Get all uploaded files
+        uploaded_files = request.files.getlist('files[]')
+        if not uploaded_files or len(uploaded_files) == 0:
+            # Fallback to single file upload for backward compatibility
+            if 'file' in request.files:
+                uploaded_files = [request.files['file']]
+            else:
+                return jsonify({'error': 'No files provided'}), 400
         
-        file = request.files['file']
         virtual_path = request.form.get('path', '').strip('/')
+        relative_paths = request.form.getlist('relativePaths[]')
         
-        if not file.filename:
-            return jsonify({'error': 'Empty filename'}), 400
-        
-        # Parse virtual path
         if not virtual_path:
             return jsonify({'error': 'Cannot upload to root. Please select a bucket.'}), 400
         
+        # Parse virtual path
         path_parts = virtual_path.split('/', 1)
         bucket_name = path_parts[0]
         prefix = path_parts[1] + '/' if len(path_parts) > 1 else ''
         
-        # Construct full object key
-        object_key = prefix + file.filename
-        
         s3_client = get_s3_client()
+        uploaded_count = 0
+        uploaded_files_info = []
         
-        # Upload to S3
-        s3_client.upload_fileobj(
-            file,
-            bucket_name,
-            object_key,
-            ExtraArgs={'ContentType': file.content_type} if file.content_type else {}
-        )
+        for idx, file in enumerate(uploaded_files):
+            if not file or not file.filename:
+                continue
+            
+            # Determine object key
+            if relative_paths and idx < len(relative_paths) and relative_paths[idx]:
+                # Use relative path for folder uploads
+                object_key = prefix + relative_paths[idx]
+            else:
+                # Simple file upload
+                object_key = prefix + file.filename
+            
+            # Read file content for MIME detection
+            file_content = file.read()
+            file.seek(0)  # Reset file pointer
+            
+            # Detect MIME type
+            content_type = detect_mime_type(file.filename, file_content)
+            
+            # Upload to S3 with detected MIME type
+            s3_client.put_object(
+                Bucket=bucket_name,
+                Key=object_key,
+                Body=file_content,
+                ContentType=content_type
+            )
+            
+            uploaded_count += 1
+            uploaded_files_info.append({
+                'filename': file.filename,
+                'path': f"{bucket_name}/{object_key}",
+                'contentType': content_type,
+                'size': len(file_content)
+            })
+        
+        if uploaded_count == 0:
+            return jsonify({'error': 'No valid files to upload'}), 400
         
         return jsonify({
-            'message': 'File uploaded successfully',
-            'filename': file.filename,
-            'path': f"{bucket_name}/{object_key}"
+            'success': True,
+            'message': f'{uploaded_count} file(s) uploaded successfully',
+            'count': uploaded_count,
+            'files': uploaded_files_info
         })
         
     except ClientError as e:
         current_app.logger.error(f"S3 ClientError: {e}")
-        return jsonify({'error': 'Failed to upload file', 'details': str(e)}), 500
+        return jsonify({'error': 'Failed to upload file(s)', 'details': str(e)}), 500
     except Exception as e:
-        current_app.logger.error(f"Error uploading file: {e}")
-        return jsonify({'error': 'Failed to upload file', 'details': str(e)}), 500
+        current_app.logger.error(f"Error uploading file(s): {e}")
+        return jsonify({'error': 'Failed to upload file(s)', 'details': str(e)}), 500
 
 @s3_bp.route('/operations/create-folder', methods=['POST'])
 @login_required

@@ -80,17 +80,39 @@
             <div id="uploadModal" class="modal">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h3>Upload File</h3>
+                        <h3>Upload Files/Folders</h3>
                         <button onclick="closeUploadModal()" class="modal-close">&times;</button>
                     </div>
                     <div class="modal-body">
-                        <p>Upload files to: <strong id="uploadPath"></strong></p>
-                        <input type="file" id="uploadFileInput" multiple class="file-input" />
-                        <p class="info-text">You can also drag and drop files directly onto the file browser.</p>
+                        <p>Upload to: <strong id="uploadPath"></strong></p>
+                        
+                        <div class="upload-tabs">
+                            <button id="filesTabBtn" class="tab-btn active" onclick="switchUploadTab('files')">📄 Files</button>
+                            <button id="folderTabBtn" class="tab-btn" onclick="switchUploadTab('folder')">📁 Folder</button>
+                        </div>
+                        
+                        <div id="filesTab" class="upload-tab-content">
+                            <input type="file" id="uploadFileInput" multiple class="file-input" />
+                            <p class="info-text">Select one or more files to upload.</p>
+                        </div>
+                        
+                        <div id="folderTab" class="upload-tab-content" style="display: none;">
+                            <input type="file" id="uploadFolderInput" webkitdirectory directory multiple class="file-input" />
+                            <p class="info-text">Select a folder to upload all its contents.</p>
+                        </div>
+                        
+                        <div id="uploadProgress" style="display: none;">
+                            <div class="progress-bar">
+                                <div id="uploadProgressBar" class="progress-fill"></div>
+                            </div>
+                            <p id="uploadStatus" class="info-text"></p>
+                        </div>
+                        
+                        <p class="info-text">💡 Tip: You can also drag and drop files/folders directly onto the file browser.</p>
                     </div>
                     <div class="modal-footer">
                         <button onclick="closeUploadModal()" class="btn btn-secondary">Cancel</button>
-                        <button onclick="uploadFile()" class="btn btn-primary">Upload</button>
+                        <button onclick="uploadFiles()" class="btn btn-primary">Upload</button>
                     </div>
                 </div>
             </div>

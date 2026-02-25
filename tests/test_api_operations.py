@@ -142,6 +142,107 @@ class TestUploadOperation:
         )
         
         assert response.status_code == 200
+    
+    def test_upload_multiple_files_at_once(self, authenticated_client, test_bucket, s3_client):
+        """Test uploading multiple files in a single request."""
+        file1_data = (io.BytesIO(b"File 1 content"), "file1.txt")
+        file2_data = (io.BytesIO(b"File 2 content"), "file2.txt")
+        file3_data = (io.BytesIO(b"File 3 content"), "file3.txt")
+        
+        response = authenticated_client.post(
+            '/api/s3/operations/upload',
+            data={
+                'files[]': [file1_data, file2_data, file3_data],
+                'virtual_path': test_bucket
+            },
+            content_type='multipart/form-data'
+        )
+        
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is True
+        assert data['count'] == 3
+        assert len(data['files']) == 3
+        
+        # Verify all files exist in S3
+        objects = list_bucket_objects(s3_client, test_bucket)
+        assert "file1.txt" in objects
+        assert "file2.txt" in objects
+        assert "file3.txt" in objects
+    
+    def test_upload_folder_with_structure(self, authenticated_client, test_bucket, s3_client):
+        """Test uploading folder with nested structure."""
+        file1 = (io.BytesIO(b"Root file"), "root.txt")
+        file2 = (io.BytesIO(b"Subfolder file"), "sub.txt")
+        file3 = (io.BytesIO(b"Nested file"), "nested.txt")
+        
+        response = authenticated_client.post(
+            '/api/s3/operations/upload',
+            data={
+                'files[]': [file1, file2, file3],
+                'relativePaths[]': ['my-folder/root.txt', 'my-folder/subfolder/sub.txt', 'my-folder/subfolder/deep/nested.txt'],
+                'virtual_path': test_bucket
+            },
+            content_type='multipart/form-data'
+        )
+        
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is True
+        assert data['count'] == 3
+        
+        # Verify folder structure preserved in S3
+        objects = list_bucket_objects(s3_client, test_bucket)
+        assert "my-folder/root.txt" in objects
+        assert "my-folder/subfolder/sub.txt" in objects
+        assert "my-folder/subfolder/deep/nested.txt" in objects
+    
+    def test_upload_mime_type_detection(self, authenticated_client, test_bucket, s3_client):
+        """Test MIME type detection for different file types."""
+        # PNG magic bytes
+        png_data = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89'
+        
+        # JPEG magic bytes
+        jpeg_data = b'\xff\xd8\xff\xe0\x00\x10JFIF'
+        
+        # Plain text
+        text_data = b'This is plain text'
+        
+        files = [
+            (io.BytesIO(png_data), "image.png"),
+            (io.BytesIO(jpeg_data), "photo.jpg"),
+            (io.BytesIO(text_data), "document.txt")
+        ]
+        
+        response = authenticated_client.post(
+            '/api/s3/operations/upload',
+            data={
+                'files[]': files,
+                'virtual_path': test_bucket
+            },
+            content_type='multipart/form-data'
+        )
+        
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is True
+        assert data['count'] == 3
+        
+        # Verify MIME types in response
+        files_info = data['files']
+        assert any(f['filename'] == 'image.png' and 'image/png' in f['contentType'] for f in files_info)
+        assert any(f['filename'] == 'photo.jpg' and 'image/jpeg' in f['contentType'] for f in files_info)
+        assert any(f['filename'] == 'document.txt' and 'text/plain' in f['contentType'] for f in files_info)
+        
+        # Verify MIME types in S3 metadata
+        png_obj = s3_client.head_object(Bucket=test_bucket, Key='image.png')
+        assert png_obj['ContentType'] == 'image/png'
+        
+        jpg_obj = s3_client.head_object(Bucket=test_bucket, Key='photo.jpg')
+        assert jpg_obj['ContentType'] == 'image/jpeg'
+        
+        txt_obj = s3_client.head_object(Bucket=test_bucket, Key='document.txt')
+        assert txt_obj['ContentType'] == 'text/plain'
 
 
 @pytest.mark.api

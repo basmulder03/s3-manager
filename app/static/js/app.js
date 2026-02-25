@@ -320,12 +320,19 @@ async function deleteFolder(virtualPath, folderName) {
     }
 }
 
-async function uploadFile() {
-    const fileInput = document.getElementById('uploadFileInput');
-    const file = fileInput.files[0];
+async function uploadFiles() {
+    const filesTab = document.getElementById('filesTab');
+    const folderTab = document.getElementById('folderTab');
+    const isFilesMode = filesTab.style.display !== 'none';
     
-    if (!file) {
-        showMessage('Please select a file', 'error');
+    const fileInput = isFilesMode ? 
+        document.getElementById('uploadFileInput') : 
+        document.getElementById('uploadFolderInput');
+    
+    const files = fileInput.files;
+    
+    if (!files || files.length === 0) {
+        showMessage('Please select file(s) or a folder', 'error');
         return;
     }
     
@@ -335,8 +342,36 @@ async function uploadFile() {
     }
     
     const formData = new FormData();
-    formData.append('file', file);
+    const relativePaths = [];
+    
+    // Add all files to FormData
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        formData.append('files[]', file);
+        
+        // For folder uploads, preserve relative path structure
+        if (!isFilesMode && file.webkitRelativePath) {
+            relativePaths.push(file.webkitRelativePath);
+        } else {
+            relativePaths.push(file.name);
+        }
+    }
+    
+    // Add relative paths for folder structure preservation
+    relativePaths.forEach(path => {
+        formData.append('relativePaths[]', path);
+    });
+    
     formData.append('path', currentPath);
+    
+    // Show progress
+    const progressDiv = document.getElementById('uploadProgress');
+    const progressBar = document.getElementById('uploadProgressBar');
+    const statusText = document.getElementById('uploadStatus');
+    
+    progressDiv.style.display = 'block';
+    statusText.textContent = `Uploading ${files.length} file(s)...`;
+    progressBar.style.width = '10%';
     
     try {
         const response = await fetch('/api/s3/operations/upload', {
@@ -345,19 +380,45 @@ async function uploadFile() {
             body: formData
         });
         
+        progressBar.style.width = '90%';
+        
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.error || 'Upload failed');
         }
         
         const result = await response.json();
-        showMessage(`File "${result.filename}" uploaded successfully`, 'success');
+        progressBar.style.width = '100%';
+        
+        showMessage(result.message || `${result.count} file(s) uploaded successfully`, 'success');
         
         // Close modal and refresh
-        closeUploadModal();
-        browse(currentPath);
+        setTimeout(() => {
+            closeUploadModal();
+            browse(currentPath);
+        }, 500);
     } catch (error) {
-        showMessage('Failed to upload file: ' + error.message, 'error');
+        progressDiv.style.display = 'none';
+        showMessage('Failed to upload: ' + error.message, 'error');
+    }
+}
+
+function switchUploadTab(tab) {
+    const filesTab = document.getElementById('filesTab');
+    const folderTab = document.getElementById('folderTab');
+    const filesTabBtn = document.getElementById('filesTabBtn');
+    const folderTabBtn = document.getElementById('folderTabBtn');
+    
+    if (tab === 'files') {
+        filesTab.style.display = 'block';
+        folderTab.style.display = 'none';
+        filesTabBtn.classList.add('active');
+        folderTabBtn.classList.remove('active');
+    } else {
+        filesTab.style.display = 'none';
+        folderTab.style.display = 'block';
+        filesTabBtn.classList.remove('active');
+        folderTabBtn.classList.add('active');
     }
 }
 
