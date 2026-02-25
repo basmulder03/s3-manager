@@ -181,6 +181,24 @@ config:
 
 ### Local Development
 
+For local development and debugging without Azure AD or Rook-Ceph, see **[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)** for detailed instructions on:
+
+- Running with Docker Compose + LocalStack (S3 emulator)
+- Running directly with Python for debugging
+- Deploying to local Kubernetes clusters (minikube, kind, k3s)
+- Mock authentication bypass for development
+
+**Quick Start (Docker Compose):**
+```bash
+# Start the entire stack with one command
+docker-compose up
+
+# Access at http://localhost:8080
+# Auto-logged in as "Local Developer" with full permissions
+```
+
+### Production-like Local Development
+
 1. Clone the repository:
 ```bash
 git clone https://github.com/basmulder03/s3-manager.git

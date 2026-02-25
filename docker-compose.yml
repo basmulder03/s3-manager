@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # LocalStack - Local AWS cloud stack for S3 emulation
+  localstack:
+    image: localstack/localstack:latest
+    container_name: s3-manager-localstack
+    ports:
+      - "4566:4566"      # LocalStack gateway (all services)
+      - "4510-4559:4510-4559"  # External services port range
+    environment:
+      # Only enable S3 service to reduce resource usage
+      SERVICES: s3
+      DEBUG: 0
+      DATA_DIR: /tmp/localstack/data
+      DOCKER_HOST: unix:///var/run/docker.sock
+      # AWS credentials for local development (these are fake)
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+    volumes:
+      - localstack_data:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - s3-manager-network
+
+  # S3 Manager application
+  s3-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: s3-manager-app
+    ports:
+      - "8080:8080"
+    environment:
+      # Development mode - disables Azure AD authentication
+      LOCAL_DEV_MODE: "true"
+      FLASK_DEBUG: "true"
+      
+      # Flask secret
+      SECRET_KEY: "dev-secret-key-change-in-production"
+      
+      # Azure AD (not used in local dev mode)
+      AZURE_AD_TENANT_ID: ""
+      AZURE_AD_CLIENT_ID: ""
+      AZURE_AD_CLIENT_SECRET: ""
+      
+      # PIM disabled for local dev
+      PIM_ENABLED: "false"
+      
+      # Default role
+      DEFAULT_ROLE: "S3-Admin"
+      
+      # S3/LocalStack Configuration
+      S3_ENDPOINT: "http://localstack:4566"
+      S3_ACCESS_KEY: "test"
+      S3_SECRET_KEY: "test"
+      S3_REGION: "us-east-1"
+      S3_USE_SSL: "false"
+      S3_VERIFY_SSL: "false"
+      
+      # Session
+      SESSION_COOKIE_SECURE: "false"
+    volumes:
+      - ./app:/app/app
+      - ./config.py:/app/config.py
+      - ./run.py:/app/run.py
+    depends_on:
+      localstack:
+        condition: service_healthy
+    networks:
+      - s3-manager-network
+
+volumes:
+  localstack_data:
+    driver: local
+
+networks:
+  s3-manager-network:
+    driver: bridge

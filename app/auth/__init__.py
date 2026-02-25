@@ -6,8 +6,30 @@ from functools import wraps
 
 auth_bp = Blueprint('auth', __name__)
 
+def is_local_dev_mode():
+    """Check if running in local development mode"""
+    return current_app.config.get('LOCAL_DEV_MODE', False)
+
+def create_mock_user():
+    """Create a mock user for local development"""
+    default_role = current_app.config.get('DEFAULT_ROLE', 'S3-Admin')
+    role_permissions = current_app.config.get('ROLE_PERMISSIONS', {})
+    
+    permissions = role_permissions.get(default_role, ['view', 'write', 'delete'])
+    
+    return {
+        'name': 'Local Developer',
+        'email': 'dev@localhost',
+        'roles': [default_role],
+        'permissions': permissions,
+        'access_token': 'mock_token_for_local_dev'
+    }
+
 def get_msal_app():
     """Create MSAL confidential client application"""
+    if is_local_dev_mode():
+        return None
+    
     return msal.ConfidentialClientApplication(
         current_app.config['AZURE_AD_CLIENT_ID'],
         authority=current_app.config['AZURE_AD_AUTHORITY'],
@@ -18,6 +40,11 @@ def login_required(f):
     """Decorator to require authentication"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # In local dev mode, auto-login with mock user
+        if is_local_dev_mode() and 'user' not in session:
+            session['user'] = create_mock_user()
+            session.permanent = True
+        
         if 'user' not in session:
             return jsonify({'error': 'Authentication required'}), 401
         return f(*args, **kwargs)
@@ -28,6 +55,11 @@ def permission_required(permission):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
+            # In local dev mode, auto-login with mock user
+            if is_local_dev_mode() and 'user' not in session:
+                session['user'] = create_mock_user()
+                session.permanent = True
+            
             if 'user' not in session:
                 return jsonify({'error': 'Authentication required'}), 401
             
@@ -77,6 +109,12 @@ def map_roles_to_permissions(roles):
 @auth_bp.route('/login')
 def login():
     """Initiate Azure AD login"""
+    # In local dev mode, create mock session and redirect
+    if is_local_dev_mode():
+        session['user'] = create_mock_user()
+        session.permanent = True
+        return redirect('/')
+    
     msal_app = get_msal_app()
     
     # Build authorization URL
@@ -91,6 +129,10 @@ def login():
 @auth_bp.route('/callback')
 def callback():
     """Handle Azure AD callback"""
+    # In local dev mode, just redirect to home
+    if is_local_dev_mode():
+        return redirect('/')
+    
     if 'code' not in request.args:
         return jsonify({'error': 'No authorization code received'}), 400
     
@@ -140,6 +182,11 @@ def callback():
 def logout():
     """Logout user"""
     session.clear()
+    
+    # In local dev mode, just redirect to login
+    if is_local_dev_mode():
+        return redirect(url_for('auth.login'))
+    
     logout_url = f"{current_app.config['AZURE_AD_AUTHORITY']}/oauth2/v2.0/logout"
     return redirect(logout_url)
 
@@ -152,7 +199,8 @@ def get_user():
         'name': user.get('name'),
         'email': user.get('email'),
         'roles': user.get('roles', []),
-        'permissions': user.get('permissions', [])
+        'permissions': user.get('permissions', []),
+        'localDevMode': is_local_dev_mode()
     })
 
 @auth_bp.route('/pim/elevate', methods=['POST'])

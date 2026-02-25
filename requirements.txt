@@ -7,3 +7,6 @@ cryptography==46.0.5
 python-dotenv==1.2.1
 gunicorn==25.1.0
 requests==2.32.5
+
+# Development dependencies (optional, for in-memory S3 mocking)
+moto[s3]==5.0.30

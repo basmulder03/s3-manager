@@ -81,6 +81,13 @@ config:
   secretKey: "CHANGE-ME-GENERATE-A-SECURE-RANDOM-KEY"
   sessionCookieSecure: true
   
+  # Local development mode - bypasses Azure AD authentication
+  # Set to true for local development only
+  localDevMode: false
+  
+  # Flask debug mode (enable for local development)
+  flaskDebug: false
+  
   # Microsoft Entra ID (Azure AD) configuration
   azureAd:
     tenantId: ""

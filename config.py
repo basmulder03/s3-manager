@@ -7,6 +7,10 @@ class Config:
     """Base configuration"""
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
     
+    # Local Development Mode
+    # When enabled, bypasses Azure AD authentication with a mock user
+    LOCAL_DEV_MODE = os.environ.get('LOCAL_DEV_MODE', 'false').lower() == 'true'
+    
     # Microsoft Entra ID (Azure AD) Configuration
     AZURE_AD_TENANT_ID = os.environ.get('AZURE_AD_TENANT_ID', '')
     AZURE_AD_CLIENT_ID = os.environ.get('AZURE_AD_CLIENT_ID', '')

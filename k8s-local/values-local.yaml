@@ -1,0 +1,81 @@
+# Local Kubernetes Values for S3 Manager
+# Use this with: helm install s3-manager ./helm/s3-manager -f k8s-local/values-local.yaml -n s3-manager
+
+image:
+  repository: s3-manager
+  pullPolicy: Never  # Use locally built/loaded image
+  tag: "dev"
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations: {}
+  hosts:
+    - host: s3-manager.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+
+config:
+  # Enable local development mode
+  localDevMode: true
+  
+  # Flask secret key
+  secretKey: "dev-secret-key-change-in-production"
+  
+  # Azure AD Configuration (not used in local dev mode)
+  azureAd:
+    tenantId: ""
+    clientId: ""
+    clientSecret: ""
+  
+  # PIM Configuration
+  pim:
+    enabled: false
+  
+  # Default role for local development
+  defaultRole: "S3-Admin"
+  
+  # S3/LocalStack Configuration
+  s3:
+    # Using LocalStack deployed in the same namespace
+    endpoint: "http://localstack.s3-manager.svc.cluster.local:4566"
+    accessKey: "test"
+    secretKey: "test"
+    region: "us-east-1"
+    useSSL: false
+    verifySSL: false
+  
+  # Session Configuration
+  sessionCookieSecure: false
+  flaskDebug: true
+
+# Role-based permissions
+rolePermissions:
+  S3-Viewer:
+    - view
+  S3-Editor:
+    - view
+    - write
+  S3-Admin:
+    - view
+    - write
+    - delete
