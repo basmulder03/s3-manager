@@ -23,6 +23,12 @@ curl http://localhost:3000/health/ready
 # Server info
 curl http://localhost:3000/trpc/health.info
 
+# S3 buckets (Stage 2)
+curl http://localhost:3000/trpc/s3.listBuckets
+
+# S3 virtual filesystem root (Stage 2)
+curl "http://localhost:3000/trpc/s3.browse?input=%7B%22virtualPath%22%3A%22%22%7D"
+
 # Root endpoint
 curl http://localhost:3000/
 ```
@@ -33,11 +39,13 @@ curl http://localhost:3000/
 packages/server/src/
 ├── config/index.ts    # Environment config with Zod validation
 ├── telemetry/          # Logging, traces, and metrics
+├── services/s3/        # S3 service layer (AWS SDK + helpers)
 ├── trpc/
 │   ├── index.ts       # tRPC initialization & context
 │   └── router.ts      # Main router (combines feature routers)
 ├── routers/
-│   └── health.ts      # Health check endpoints
+│   ├── health.ts      # Health check endpoints
+│   └── s3.ts          # S3 tRPC procedures
 ├── app.ts             # Hono app setup (middleware, CORS, etc.)
 └── index.ts           # Entry point (loads env, starts server)
 ```

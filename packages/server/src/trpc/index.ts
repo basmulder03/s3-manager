@@ -6,9 +6,13 @@ import type { FetchCreateContextFnOptions } from '@trpc/server/adapters/fetch';
  * This will be available in all procedures
  */
 export const createContext = async (opts: FetchCreateContextFnOptions) => {
+  const actorHeader = opts.req.headers.get('x-user-email')
+    ?? opts.req.headers.get('x-user-id')
+    ?? opts.req.headers.get('x-forwarded-user');
+
   return {
     req: opts.req,
-    // Will add: user, s3 client, etc.
+    actor: actorHeader && actorHeader.trim().length > 0 ? actorHeader.trim() : 'anonymous',
   };
 };
 

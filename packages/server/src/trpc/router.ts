@@ -1,5 +1,6 @@
 import { router } from './index';
 import { healthRouter } from '../routers/health';
+import { s3Router } from '../routers/s3';
 
 /**
  * Main application router
@@ -7,7 +8,7 @@ import { healthRouter } from '../routers/health';
  */
 export const appRouter = router({
   health: healthRouter,
-  // Will add: s3, auth, etc.
+  s3: s3Router,
 });
 
 export type AppRouter = typeof appRouter;
