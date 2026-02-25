@@ -7,3 +7,4 @@ resources:
   - namespace.yaml
   - install.yaml
   - gateway.yaml
+  - httproutes.yaml

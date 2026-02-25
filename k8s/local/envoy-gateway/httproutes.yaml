@@ -1,0 +1,42 @@
+---
+# HTTPRoute for LocalStack S3 API
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: localstack-s3
+  namespace: localstack
+spec:
+  parentRefs:
+  - name: eg
+    namespace: envoy-gateway-system
+  hostnames:
+  - "s3.local"
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: localstack
+      port: 4566
+---
+# HTTPRoute for S3 Manager UI
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: s3-manager
+  namespace: default
+spec:
+  parentRefs:
+  - name: eg
+    namespace: envoy-gateway-system
+  hostnames:
+  - "s3-manager.local"
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: s3-manager
+      port: 80

@@ -1,18 +1,22 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Local Kubernetes deployment for S3 Manager
-# Deploy everything with: kubectl apply -k k8s/
+# Local Kubernetes deployment for S3 Manager with LocalStack
+# Deploy everything with: kubectl apply -k k8s/local/
 
 resources:
-  # 1. Install Envoy Gateway (required for ingress)
-  - envoy-gateway
-
-  # 2. Deploy Keycloak (authentication)
+  # NOTE: Envoy Gateway must be installed separately first!
+  # See deployment instructions in README.md
+  
+  # 1. Deploy Keycloak (authentication)
   - keycloak
 
-  # 3. Deploy Rook-Ceph (S3-compatible storage)
-  - rook-ceph
+  # 2. Deploy LocalStack (S3-compatible storage)
+  - localstack
 
-  # 4. Deploy S3 Manager application
+  # 3. Deploy S3 Manager application
   - test-deployment
+  
+  # 4. Deploy Envoy Gateway resources (Gateway, HTTPRoutes, Policies)
+  - envoy-gateway/gateway.yaml
+  - envoy-gateway/httproutes.yaml

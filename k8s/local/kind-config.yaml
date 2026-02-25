@@ -1,0 +1,18 @@
+# kind cluster configuration with NodePort mappings
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraPortMappings:
+  # Map NodePort 30080 to host port 30080 for S3 Manager
+  - containerPort: 30080
+    hostPort: 30080
+    protocol: TCP
+  # Map NodePort 30081 to host port 30081 for Keycloak
+  - containerPort: 30081
+    hostPort: 30081
+    protocol: TCP
+  # Map NodePort 30082 to host port 30082 for LocalStack
+  - containerPort: 30082
+    hostPort: 30082
+    protocol: TCP

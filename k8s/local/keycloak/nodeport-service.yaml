@@ -1,0 +1,20 @@
+---
+# NodePort service for direct local access to Keycloak
+# Access at: http://localhost:30081
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak-nodeport
+  namespace: keycloak
+  labels:
+    app: keycloak
+spec:
+  type: NodePort
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    nodePort: 30081
+    protocol: TCP
+  selector:
+    app: keycloak

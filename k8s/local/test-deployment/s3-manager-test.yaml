@@ -1,13 +1,12 @@
-# S3 Manager Test Deployment with Rook-Ceph and Envoy Gateway
-# This deploys S3 Manager connected to Rook-Ceph S3 with Envoy Gateway ingress
+# S3 Manager Test Deployment with LocalStack and Envoy Gateway
+# This deploys S3 Manager connected to LocalStack S3 with Envoy Gateway ingress
 #
 # Usage:
 #   kubectl apply -f s3-manager-test.yaml
 #
 # Prerequisites:
-#   - Rook-Ceph object store must be running
-#   - Object store user credentials must exist
-#   - Envoy Gateway installed (or use NGINX Ingress - see commented section)
+#   - LocalStack must be running in the localstack namespace
+#   - Envoy Gateway installed
 #   - Keycloak deployed with OIDC realm configured
 
 ---
@@ -28,8 +27,8 @@ data:
   FLASK_ENV: "development"
   LOG_LEVEL: "DEBUG"
   
-  # S3 Configuration (Rook-Ceph)
-  S3_ENDPOINT: "http://rook-ceph-rgw-s3-store.rook-ceph.svc.cluster.local:80"
+  # S3 Configuration (LocalStack)
+  S3_ENDPOINT: "http://localstack.localstack.svc.cluster.local:4566"
   S3_REGION: "us-east-1"
   S3_USE_SSL: "false"
   S3_VERIFY_SSL: "false"
@@ -52,9 +51,9 @@ metadata:
   namespace: s3-manager-test
 type: Opaque
 stringData:
-  # These will be populated by the init container from Rook-Ceph secret
-  S3_ACCESS_KEY: "placeholder"
-  S3_SECRET_KEY: "placeholder"
+  # LocalStack uses test credentials by default
+  S3_ACCESS_KEY: "test"
+  S3_SECRET_KEY: "test"
   SECRET_KEY: "development-secret-key-change-in-production"
   OIDC_CLIENT_SECRET: "dev-client-secret-12345"
 
@@ -89,29 +88,10 @@ spec:
       labels:
         app: s3-manager
     spec:
-      # Init container to fetch S3 credentials from Rook-Ceph
-      initContainers:
-      - name: fetch-s3-credentials
-        image: busybox:latest
-        command:
-        - /bin/sh
-        - -c
-        - |
-          echo "Fetching S3 credentials from Rook-Ceph..."
-          cp /rook-ceph-credentials/AccessKey /credentials/S3_ACCESS_KEY
-          cp /rook-ceph-credentials/SecretKey /credentials/S3_SECRET_KEY
-          echo "Credentials fetched successfully"
-        volumeMounts:
-        - name: rook-ceph-credentials
-          mountPath: /rook-ceph-credentials
-          readOnly: true
-        - name: credentials
-          mountPath: /credentials
-      
       containers:
       - name: s3-manager
-        image: ghcr.io/basmulder03/s3-manager:latest
-        imagePullPolicy: Always
+        image: s3-manager:dev
+        imagePullPolicy: Never
         ports:
         - name: http
           containerPort: 8080
@@ -180,11 +160,17 @@ spec:
               name: s3-manager-config
               key: OIDC_SCOPES
         
-        # Load S3 credentials from file (populated by init container)
+        # Load S3 credentials from secret (LocalStack uses test/test)
         - name: S3_ACCESS_KEY
-          value: "$(cat /credentials/S3_ACCESS_KEY)"
+          valueFrom:
+            secretKeyRef:
+              name: s3-manager-secret
+              key: S3_ACCESS_KEY
         - name: S3_SECRET_KEY
-          value: "$(cat /credentials/S3_SECRET_KEY)"
+          valueFrom:
+            secretKeyRef:
+              name: s3-manager-secret
+              key: S3_SECRET_KEY
         
         # Load secret key from secret
         - name: SECRET_KEY
@@ -199,11 +185,6 @@ spec:
             secretKeyRef:
               name: s3-manager-secret
               key: OIDC_CLIENT_SECRET
-        
-        volumeMounts:
-        - name: credentials
-          mountPath: /credentials
-          readOnly: true
         
         resources:
           limits:
@@ -230,14 +211,6 @@ spec:
           periodSeconds: 5
           timeoutSeconds: 3
           failureThreshold: 3
-      
-      volumes:
-      - name: rook-ceph-credentials
-        secret:
-          secretName: rook-ceph-object-user-s3-store-s3-manager
-      - name: credentials
-        emptyDir:
-          medium: Memory
 
 ---
 # Service

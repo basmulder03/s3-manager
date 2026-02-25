@@ -5,6 +5,11 @@ FROM python:3.14-slim AS builder
 
 WORKDIR /app
 
+# Install system dependencies required for python-magic
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libmagic1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies in a separate layer for better caching
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -14,6 +19,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 FROM python:3.14-slim
 
 WORKDIR /app
+
+# Install libmagic runtime library
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libmagic1 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy installed packages from builder
 COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages

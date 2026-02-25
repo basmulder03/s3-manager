@@ -1,0 +1,20 @@
+---
+# NodePort service for direct local access to LocalStack S3
+# Access at: http://localhost:30082
+apiVersion: v1
+kind: Service
+metadata:
+  name: localstack-nodeport
+  namespace: localstack
+  labels:
+    app: localstack
+spec:
+  type: NodePort
+  ports:
+  - name: edge
+    port: 4566
+    targetPort: 4566
+    nodePort: 30082
+    protocol: TCP
+  selector:
+    app: localstack

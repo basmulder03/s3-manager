@@ -5,3 +5,4 @@ namespace: keycloak
 
 resources:
   - keycloak-local.yaml
+  - nodeport-service.yaml
