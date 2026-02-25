@@ -1,0 +1,28 @@
+---
+# Optional: PersistentVolumeClaim for LocalStack data persistence
+# Use this if you want LocalStack data to survive pod restarts
+# 
+# Note: kind clusters support local-path provisioner by default
+# For other local k8s (minikube, k3s), ensure you have a storage provisioner
+#
+# To use this PVC:
+# 1. Apply this file: kubectl apply -f localstack-pvc.yaml
+# 2. In localstack.yaml, uncomment the persistentVolumeClaim section
+#    and comment out the emptyDir section
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: localstack-pvc
+  namespace: s3-manager
+  labels:
+    app: localstack
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # For kind, the default storageClass (standard) uses local-path provisioner
+  # Uncomment and modify if you need a specific storage class
+  # storageClassName: standard

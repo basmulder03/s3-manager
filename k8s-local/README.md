@@ -4,9 +4,32 @@ This directory contains Kubernetes manifests and Helm values for running S3 Mana
 
 ## Files
 
-- `localstack.yaml` - Deploys LocalStack S3 service to the cluster
+- `localstack.yaml` - Deploys LocalStack S3 service with PersistentVolumeClaim
+- `localstack-pvc.yaml` - (Deprecated) PVC is now integrated into localstack.yaml
 - `values-local.yaml` - Helm values for local development
 - `README.md` - This file
+
+## LocalStack Data Persistence
+
+By default, `localstack.yaml` now uses a **PersistentVolumeClaim** for storage, which means:
+- ✅ No volume mount conflicts (uses `/var/lib/localstack` instead of `/tmp/localstack`)
+- ✅ Data persists across pod restarts
+- ✅ Works automatically with kind, minikube, and k3s default storage provisioners
+- ✅ S3 buckets and objects survive pod crashes/restarts
+
+The PVC is created automatically when you apply `localstack.yaml`. All local Kubernetes clusters support this:
+- **kind**: Uses local-path provisioner (built-in)
+- **minikube**: Uses hostpath provisioner (built-in)
+- **k3s**: Uses local-path provisioner (built-in)
+
+### Quick Apply
+
+```bash
+# Single command - creates namespace, PVC, and LocalStack deployment
+kubectl apply -f k8s-local/localstack.yaml
+```
+
+The PVC requests 5Gi of storage by default. You can modify this in `localstack.yaml` if needed.
 
 ## Quick Start
 
@@ -49,14 +72,20 @@ docker save s3-manager:dev | sudo k3s ctr images import -
 ### 3. Deploy LocalStack
 
 ```bash
-# Create namespace
-kubectl create namespace s3-manager
-
-# Deploy LocalStack
+# Deploy LocalStack (creates namespace, PVC, and deployment automatically)
 kubectl apply -f k8s-local/localstack.yaml
 
 # Wait for LocalStack to be ready
-kubectl wait --for=condition=ready pod -l app=localstack -n s3-manager --timeout=60s
+kubectl wait --for=condition=ready pod -l app=localstack -n s3-manager --timeout=120s
+
+# Verify PVC was created and bound
+kubectl get pvc -n s3-manager
+```
+
+You should see:
+```
+NAME              STATUS   VOLUME                                     CAPACITY   ACCESS MODES
+localstack-pvc    Bound    pvc-xxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx     5Gi        RWO
 ```
 
 ### 4. Deploy S3 Manager
@@ -175,18 +204,53 @@ kubectl exec -it -n s3-manager deployment/s3-manager -- \
 
 ## Cleanup
 
+### Remove Everything (including data)
+
 ```bash
 # Uninstall S3 Manager
 helm uninstall s3-manager -n s3-manager
 
-# Delete LocalStack
+# Delete LocalStack and PVC (this deletes all S3 data)
 kubectl delete -f k8s-local/localstack.yaml
 
-# Delete namespace (removes everything)
+# Or delete entire namespace (removes everything including PVC)
 kubectl delete namespace s3-manager
 ```
 
+### Keep Data, Just Restart
+
+```bash
+# Restart LocalStack pod (keeps PVC data)
+kubectl rollout restart deployment/localstack -n s3-manager
+
+# Restart S3 Manager
+kubectl rollout restart deployment/s3-manager -n s3-manager
+```
+
+**Note:** The PVC will persist even after deleting the LocalStack deployment. To completely remove all data, you must delete the namespace or explicitly delete the PVC with `kubectl delete pvc localstack-pvc -n s3-manager`.
+
 ## Troubleshooting
+
+### LocalStack "Device or resource busy" error
+
+If you see this error in LocalStack logs:
+```
+ERROR: 'rm -rf "/tmp/localstack"': exit code 1; output: b"rm: cannot remove '/tmp/localstack': Device or resource busy\n"
+OSError: [Errno 16] Device or resource busy: '/tmp/localstack'
+```
+
+**Cause:** Volume is mounted to `/tmp/localstack`, which LocalStack tries to delete on startup.
+
+**Solution:** This is already fixed in the current `localstack.yaml`. The manifest now:
+- Mounts volumes to `/var/lib/localstack` instead of `/tmp/localstack`
+- Sets `PERSISTENCE: "1"` environment variable
+- Uses PersistentVolumeClaim by default (no conflicts, persistent data)
+
+If you're still seeing this error, ensure you're using the latest `localstack.yaml`:
+```bash
+kubectl delete -f k8s-local/localstack.yaml
+kubectl apply -f k8s-local/localstack.yaml
+```
 
 ### Pods not starting
 
@@ -242,6 +306,28 @@ kubectl get pods -A | grep ingress
 kubectl describe ingress s3-manager -n s3-manager
 ```
 
+### Managing Persistent Data
+
+```bash
+# Check PVC status
+kubectl get pvc -n s3-manager
+
+# See how much storage is used
+kubectl describe pvc localstack-pvc -n s3-manager
+
+# View PVC details
+kubectl get pv  # Shows the persistent volume bound to the PVC
+
+# Reset LocalStack data (deletes and recreates)
+kubectl delete pod -l app=localstack -n s3-manager
+# Pod will restart with existing PVC data intact
+
+# Completely wipe data (creates new empty PVC)
+kubectl delete pvc localstack-pvc -n s3-manager
+kubectl delete pod -l app=localstack -n s3-manager
+# New pod will create fresh PVC with init script data
+```
+
 ## Configuration
 
 All configuration is in `values-local.yaml`. Key settings:
@@ -258,5 +344,7 @@ To modify permissions, edit the `rolePermissions` section in `values-local.yaml`
 1. **Use stern for better logs**: `stern s3-manager -n s3-manager`
 2. **Watch resources**: `watch kubectl get all -n s3-manager`
 3. **Quick restart**: `kubectl rollout restart deployment/s3-manager -n s3-manager`
-4. **Reset data**: `kubectl delete pod -l app=localstack -n s3-manager` (recreates pod with fresh data)
-5. **Check resource usage**: `kubectl top pods -n s3-manager`
+4. **Restart LocalStack (keeps data)**: `kubectl rollout restart deployment/localstack -n s3-manager`
+5. **Wipe LocalStack data**: `kubectl delete pvc localstack-pvc -n s3-manager && kubectl delete pod -l app=localstack -n s3-manager`
+6. **Check resource usage**: `kubectl top pods -n s3-manager`
+7. **Check PVC usage**: `kubectl get pvc -n s3-manager`

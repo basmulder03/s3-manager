@@ -12,13 +12,15 @@ services:
       # Only enable S3 service to reduce resource usage
       SERVICES: s3
       DEBUG: 0
-      DATA_DIR: /tmp/localstack/data
       # AWS credentials for local development (these are fake)
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       AWS_DEFAULT_REGION: us-east-1
+      # Persist data across container restarts
+      PERSISTENCE: 1
     volumes:
-      - localstack_data:/tmp/localstack
+      # Mount to /var/lib/localstack instead of /tmp/localstack to avoid conflicts
+      - localstack_data:/var/lib/localstack:Z
       - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh:Z
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]

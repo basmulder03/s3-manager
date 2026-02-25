@@ -5,6 +5,24 @@ metadata:
   name: s3-manager
 ---
 apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: localstack-pvc
+  namespace: s3-manager
+  labels:
+    app: localstack
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # kind clusters use local-path provisioner by default (standard storage class)
+  # minikube uses hostpath provisioner
+  # k3s uses local-path provisioner
+  # No need to specify storageClassName - uses cluster default
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: localstack
@@ -49,17 +67,19 @@ spec:
               value: "s3"
             - name: DEBUG
               value: "0"
-            - name: DATA_DIR
-              value: "/tmp/localstack/data"
             - name: AWS_ACCESS_KEY_ID
               value: "test"
             - name: AWS_SECRET_ACCESS_KEY
               value: "test"
             - name: AWS_DEFAULT_REGION
               value: "us-east-1"
+            # Enable persistence (data survives pod restarts)
+            - name: PERSISTENCE
+              value: "1"
           volumeMounts:
+            # Mount to /var/lib/localstack instead of /tmp/localstack to avoid conflicts
             - name: localstack-data
-              mountPath: /tmp/localstack
+              mountPath: /var/lib/localstack
             - name: init-script
               mountPath: /etc/localstack/init/ready.d
           livenessProbe:
@@ -83,7 +103,10 @@ spec:
               cpu: "500m"
       volumes:
         - name: localstack-data
-          emptyDir: {}
+          # Using PVC for persistent storage across pod restarts
+          # kind, minikube, and k3s all support dynamic provisioning
+          persistentVolumeClaim:
+            claimName: localstack-pvc
         - name: init-script
           configMap:
             name: localstack-init

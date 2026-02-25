@@ -256,142 +256,111 @@ def test_list_buckets():
 
 Deploy to a local Kubernetes cluster for testing Helm charts and k8s-specific features.
 
+**Key Features:**
+- ✅ Uses PersistentVolumeClaim for LocalStack data (survives pod restarts)
+- ✅ Automatic storage provisioning (kind, minikube, k3s all supported)
+- ✅ Full Helm chart testing environment
+- ✅ Production-like deployment workflow
+
 ### Prerequisites
 
 - Local Kubernetes cluster (minikube, kind, or k3s)
 - kubectl configured
 - Helm 3.x
 
-### Using minikube
+### Quick Start (All Platforms)
 
-1. **Start minikube:**
-   ```bash
-   minikube start
-   ```
+The setup is identical for kind, minikube, and k3s:
 
-2. **Enable ingress (optional):**
-   ```bash
-   minikube addons enable ingress
-   ```
+```bash
+# 1. Build and load image (choose your platform)
+docker build -t s3-manager:dev .
 
-3. **Build and load the image:**
-   ```bash
-   # Build the image
-   docker build -t s3-manager:dev .
-   
-   # Load into minikube
-   minikube image load s3-manager:dev
-   ```
+# For kind:
+kind load docker-image s3-manager:dev
 
-4. **Deploy LocalStack to minikube:**
-   ```bash
-   kubectl create namespace s3-manager
-   kubectl apply -f k8s-local/localstack.yaml -n s3-manager
-   ```
+# For minikube:
+minikube image load s3-manager:dev
 
-5. **Create local values file (`values-local.yaml`):**
-   ```yaml
-   image:
-     repository: s3-manager
-     tag: dev
-     pullPolicy: Never  # Use locally loaded image
-   
-   config:
-     secretKey: "dev-secret-key"
-     localDevMode: true
-     
-     azureAd:
-       tenantId: ""
-       clientId: ""
-       clientSecret: ""
-     
-     pim:
-       enabled: false
-     
-     s3:
-       endpoint: "http://localstack.s3-manager.svc.cluster.local:4566"
-       accessKey: "test"
-       secretKey: "test"
-       region: "us-east-1"
-       useSSL: false
-       verifySSL: false
-   
-   ingress:
-     enabled: true
-     className: "nginx"
-     hosts:
-       - host: s3-manager.local
-         paths:
-           - path: /
-             pathType: Prefix
-   ```
+# For k3s:
+docker save s3-manager:dev | sudo k3s ctr images import -
 
-6. **Deploy with Helm:**
-   ```bash
-   helm install s3-manager ./helm/s3-manager \
-     -f values-local.yaml \
-     -n s3-manager
-   ```
+# 2. Deploy LocalStack (creates namespace, PVC, and deployment)
+kubectl apply -f k8s-local/localstack.yaml
 
-7. **Access the application:**
-   ```bash
-   # Port-forward method
-   kubectl port-forward -n s3-manager svc/s3-manager 8080:80
-   # Access at http://localhost:8080
-   
-   # Or use minikube tunnel (if ingress enabled)
-   minikube tunnel
-   # Add to /etc/hosts: 127.0.0.1 s3-manager.local
-   # Access at http://s3-manager.local
-   ```
+# 3. Wait for LocalStack to be ready
+kubectl wait --for=condition=ready pod -l app=localstack -n s3-manager --timeout=120s
 
-### Using kind
+# 4. Install S3 Manager with Helm
+helm install s3-manager ./helm/s3-manager \
+  -f k8s-local/values-local.yaml \
+  -n s3-manager
 
-1. **Create cluster with config:**
-   ```bash
-   cat <<EOF | kind create cluster --config=-
-   kind: Cluster
-   apiVersion: kind.x-k8s.io/v1alpha4
-   nodes:
-   - role: control-plane
-     kubeadmConfigPatches:
-     - |
-       kind: InitConfiguration
-       nodeRegistration:
-         kubeletExtraArgs:
-           node-labels: "ingress-ready=true"
-     extraPortMappings:
-     - containerPort: 80
-       hostPort: 80
-       protocol: TCP
-     - containerPort: 443
-       hostPort: 443
-       protocol: TCP
-   EOF
-   ```
+# 5. Access the application
+kubectl port-forward -n s3-manager svc/s3-manager 8080:80
+```
 
-2. **Load image to kind:**
-   ```bash
-   docker build -t s3-manager:dev .
-   kind load docker-image s3-manager:dev
-   ```
+Visit http://localhost:8080
 
-3. **Follow similar deployment steps as minikube**
+### Data Persistence
 
-### Using k3s
+LocalStack now uses a **PersistentVolumeClaim** by default:
+- Data persists across pod restarts
+- 5Gi storage allocated automatically
+- Works with all local clusters (kind, minikube, k3s)
 
-1. **Install k3s:**
-   ```bash
-   curl -sfL https://get.k3s.io | sh -
-   ```
+To check PVC status:
+```bash
+kubectl get pvc -n s3-manager
+```
 
-2. **Build and import image:**
-   ```bash
-   docker build -t s3-manager:dev .
-   docker save s3-manager:dev | sudo k3s ctr images import -
-   ```
+### Platform-Specific Notes
 
-3. **Deploy using kubectl/Helm as above**
+All platforms work the same way. The only difference is how you start the cluster and load images:
+
+**kind:**
+```bash
+kind create cluster
+kind load docker-image s3-manager:dev
+```
+
+**minikube:**
+```bash
+minikube start
+minikube image load s3-manager:dev
+
+# Optional: Enable ingress
+minikube addons enable ingress
+```
+
+**k3s:**
+```bash
+# k3s is usually already running
+docker save s3-manager:dev | sudo k3s ctr images import -
+```
+
+For detailed platform-specific instructions, see [k8s-local/README.md](k8s-local/README.md).
+
+### Accessing the Application
+
+**Port Forward (All Platforms):**
+```bash
+kubectl port-forward -n s3-manager svc/s3-manager 8080:80
+```
+Access at http://localhost:8080
+
+**Ingress (minikube):**
+```bash
+minikube tunnel
+# Add to /etc/hosts: 127.0.0.1 s3-manager.local
+```
+Access at http://s3-manager.local
+
+**NodePort (Any Platform):**
+```bash
+kubectl patch svc s3-manager -n s3-manager -p '{"spec":{"type":"NodePort"}}'
+kubectl get svc s3-manager -n s3-manager
+```
 
 ## Environment Variables Reference
 
@@ -462,6 +431,34 @@ s3.upload_file('local-file.txt', 'demo-bucket', 'remote-file.txt')
 ```
 
 ## Troubleshooting
+
+### LocalStack "Device or resource busy" error
+
+**Issue**: LocalStack fails to start with:
+```
+ERROR: 'rm -rf "/tmp/localstack"': exit code 1
+OSError: [Errno 16] Device or resource busy: '/tmp/localstack'
+```
+
+**Cause**: Volume mount conflict on `/tmp/localstack` directory.
+
+**Solution**: This is already fixed in the current compose files. They now mount to `/var/lib/localstack` instead. If you're still seeing this:
+
+```bash
+# Pull the latest changes and restart
+docker-compose down -v
+docker-compose up
+
+# Or for Podman
+podman-compose down -v
+podman-compose up
+
+# For Kubernetes (kind/minikube/k3s)
+kubectl delete -f k8s-local/localstack.yaml
+kubectl apply -f k8s-local/localstack.yaml
+```
+
+**Note**: The current configuration uses `PERSISTENCE=1` and mounts to `/var/lib/localstack` to avoid this issue.
 
 ### Application won't start
 
