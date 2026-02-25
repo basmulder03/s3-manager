@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: {{ include "s3-manager.fullname" . }}
   labels:
-    {{- include "s3-manager.labels" . | nindent 4 }}
+    {{ include "s3-manager.labels" . | nindent 4 }}
 data:
   LOCAL_DEV_MODE: {{ .Values.config.localDevMode | default false | quote }}
   FLASK_DEBUG: {{ .Values.config.flaskDebug | default false | quote }}

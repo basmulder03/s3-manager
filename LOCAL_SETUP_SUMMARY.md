@@ -2,27 +2,72 @@
 
 ## What's Been Added
 
-This project now supports **three ways** to run locally for development and debugging:
+This project now supports **three ways** to run locally for development and debugging, with **full support for Docker, Podman, and other OCI-compliant runtimes**.
 
-### 1. Docker Compose (Easiest - Recommended)
+## Container Runtime Support
+
+### Supported Runtimes
+- ✅ **Docker** (with Docker Compose or docker compose plugin)
+- ✅ **Podman** (with podman-compose or built-in compose)
+- ✅ **Other OCI-compliant runtimes**
+
+### Auto-Detection
+All scripts and tools automatically detect and use your installed runtime:
+- `start-local.sh` / `start-local.bat` - Auto-detect and start
+- `Makefile` - Universal commands that work with any runtime
+- Separate compose files for optimal compatibility
+
+### Quick Start
+
+**Universal (works with any runtime):**
+```bash
+make dev                # Auto-detects runtime
+./start-local.sh        # Linux/macOS  
+start-local.bat         # Windows
+```
+
+**Docker:**
+```bash
+docker-compose up
+```
+
+**Podman:**
+```bash
+podman-compose up
+```
+
+## Three Development Options
+### 1. Containers (Docker/Podman) - Easiest & Recommended
 **Files added:**
-- `docker-compose.yml` - Complete stack with LocalStack S3
+- `docker-compose.yml` - Standard compose file (works with Docker and Podman)
+- `podman-compose.yml` - Podman-optimized compose file
 - `Dockerfile.dev` - Development Docker image with hot reload
-- `start-local.sh` / `start-local.bat` - Quick start scripts
+- `Makefile` - Universal commands for any runtime
+- `start-local.sh` / `start-local.bat` - Auto-detection startup scripts
 - `.env.local` - Local development environment template
 - `scripts/localstack-init.sh` - LocalStack initialization script
 
 **Usage:**
 ```bash
-# Start everything
-docker-compose up
+# Auto-detect runtime and start
+make dev
 
-# Or use the helper script
+# Or use scripts
 ./start-local.sh        # Linux/macOS
 start-local.bat         # Windows
 
+# Or use compose directly
+docker-compose up       # Docker
+podman-compose up       # Podman
+
 # Access at http://localhost:8080
 ```
+
+**Podman-specific features:**
+- Rootless containers (no sudo required)
+- SELinux compatibility (`:Z` volume flags)
+- Systemd service generation
+- Full Docker compatibility
 
 ### 2. Direct Python Execution (Best for Debugging)
 **Files modified:**

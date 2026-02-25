@@ -183,15 +183,33 @@ config:
 
 For local development and debugging without Azure AD or Rook-Ceph, see **[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)** for detailed instructions on:
 
-- Running with Docker Compose + LocalStack (S3 emulator)
+- Running with containers (Docker/Podman) + LocalStack (S3 emulator)
 - Running directly with Python for debugging
 - Deploying to local Kubernetes clusters (minikube, kind, k3s)
 - Mock authentication bypass for development
 
-**Quick Start (Docker Compose):**
+**Container Runtime Support:**
+
+This project supports multiple container runtimes out of the box:
+- ✅ **Docker** (with Docker Compose)
+- ✅ **Podman** (with podman-compose)
+- ✅ **Other OCI-compliant runtimes**
+
+See **[CONTAINER_RUNTIMES.md](CONTAINER_RUNTIMES.md)** for Podman setup, rootless containers, and systemd integration.
+
+**Quick Start:**
+
 ```bash
-# Start the entire stack with one command
-docker-compose up
+# Auto-detects Docker or Podman
+make dev
+
+# Or use the start script
+./start-local.sh        # Linux/macOS
+start-local.bat         # Windows
+
+# Or use compose directly
+docker-compose up       # Docker
+podman-compose up       # Podman
 
 # Access at http://localhost:8080
 # Auto-logged in as "Local Developer" with full permissions

@@ -6,34 +6,73 @@ This guide explains how to run the S3 Manager application locally for developmen
 
 The S3 Manager can be run locally in two ways:
 
-1. **Docker Compose**: Complete local environment with LocalStack (S3 emulator)
+1. **Docker Compose / Podman**: Complete local environment with LocalStack (S3 emulator)
 2. **Direct Python**: Run the Flask app directly against LocalStack or mock S3
 3. **Local Kubernetes**: Deploy to local k8s cluster (minikube, kind, k3s)
 
 ## Prerequisites
 
-- Python 3.12+ (for direct Python execution)
-- Docker and Docker Compose (for containerized setup)
-- kubectl and a local Kubernetes cluster (for k8s setup)
+- **Container Runtime**: Docker or Podman (see [CONTAINER_RUNTIMES.md](CONTAINER_RUNTIMES.md))
+- **Python 3.12+** (for direct Python execution)
+- **kubectl** and a local Kubernetes cluster (for k8s setup)
 
-## Option 1: Docker Compose (Recommended)
+## Container Runtime Support
 
-This is the easiest way to get started. It runs the entire stack including LocalStack S3.
+This project supports **Docker**, **Podman**, and other OCI-compliant runtimes out of the box.
 
-### Setup
+For detailed information about Podman support, rootless containers, systemd integration, and runtime comparisons, see **[CONTAINER_RUNTIMES.md](CONTAINER_RUNTIMES.md)**.
 
-1. **Start the services:**
-   ```bash
-   docker-compose up
-   ```
+## Option 1: Container-based (Recommended)
 
-   This will start:
-   - LocalStack S3 service on port 4566
-   - S3 Manager application on port 8080
+This is the easiest way to get started. Works with Docker, Podman, or compatible runtimes.
 
-2. **Access the application:**
-   - Application: http://localhost:8080
-   - LocalStack S3 endpoint: http://localhost:4566
+### Quick Start
+
+**Using auto-detection script:**
+```bash
+# Linux/macOS
+./start-local.sh
+
+# Windows
+start-local.bat
+```
+
+**Using Make (recommended):**
+```bash
+# Auto-detects Docker or Podman
+make dev
+
+# Or just start services
+make start
+
+# View all commands
+make help
+```
+
+**Using Docker Compose:**
+```bash
+docker-compose up
+# or
+docker compose up
+```
+
+**Using Podman:**
+```bash
+podman-compose up
+# or
+podman compose up  # Podman 4.0+
+```
+
+### What Gets Started
+
+This will start:
+- LocalStack S3 service on port 4566
+- S3 Manager application on port 8080
+
+### Access
+
+- Application: http://localhost:8080
+- LocalStack S3 endpoint: http://localhost:4566
 
 3. **Default credentials:**
    - **User**: Local Developer (dev@localhost)
@@ -50,7 +89,7 @@ The LocalStack initialization script creates three test buckets:
 
 ### Development Workflow
 
-The Docker Compose setup includes hot-reload, so code changes are reflected immediately:
+The container setup includes hot-reload, so code changes are reflected immediately:
 
 ```bash
 # Edit files in ./app/
@@ -58,14 +97,39 @@ The Docker Compose setup includes hot-reload, so code changes are reflected imme
 # Refresh browser to see updates
 ```
 
+### Useful Commands
+
+```bash
+# Using Make (works with Docker or Podman)
+make start          # Start services
+make stop           # Stop services
+make restart        # Restart services
+make logs           # View all logs
+make logs-app       # View app logs only
+make clean          # Stop and remove volumes
+make shell          # Open shell in app container
+make test           # Test connectivity
+
+# Using compose directly
+docker-compose logs -f        # Docker
+podman-compose logs -f        # Podman
+```
+
 ### Stopping Services
 
 ```bash
-# Stop and remove containers
-docker-compose down
+# Using Make
+make stop
 
-# Stop and remove containers + volumes (resets all data)
-docker-compose down -v
+# Using compose
+docker-compose down           # Docker
+podman-compose down           # Podman
+
+# Stop and remove all data
+make clean
+# or
+docker-compose down -v        # Docker
+podman-compose down -v        # Podman
 ```
 
 ## Option 2: Direct Python Execution
