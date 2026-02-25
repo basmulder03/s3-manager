@@ -366,6 +366,14 @@ h2 {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
+    align-items: center;
+}
+
+.toolbar-separator {
+    width: 1px;
+    height: 24px;
+    background: #d1d5db;
+    margin: 0 5px;
 }
 
 .toolbar-right {
@@ -442,10 +450,21 @@ h2 {
     cursor: default;
 }
 
+.browser-item.selected {
+    background: #e0e7ff;
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+}
+
+.browser-item.selected:hover {
+    background: #dbeafe;
+}
+
 .item-checkbox {
     width: 18px;
     height: 18px;
     cursor: pointer;
+    accent-color: #667eea;
 }
 
 .item-icon {

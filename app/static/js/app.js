@@ -52,6 +52,8 @@ async function requestPIMElevation() {
 // Global state for current path
 let currentPath = '';
 let selectedItems = new Set();
+let lastSelectedIndex = -1;
+let allItems = []; // Store all items for range selection
 
 // Virtual Filesystem Browser
 async function browse(path = '') {
@@ -61,12 +63,17 @@ async function browse(path = '') {
     
     currentPath = path;
     selectedItems.clear();
+    lastSelectedIndex = -1;
+    allItems = [];
     
     try {
         container.innerHTML = '<p class="loading">Loading...</p>';
         
         const url = path ? `/api/s3/browse/${path}` : '/api/s3/browse';
         const data = await apiCall(url);
+        
+        // Store items for selection
+        allItems = data.items;
         
         // Render breadcrumbs
         renderBreadcrumbs(data.breadcrumbs, breadcrumbsContainer);
@@ -79,6 +86,7 @@ async function browse(path = '') {
         // Render items
         if (data.items.length === 0) {
             container.innerHTML = '<p class="info">This folder is empty.</p>';
+            updateSelectionUI();
             return;
         }
         
@@ -91,7 +99,7 @@ async function browse(path = '') {
         container.innerHTML = html;
         
         // Add event listeners
-        container.querySelectorAll('.browser-item').forEach(item => {
+        container.querySelectorAll('.browser-item').forEach((item, index) => {
             const itemPath = item.dataset.path;
             const itemType = item.dataset.type;
             const itemName = item.dataset.name;
@@ -101,7 +109,7 @@ async function browse(path = '') {
             if (checkbox) {
                 checkbox.addEventListener('change', (e) => {
                     e.stopPropagation();
-                    handleItemSelection(itemPath, checkbox.checked);
+                    handleItemSelection(itemPath, checkbox.checked, index);
                 });
             }
             
@@ -110,13 +118,38 @@ async function browse(path = '') {
                 showContextMenu(e, itemPath, itemName, itemType);
             });
             
-            if (itemType === 'directory') {
-                item.addEventListener('click', (e) => {
-                    if (!e.target.closest('.item-actions') && !e.target.closest('.item-checkbox')) {
-                        browse(itemPath);
-                    }
-                });
+            // Click handler with Ctrl/Cmd and Shift support
+            item.addEventListener('click', (e) => {
+                // Skip if clicking on actions or checkbox
+                if (e.target.closest('.item-actions') || e.target.closest('.item-checkbox')) {
+                    return;
+                }
                 
+                // Handle Ctrl/Cmd + Click for multi-select
+                if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    const checkbox = item.querySelector('.item-checkbox');
+                    if (checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                        handleItemSelection(itemPath, checkbox.checked, index);
+                    }
+                    return;
+                }
+                
+                // Handle Shift + Click for range selection
+                if (e.shiftKey && lastSelectedIndex !== -1) {
+                    e.preventDefault();
+                    selectRange(lastSelectedIndex, index);
+                    return;
+                }
+                
+                // Default behavior: navigate for directories
+                if (itemType === 'directory') {
+                    browse(itemPath);
+                }
+            });
+            
+            if (itemType === 'directory') {
                 // Add folder-specific actions
                 const deleteBtn = item.querySelector('.delete-folder-btn');
                 const renameBtn = item.querySelector('.rename-btn');
@@ -167,9 +200,12 @@ async function browse(path = '') {
     }
 }
 
-function handleItemSelection(path, isSelected) {
+function handleItemSelection(path, isSelected, index = -1) {
     if (isSelected) {
         selectedItems.add(path);
+        if (index !== -1) {
+            lastSelectedIndex = index;
+        }
     } else {
         selectedItems.delete(path);
     }
@@ -177,8 +213,105 @@ function handleItemSelection(path, isSelected) {
     updateSelectionUI();
 }
 
+function selectRange(startIndex, endIndex) {
+    const container = document.getElementById('browserContainer');
+    const items = container.querySelectorAll('.browser-item');
+    
+    const min = Math.min(startIndex, endIndex);
+    const max = Math.max(startIndex, endIndex);
+    
+    for (let i = min; i <= max; i++) {
+        const item = items[i];
+        const checkbox = item.querySelector('.item-checkbox');
+        if (checkbox) {
+            checkbox.checked = true;
+            const itemPath = item.dataset.path;
+            selectedItems.add(itemPath);
+        }
+    }
+    
+    lastSelectedIndex = endIndex;
+    updateSelectionUI();
+}
+
+function toggleSelectAll() {
+    const container = document.getElementById('browserContainer');
+    const items = container.querySelectorAll('.browser-item');
+    const checkboxes = container.querySelectorAll('.item-checkbox');
+    
+    // Check if all are selected
+    const allSelected = Array.from(checkboxes).every(cb => cb.checked);
+    
+    if (allSelected) {
+        // Deselect all
+        selectedItems.clear();
+        checkboxes.forEach(cb => cb.checked = false);
+    } else {
+        // Select all
+        items.forEach(item => {
+            const checkbox = item.querySelector('.item-checkbox');
+            if (checkbox) {
+                checkbox.checked = true;
+                selectedItems.add(item.dataset.path);
+            }
+        });
+    }
+    
+    updateSelectionUI();
+}
+
 function updateSelectionUI() {
     const selectedCount = selectedItems.size;
+    const toolbar = document.getElementById('toolbar');
+    
+    if (toolbar) {
+        const selectionInfo = toolbar.querySelector('.selection-info');
+        if (selectionInfo) {
+            if (selectedCount > 0) {
+                selectionInfo.textContent = `${selectedCount} item(s) selected`;
+                selectionInfo.style.display = 'block';
+            } else {
+                selectionInfo.style.display = 'none';
+            }
+        }
+        
+        const deleteSelectedBtn = toolbar.querySelector('.delete-selected-btn');
+        if (deleteSelectedBtn) {
+            deleteSelectedBtn.disabled = selectedCount === 0;
+        }
+        
+        const downloadSelectedBtn = toolbar.querySelector('.download-selected-btn');
+        if (downloadSelectedBtn) {
+            // Only enable if all selected items are files (not folders)
+            const allFiles = Array.from(selectedItems).every(path => {
+                const item = allItems.find(i => i.path === path);
+                return item && item.type === 'file';
+            });
+            downloadSelectedBtn.disabled = selectedCount === 0 || !allFiles;
+        }
+        
+        const selectAllBtn = toolbar.querySelector('.select-all-btn');
+        if (selectAllBtn) {
+            const container = document.getElementById('browserContainer');
+            const checkboxes = container.querySelectorAll('.item-checkbox');
+            const allSelected = checkboxes.length > 0 && Array.from(checkboxes).every(cb => cb.checked);
+            selectAllBtn.textContent = allSelected ? '☐ Deselect All' : '☑️ Select All';
+        }
+    }
+    
+    // Update visual state of selected items
+    const container = document.getElementById('browserContainer');
+    if (container) {
+        container.querySelectorAll('.browser-item').forEach(item => {
+            const itemPath = item.dataset.path;
+            if (selectedItems.has(itemPath)) {
+                item.classList.add('selected');
+            } else {
+                item.classList.remove('selected');
+            }
+        });
+    }
+}
     const toolbar = document.getElementById('toolbar');
     
     if (toolbar) {
@@ -511,6 +644,38 @@ async function deleteSelectedItems() {
     }
 }
 
+async function downloadSelectedItems() {
+    if (selectedItems.size === 0) {
+        showMessage('No items selected', 'error');
+        return;
+    }
+    
+    // Filter only files (not folders)
+    const filePaths = Array.from(selectedItems).filter(path => {
+        const item = allItems.find(i => i.path === path);
+        return item && item.type === 'file';
+    });
+    
+    if (filePaths.length === 0) {
+        showMessage('No files selected. Folders cannot be downloaded.', 'error');
+        return;
+    }
+    
+    if (filePaths.length === 1) {
+        // Single file - download directly
+        downloadFile(filePaths[0]);
+    } else {
+        // Multiple files - download sequentially with a small delay
+        showMessage(`Starting download of ${filePaths.length} files...`, 'info');
+        
+        for (let i = 0; i < filePaths.length; i++) {
+            setTimeout(() => {
+                downloadFile(filePaths[i]);
+            }, i * 300); // 300ms delay between downloads to avoid browser blocking
+        }
+    }
+}
+
 // Modal functions
 function showUploadModal() {
     const modal = document.getElementById('uploadModal');
@@ -832,5 +997,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 modal.style.display = 'none';
             }
         });
+    });
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        // Ctrl+A or Cmd+A - Select All (only when not in an input field)
+        if ((e.ctrlKey || e.metaKey) && e.key === 'a' && !e.target.matches('input, textarea')) {
+            e.preventDefault();
+            if (currentPath) { // Only in bucket/folder view
+                toggleSelectAll();
+            }
+        }
+        
+        // Delete key - Delete selected items
+        if (e.key === 'Delete' && !e.target.matches('input, textarea')) {
+            if (selectedItems.size > 0) {
+                deleteSelectedItems();
+            }
+        }
+        
+        // Escape key - Clear selection
+        if (e.key === 'Escape') {
+            if (selectedItems.size > 0) {
+                selectedItems.clear();
+                const container = document.getElementById('browserContainer');
+                if (container) {
+                    container.querySelectorAll('.item-checkbox').forEach(cb => cb.checked = false);
+                }
+                updateSelectionUI();
+            }
+        }
     });
 });
