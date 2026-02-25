@@ -269,15 +269,18 @@ function renderItem(item) {
 
 async function downloadFile(virtualPath) {
     try {
-        // Extract bucket and object key from virtual path
-        const parts = virtualPath.split('/');
-        const bucket = parts[0];
-        const objectKey = parts.slice(1).join('/');
+        // Use the backend proxy download endpoint
+        const downloadUrl = `/api/s3/operations/download?path=${encodeURIComponent(virtualPath)}`;
         
-        const data = await apiCall(`/api/s3/buckets/${bucket}/objects/${objectKey}`);
+        // Create a temporary link and click it to trigger download
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = ''; // Let the server specify the filename via Content-Disposition
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
         
-        // Open download URL in new tab
-        window.open(data.downloadUrl, '_blank');
+        showMessage('Download started', 'success');
     } catch (error) {
         showMessage('Failed to download file: ' + error.message, 'error');
     }

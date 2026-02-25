@@ -1,10 +1,11 @@
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request, current_app, send_file, Response
 import boto3
 from botocore.client import Config as BotoConfig
 from botocore.exceptions import ClientError
 from app.auth import login_required, permission_required
 import mimetypes
 import magic
+import io
 
 s3_bp = Blueprint('s3', __name__)
 
@@ -819,3 +820,81 @@ def get_properties():
     except Exception as e:
         current_app.logger.error(f"Error getting properties: {e}")
         return jsonify({'error': 'Failed to get properties', 'details': str(e)}), 500
+
+@s3_bp.route('/operations/download', methods=['GET'])
+@login_required
+@permission_required('view')
+def download_file():
+    """
+    Download a file through the backend proxy.
+    This allows downloading files from internal S3 endpoints not accessible externally.
+    
+    Query params:
+      - path: Virtual path to the file (bucket/key)
+    """
+    try:
+        virtual_path = request.args.get('path', '').strip('/')
+        
+        if not virtual_path:
+            return jsonify({'error': 'Path is required'}), 400
+        
+        # Parse virtual path
+        path_parts = virtual_path.split('/')
+        if len(path_parts) < 2:
+            return jsonify({'error': 'Invalid path - must include bucket and key'}), 400
+        
+        bucket_name = path_parts[0]
+        object_key = '/'.join(path_parts[1:])
+        
+        # Get the filename from the key
+        filename = object_key.split('/')[-1]
+        
+        s3_client = get_s3_client()
+        
+        # Get the object from S3
+        response = s3_client.get_object(Bucket=bucket_name, Key=object_key)
+        
+        # Get content type and other metadata
+        content_type = response.get('ContentType', 'application/octet-stream')
+        content_length = response.get('ContentLength', 0)
+        
+        # Create a streaming response
+        def generate():
+            """Stream the file content in chunks"""
+            chunk_size = 8192  # 8KB chunks
+            body = response['Body']
+            try:
+                while True:
+                    chunk = body.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                body.close()
+        
+        # Create response with proper headers
+        response_headers = {
+            'Content-Type': content_type,
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'Content-Length': str(content_length),
+            'Cache-Control': 'no-cache',
+        }
+        
+        return Response(
+            generate(),
+            headers=response_headers,
+            direct_passthrough=True
+        )
+        
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+        if error_code == 'NoSuchKey':
+            return jsonify({'error': 'File not found'}), 404
+        elif error_code == 'NoSuchBucket':
+            return jsonify({'error': 'Bucket not found'}), 404
+        else:
+            current_app.logger.error(f"S3 ClientError downloading file: {e}")
+            return jsonify({'error': 'Failed to download file', 'details': str(e)}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error downloading file: {e}")
+        return jsonify({'error': 'Failed to download file', 'details': str(e)}), 500
