@@ -8,6 +8,10 @@
 pytest==8.3.4
 pytest-cov==6.0.0
 pytest-mock==3.14.0
+pytest-playwright==0.6.2
+playwright==1.49.1
+pytest-asyncio==0.25.2
+pytest-xdist==3.6.1
 
 # S3 mocking for unit tests (optional - use LocalStack in containers instead)
 # moto[s3]>=5.0,<6.0

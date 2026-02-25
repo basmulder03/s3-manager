@@ -51,8 +51,17 @@ Thumbs.db
 
 # Testing
 .coverage
+.coverage.*
 htmlcov/
 .pytest_cache/
+.tox/
+.hypothesis/
+test-results/
+playwright-report/
+*.log
+coverage.xml
+report.xml
+integration-report.xml
 
 # Helm
 *.tgz

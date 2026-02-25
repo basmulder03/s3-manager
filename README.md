@@ -339,13 +339,83 @@ kubectl get secret -n s3-manager s3-manager -o jsonpath='{.data.S3_ACCESS_KEY}' 
 kubectl logs -n s3-manager -l app.kubernetes.io/name=s3-manager -f
 ```
 
+## Testing
+
+S3 Manager includes comprehensive automated tests covering backend APIs and frontend UI.
+
+### Running Tests Locally
+
+**Prerequisites:**
+```bash
+# Install test dependencies
+pip install -r requirements-dev.txt
+
+# Install Playwright browsers (for E2E tests)
+playwright install chromium
+
+# Start LocalStack for S3 emulation
+make start  # or docker-compose up -d localstack
+```
+
+**Run all tests:**
+```bash
+# Using test runner script
+./run-tests.sh all              # Linux/macOS
+.\run-tests.ps1 all             # Windows
+
+# Or using pytest directly
+pytest -v
+```
+
+**Run specific test suites:**
+```bash
+# Backend API tests only
+./run-tests.sh backend
+
+# E2E UI tests only
+./run-tests.sh e2e
+
+# With coverage report
+./run-tests.sh coverage
+
+# Using Makefile
+make test-all
+make test-api
+make test-e2e
+make test-coverage
+```
+
+**Run tests in Docker:**
+```bash
+make test-docker
+```
+
+### Test Categories
+
+- **Backend API Tests** - Unit and integration tests for Flask endpoints
+- **E2E UI Tests** - Browser-based tests using Playwright
+- **Integration Tests** - Tests requiring LocalStack S3
+- **Unit Tests** - Fast, isolated tests with no external dependencies
+
+### Test Markers
+
+```bash
+pytest -m api          # Backend API tests
+pytest -m e2e          # End-to-end UI tests
+pytest -m integration  # Integration tests
+pytest -m unit         # Unit tests only
+```
+
+See [TESTING.md](TESTING.md) for comprehensive testing documentation.
+
 ## Contributing
 
 Contributions are welcome! Please follow these guidelines:
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+3. Write tests for new features
+4. Ensure all tests pass (`./run-tests.sh all`)
+5. Submit a pull request
 
 ## License
 

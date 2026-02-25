@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: s3-manager-test-localstack
+    environment:
+      - SERVICES=s3
+      - PERSISTENCE=1
+      - DEBUG=1
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack-test-data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: s3-manager-test-runner
+    depends_on:
+      localstack:
+        condition: service_healthy
+    environment:
+      - S3_ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - LOCAL_DEV_MODE=true
+      - FLASK_DEBUG=true
+      - SECRET_KEY=test-secret-key
+    volumes:
+      - .:/app
+      - /app/__pycache__
+      - /app/.pytest_cache
+    working_dir: /app
+    command: pytest -v --cov=app --cov-report=html --cov-report=term-missing
+
+  e2e-runner:
+    image: mcr.microsoft.com/playwright/python:v1.49.0-jammy
+    container_name: s3-manager-e2e-runner
+    depends_on:
+      app:
+        condition: service_started
+    environment:
+      - TEST_BASE_URL=http://app:8080
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: |
+      sh -c "
+        pip install -r requirements-dev.txt &&
+        pytest tests/test_e2e_*.py -v --video=retain-on-failure
+      "
+    profiles:
+      - e2e
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: s3-manager-test-app
+    depends_on:
+      localstack:
+        condition: service_healthy
+    environment:
+      - S3_ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - LOCAL_DEV_MODE=true
+      - FLASK_DEBUG=true
+      - SECRET_KEY=test-secret-key
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: python run.py
+    ports:
+      - "8080:8080"
+    profiles:
+      - e2e
+
+volumes:
+  localstack-test-data:

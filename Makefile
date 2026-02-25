@@ -2,7 +2,7 @@
 # Supports Docker, Podman, and other OCI-compliant runtimes
 # Auto-detects available runtime and compose command
 
-.PHONY: help start stop restart logs clean build shell test
+.PHONY: help start stop restart logs clean build shell test test-unit test-integration test-e2e test-coverage test-docker
 
 # Detect container runtime
 RUNTIME := $(shell command -v podman 2> /dev/null && echo podman || echo docker)
@@ -85,7 +85,59 @@ test-app: ## Test application endpoint
 	@echo "Testing application endpoint..."
 	@curl -s http://localhost:8080/auth/user > /dev/null && echo "✓ Application is responding" || echo "✗ Application is not responding"
 
-test: test-s3 test-app ## Run all tests
+test: test-s3 test-app ## Test connectivity (basic health checks)
+
+# Testing commands
+test-unit: ## Run unit tests (fast, no external dependencies)
+	@echo "Running unit tests..."
+	pytest -m unit -v
+
+test-api: ## Run backend API tests (requires LocalStack)
+	@echo "Running backend API tests..."
+	pytest tests/test_api_*.py -v
+
+test-integration: ## Run integration tests (requires LocalStack)
+	@echo "Running integration tests..."
+	pytest -m integration -v
+
+test-e2e: ## Run E2E UI tests (requires app + LocalStack + browser)
+	@echo "Running E2E tests..."
+	playwright install chromium
+	pytest tests/test_e2e_*.py -v --headed
+
+test-e2e-headless: ## Run E2E tests in headless mode
+	@echo "Running E2E tests (headless)..."
+	playwright install chromium
+	pytest tests/test_e2e_*.py -v
+
+test-all: ## Run all tests
+	@echo "Running all tests..."
+	pytest -v
+
+test-coverage: ## Run tests with coverage report
+	@echo "Running tests with coverage..."
+	pytest --cov=app --cov-report=html --cov-report=term-missing -v
+	@echo ""
+	@echo "✓ Coverage report generated in htmlcov/index.html"
+
+test-docker: ## Run tests in Docker containers
+	@echo "Running tests in Docker..."
+	$(COMPOSE) -f docker-compose.test.yml up --abort-on-container-exit --exit-code-from test-runner
+	$(COMPOSE) -f docker-compose.test.yml down -v
+
+test-docker-e2e: ## Run E2E tests in Docker containers
+	@echo "Running E2E tests in Docker..."
+	$(COMPOSE) -f docker-compose.test.yml --profile e2e up --abort-on-container-exit --exit-code-from e2e-runner
+	$(COMPOSE) -f docker-compose.test.yml --profile e2e down -v
+
+test-watch: ## Run tests in watch mode (re-run on file changes)
+	@echo "Running tests in watch mode..."
+	pytest-watch -v
+
+test-quick: ## Run quick smoke tests
+	@echo "Running quick tests..."
+	pytest tests/test_api_browse.py::TestBrowseEndpoint::test_browse_root_no_buckets -v
+	@echo "✓ Quick smoke test passed!"
 
 status: ## Show service status
 	@echo "Container Runtime: $(RUNTIME)"
