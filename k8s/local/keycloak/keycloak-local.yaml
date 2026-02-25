@@ -1,0 +1,337 @@
+# Keycloak Deployment for Local Kubernetes
+# This deploys Keycloak with pre-configured S3 Manager realm for local testing
+#
+# Usage:
+#   kubectl apply -f keycloak-local.yaml
+#
+# Prerequisites:
+#   - Kubernetes cluster running
+#   - Envoy Gateway installed (recommended) or NGINX Ingress
+#
+# Access:
+#   http://keycloak.local (configure /etc/hosts or use port-forward)
+#   Admin credentials: admin / admin
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keycloak
+
+---
+# ConfigMap with pre-configured Keycloak realm
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm
+  namespace: keycloak
+data:
+  s3-manager-realm.json: |
+    {
+      "realm": "s3-manager",
+      "enabled": true,
+      "sslRequired": "none",
+      "registrationAllowed": false,
+      "loginWithEmailAllowed": true,
+      "duplicateEmailsAllowed": false,
+      "resetPasswordAllowed": true,
+      "editUsernameAllowed": false,
+      "bruteForceProtected": true,
+      "clients": [
+        {
+          "clientId": "s3-manager-client",
+          "enabled": true,
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "secret": "dev-client-secret-12345",
+          "redirectUris": [
+            "http://s3-manager.local/*",
+            "http://localhost:8080/*",
+            "http://127.0.0.1:8080/*"
+          ],
+          "webOrigins": [
+            "http://s3-manager.local",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080"
+          ],
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": true,
+          "serviceAccountsEnabled": false,
+          "attributes": {
+            "post.logout.redirect.uris": "+"
+          },
+          "protocolMappers": [
+            {
+              "name": "realm-roles",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-realm-role-mapper",
+              "config": {
+                "claim.name": "realm_access.roles",
+                "jsonType.label": "String",
+                "multivalued": "true",
+                "userinfo.token.claim": "true",
+                "id.token.claim": "true",
+                "access.token.claim": "true"
+              }
+            },
+            {
+              "name": "groups",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-group-membership-mapper",
+              "config": {
+                "claim.name": "groups",
+                "full.path": "false",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            }
+          ]
+        }
+      ],
+      "roles": {
+        "realm": [
+          {
+            "name": "S3-Admin",
+            "description": "Full access to S3 Manager (view, write, delete)"
+          },
+          {
+            "name": "S3-Editor",
+            "description": "Read and write access to S3 Manager"
+          },
+          {
+            "name": "S3-Viewer",
+            "description": "Read-only access to S3 Manager"
+          }
+        ]
+      },
+      "users": [
+        {
+          "username": "admin",
+          "enabled": true,
+          "email": "admin@example.com",
+          "firstName": "Admin",
+          "lastName": "User",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "admin123",
+              "temporary": false
+            }
+          ],
+          "realmRoles": ["S3-Admin"]
+        },
+        {
+          "username": "editor",
+          "enabled": true,
+          "email": "editor@example.com",
+          "firstName": "Editor",
+          "lastName": "User",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "editor123",
+              "temporary": false
+            }
+          ],
+          "realmRoles": ["S3-Editor"]
+        },
+        {
+          "username": "viewer",
+          "enabled": true,
+          "email": "viewer@example.com",
+          "firstName": "Viewer",
+          "lastName": "User",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "viewer123",
+              "temporary": false
+            }
+          ],
+          "realmRoles": ["S3-Viewer"]
+        }
+      ]
+    }
+
+---
+# Keycloak Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+      - name: keycloak
+        image: quay.io/keycloak/keycloak:23.0
+        args:
+        - start-dev
+        - --import-realm
+        env:
+        # Admin credentials
+        - name: KEYCLOAK_ADMIN
+          value: admin
+        - name: KEYCLOAK_ADMIN_PASSWORD
+          value: admin
+        
+        # Proxy settings for ingress
+        - name: KC_PROXY
+          value: edge
+        - name: KC_HOSTNAME_STRICT
+          value: "false"
+        - name: KC_HTTP_ENABLED
+          value: "true"
+        
+        # Health checks
+        - name: KC_HEALTH_ENABLED
+          value: "true"
+        - name: KC_METRICS_ENABLED
+          value: "true"
+        
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
+        
+        volumeMounts:
+        - name: realm-config
+          mountPath: /opt/keycloak/data/import
+          readOnly: true
+        
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      
+      volumes:
+      - name: realm-config
+        configMap:
+          name: keycloak-realm
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app: keycloak
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: keycloak
+
+---
+# Envoy Gateway HTTPRoute (recommended)
+# This provides native Gateway API integration
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: keycloak
+  namespace: keycloak
+spec:
+  parentRefs:
+  - name: eg
+    namespace: envoy-gateway-system
+  hostnames:
+  - "keycloak.local"
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: keycloak
+      port: 80
+
+---
+# Envoy Gateway ClientTrafficPolicy for timeouts
+# Handles increased timeouts for JWT processing
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: keycloak-timeouts
+  namespace: keycloak
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: eg
+    namespace: envoy-gateway-system
+  timeout:
+    http:
+      requestReceivedTimeout: 60s
+
+---
+# Legacy NGINX Ingress (fallback if Envoy Gateway is not available)
+# To use NGINX instead of Envoy Gateway:
+# 1. Comment out the HTTPRoute and ClientTrafficPolicy above
+# 2. Uncomment this Ingress resource
+# 3. Ensure NGINX Ingress Controller is installed
+#
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: keycloak
+#   namespace: keycloak
+#   annotations:
+#     # Increase buffer size for large headers (JWT tokens)
+#     nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+#     nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
+#     
+#     # Timeouts
+#     nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+#     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+#     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+# spec:
+#   ingressClassName: nginx
+#   rules:
+#   - host: keycloak.local
+#     http:
+#       paths:
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: keycloak
+#             port:
+#               name: http

@@ -1,0 +1,376 @@
+# S3 Manager Test Deployment with Rook-Ceph and Envoy Gateway
+# This deploys S3 Manager connected to Rook-Ceph S3 with Envoy Gateway ingress
+#
+# Usage:
+#   kubectl apply -f s3-manager-test.yaml
+#
+# Prerequisites:
+#   - Rook-Ceph object store must be running
+#   - Object store user credentials must exist
+#   - Envoy Gateway installed (or use NGINX Ingress - see commented section)
+#   - Keycloak deployed with OIDC realm configured
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: s3-manager-test
+
+---
+# ConfigMap with S3 Manager configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: s3-manager-config
+  namespace: s3-manager-test
+data:
+  # Flask settings
+  FLASK_ENV: "development"
+  LOG_LEVEL: "DEBUG"
+  
+  # S3 Configuration (Rook-Ceph)
+  S3_ENDPOINT: "http://rook-ceph-rgw-s3-store.rook-ceph.svc.cluster.local:80"
+  S3_REGION: "us-east-1"
+  S3_USE_SSL: "false"
+  S3_VERIFY_SSL: "false"
+  
+  # OIDC Configuration - Keycloak integration
+  OIDC_PROVIDER: "keycloak"
+  OIDC_DISCOVERY_URL: "http://keycloak.keycloak.svc.cluster.local/realms/s3-manager/.well-known/openid-configuration"
+  OIDC_CLIENT_ID: "s3-manager-client"
+  OIDC_REDIRECT_URI: "http://s3-manager.local/auth/callback"
+  OIDC_LOGOUT_REDIRECT_URI: "http://s3-manager.local"
+  OIDC_SCOPES: "openid profile email roles"
+
+---
+# Secret with S3 credentials and app configuration
+# This will be populated from the rook-ceph-object-user secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: s3-manager-secret
+  namespace: s3-manager-test
+type: Opaque
+stringData:
+  # These will be populated by the init container from Rook-Ceph secret
+  S3_ACCESS_KEY: "placeholder"
+  S3_SECRET_KEY: "placeholder"
+  SECRET_KEY: "development-secret-key-change-in-production"
+  OIDC_CLIENT_SECRET: "dev-client-secret-12345"
+
+---
+# Separate secret for Envoy Gateway OIDC
+# Envoy Gateway expects the secret in a specific format
+apiVersion: v1
+kind: Secret
+metadata:
+  name: oidc-client-secret
+  namespace: s3-manager-test
+type: Opaque
+stringData:
+  client-secret: "dev-client-secret-12345"
+
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: s3-manager
+  namespace: s3-manager-test
+  labels:
+    app: s3-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: s3-manager
+  template:
+    metadata:
+      labels:
+        app: s3-manager
+    spec:
+      # Init container to fetch S3 credentials from Rook-Ceph
+      initContainers:
+      - name: fetch-s3-credentials
+        image: busybox:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Fetching S3 credentials from Rook-Ceph..."
+          cp /rook-ceph-credentials/AccessKey /credentials/S3_ACCESS_KEY
+          cp /rook-ceph-credentials/SecretKey /credentials/S3_SECRET_KEY
+          echo "Credentials fetched successfully"
+        volumeMounts:
+        - name: rook-ceph-credentials
+          mountPath: /rook-ceph-credentials
+          readOnly: true
+        - name: credentials
+          mountPath: /credentials
+      
+      containers:
+      - name: s3-manager
+        image: ghcr.io/basmulder03/s3-manager:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        
+        env:
+        # Load config from ConfigMap
+        - name: FLASK_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: s3-manager-config
+              key: FLASK_ENV
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: s3-manager-config
+              key: LOG_LEVEL
+        - name: S3_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: s3-manager-config
+              key: S3_ENDPOINT
+        - name: S3_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: s3-manager-config
+              key: S3_REGION
+        - name: S3_USE_SSL
+          valueFrom:
+            configMapKeyRef:
+              name: s3-manager-config
+              key: S3_USE_SSL
+        - name: S3_VERIFY_SSL
+          valueFrom:
+            configMapKeyRef:
+              name: s3-manager-config
+              key: S3_VERIFY_SSL
+        - name: OIDC_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: s3-manager-config
+              key: OIDC_PROVIDER
+        - name: OIDC_DISCOVERY_URL
+          valueFrom:
+            configMapKeyRef:
+              name: s3-manager-config
+              key: OIDC_DISCOVERY_URL
+        - name: OIDC_CLIENT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: s3-manager-config
+              key: OIDC_CLIENT_ID
+        - name: OIDC_REDIRECT_URI
+          valueFrom:
+            configMapKeyRef:
+              name: s3-manager-config
+              key: OIDC_REDIRECT_URI
+        - name: OIDC_LOGOUT_REDIRECT_URI
+          valueFrom:
+            configMapKeyRef:
+              name: s3-manager-config
+              key: OIDC_LOGOUT_REDIRECT_URI
+        - name: OIDC_SCOPES
+          valueFrom:
+            configMapKeyRef:
+              name: s3-manager-config
+              key: OIDC_SCOPES
+        
+        # Load S3 credentials from file (populated by init container)
+        - name: S3_ACCESS_KEY
+          value: "$(cat /credentials/S3_ACCESS_KEY)"
+        - name: S3_SECRET_KEY
+          value: "$(cat /credentials/S3_SECRET_KEY)"
+        
+        # Load secret key from secret
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: s3-manager-secret
+              key: SECRET_KEY
+        
+        # Load OIDC client secret from secret
+        - name: OIDC_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: s3-manager-secret
+              key: OIDC_CLIENT_SECRET
+        
+        volumeMounts:
+        - name: credentials
+          mountPath: /credentials
+          readOnly: true
+        
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      
+      volumes:
+      - name: rook-ceph-credentials
+        secret:
+          secretName: rook-ceph-object-user-s3-store-s3-manager
+      - name: credentials
+        emptyDir:
+          medium: Memory
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: s3-manager
+  namespace: s3-manager-test
+  labels:
+    app: s3-manager
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  selector:
+    app: s3-manager
+
+---
+# Envoy Gateway HTTPRoute (recommended)
+# This provides native Gateway API integration
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: s3-manager
+  namespace: s3-manager-test
+spec:
+  parentRefs:
+  - name: eg
+    namespace: envoy-gateway-system
+  hostnames:
+  - "s3-manager.local"
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: s3-manager
+      port: 80
+
+---
+# Envoy Gateway SecurityPolicy for OIDC Authentication
+# This handles authentication at the gateway level
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: s3-manager-oidc
+  namespace: s3-manager-test
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: s3-manager
+  oidc:
+    provider:
+      issuer: "http://keycloak.local/realms/s3-manager"
+      authorizationEndpoint: "http://keycloak.local/realms/s3-manager/protocol/openid-connect/auth"
+      tokenEndpoint: "http://keycloak.keycloak.svc.cluster.local/realms/s3-manager/protocol/openid-connect/token"
+    clientID: "s3-manager-client"
+    clientSecret:
+      name: oidc-client-secret
+    redirectURL: "http://s3-manager.local/oauth2/callback"
+    logoutPath: "/oauth2/logout"
+    scopes:
+    - openid
+    - profile
+    - email
+    - roles
+
+---
+# Envoy Gateway BackendTrafficPolicy for rate limiting
+# Protects the application from excessive requests
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: s3-manager-ratelimit
+  namespace: s3-manager-test
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: s3-manager
+  rateLimit:
+    type: Global
+    global:
+      rules:
+      - clientSelectors:
+        - headers:
+          - name: x-forwarded-for
+            type: Distinct
+        limit:
+          requests: 100
+          unit: Minute
+
+---
+# Legacy NGINX Ingress (fallback if Envoy Gateway is not available)
+# To use NGINX instead of Envoy Gateway:
+# 1. Comment out HTTPRoute, SecurityPolicy, and BackendTrafficPolicy above
+# 2. Uncomment this Ingress resource
+# 3. Ensure NGINX Ingress Controller is installed
+# 4. Set LOCAL_DEV_MODE=true or configure application-level OIDC
+#
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: s3-manager
+#   namespace: s3-manager-test
+#   annotations:
+#     # Add ingress-specific annotations as needed
+#     # nginx.ingress.kubernetes.io/rewrite-target: /
+# spec:
+#   ingressClassName: nginx  # Change to your ingress class
+#   rules:
+#   - host: s3-manager.local  # Change to your domain
+#     http:
+#       paths:
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: s3-manager
+#             port:
+#               name: http
+#   # Uncomment for TLS:
+#   # tls:
+#   # - hosts:
+#   #   - s3-manager.local
+#   #   secretName: s3-manager-tls
+
+---
+# Optional: Port-forward service for local testing without ingress
+# Run: kubectl port-forward -n s3-manager-test svc/s3-manager 8080:80
+# Then access: http://localhost:8080

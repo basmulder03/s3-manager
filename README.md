@@ -120,6 +120,7 @@ See **[docs/INGRESS_SETUP.md](docs/INGRESS_SETUP.md)** for comprehensive deploym
 - **[QUICKSTART.md](QUICKSTART.md)** - Local development quick start guide
 - **[docs/OIDC_SETUP.md](docs/OIDC_SETUP.md)** - OIDC provider configuration (Keycloak, Azure AD, Google)
 - **[docs/INGRESS_SETUP.md](docs/INGRESS_SETUP.md)** - Kubernetes ingress deployment guide
+- **[docs/LOCAL_K8S_SETUP.md](docs/LOCAL_K8S_SETUP.md)** - Local Kubernetes testing with Envoy Gateway, Keycloak, and Rook-Ceph
 - **[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)** - Detailed local development setup
 - **[CONTAINER_RUNTIMES.md](CONTAINER_RUNTIMES.md)** - Docker, Podman, and runtime options
 - **[TESTING.md](TESTING.md)** - Comprehensive testing documentation

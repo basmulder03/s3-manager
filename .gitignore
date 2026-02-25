@@ -66,3 +66,8 @@ integration-report.xml
 # Helm
 *.tgz
 charts/*.lock
+
+# Kubernetes - exclude vendored manifests
+k8s/**/crds.yaml
+k8s/**/common.yaml
+k8s/**/operator.yaml
