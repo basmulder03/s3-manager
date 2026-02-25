@@ -1,3 +1,4 @@
+# Python cache and compiled files
 __pycache__
 *.pyc
 *.pyo
@@ -8,22 +9,76 @@ __pycache__
 *.egg-info
 dist
 build
-.env
-.env.local
+
+# Virtual environments
 venv/
 env/
+.venv/
+
+# Environment files (contains secrets)
+.env
+.env.*
+!.env.example
+
+# Git
 .git
 .gitignore
-README.md
-DEPLOYMENT.md
-.dockerignore
-*.md
-.vscode
-.idea
+.github/
+
+# IDE and editor files
+.vscode/
+.idea/
 *.swp
 *.swo
+*~
+
+# Documentation (not needed in image)
+*.md
+!QUICKSTART.md
+CONFIGURATION.md
+DEPLOYMENT.md
+LOCAL_DEVELOPMENT.md
+CONTAINER_RUNTIMES.md
+DEPENDENCIES.md
+PODMAN_SUPPORT.md
+QUICK_REFERENCE.md
+LOCAL_SETUP_SUMMARY.md
+
+# Testing
 tests/
 .coverage
 htmlcov/
 .pytest_cache/
+.tox/
+
+# Development files
+requirements-dev.txt
+
+# Docker and container files (not needed in image)
+.dockerignore
+Dockerfile
+Dockerfile.dev
+docker-compose.yml
+podman-compose.yml
+
+# Kubernetes and Helm (not needed in image)
 helm/
+k8s-local/
+
+# Scripts (not needed in image, except what's explicitly copied)
+scripts/
+start-local.sh
+start-local.bat
+Makefile
+
+# Local data and logs
+*.log
+*.sqlite
+*.db
+data/
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

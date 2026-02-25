@@ -1,18 +1,26 @@
+# syntax=docker/dockerfile:1
+
+# Development Dockerfile with hot reload support
 FROM python:3.14-slim
 
 WORKDIR /app
 
-# Install dependencies
+# Install dependencies with build cache mount for faster rebuilds
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application code (volumes will override these for hot reload)
 COPY app/ ./app/
 COPY config.py .
 COPY run.py .
 
 # Expose port
 EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/auth/user').read()" || exit 1
 
 # Run application with hot reload for development
 CMD ["python", "run.py"]
