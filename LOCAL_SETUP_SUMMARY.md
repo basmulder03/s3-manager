@@ -73,7 +73,8 @@ podman-compose up       # Podman
 **Files modified:**
 - `config.py` - Added `LOCAL_DEV_MODE` support
 - `app/auth/__init__.py` - Added mock authentication for local dev
-- `requirements.txt` - Added moto for S3 mocking
+- `requirements.txt` - Core production dependencies
+- `requirements-dev.txt` - Development and testing dependencies (including optional moto)
 
 **Usage:**
 ```bash
@@ -82,6 +83,9 @@ cp .env.local .env
 
 # Install dependencies
 pip install -r requirements.txt
+
+# For development tools and testing
+pip install -r requirements-dev.txt
 
 # Start LocalStack separately
 docker run -p 4566:4566 localstack/localstack

@@ -221,10 +221,21 @@ Create `.vscode/launch.json`:
 
 ### Alternative: Using Moto (In-Memory S3)
 
-For unit testing or when you don't want to run LocalStack:
+For unit testing without running LocalStack, you can use moto:
 
+**Install dev dependencies:**
+```bash
+pip install -r requirements-dev.txt
+```
+
+**Uncomment moto in requirements-dev.txt:**
 ```python
-# Example test setup with moto
+# Uncomment this line in requirements-dev.txt:
+moto[s3]>=5.0,<6.0
+```
+
+**Example test setup with moto:**
+```python
 from moto import mock_aws
 import boto3
 
@@ -235,7 +246,11 @@ def test_list_buckets():
     conn.create_bucket(Bucket='test-bucket')
     
     # Your test code here
+    buckets = conn.list_buckets()
+    assert len(buckets['Buckets']) == 1
 ```
+
+**Note:** For local development, we recommend using LocalStack in containers instead of moto, as it provides a more complete S3 API implementation and better matches production behavior.
 
 ## Option 3: Local Kubernetes Cluster
 

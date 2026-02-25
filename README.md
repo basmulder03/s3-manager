@@ -231,7 +231,11 @@ source venv/bin/activate
 
 3. Install dependencies:
 ```bash
+# Production dependencies only
 pip install -r requirements.txt
+
+# Or install with development tools (testing, linting, etc.)
+pip install -r requirements-dev.txt
 ```
 
 4. Create `.env` file:
@@ -246,6 +250,8 @@ python run.py
 ```
 
 The application will be available at `http://localhost:8080`.
+
+**Note:** For dependency details, see [DEPENDENCIES.md](DEPENDENCIES.md).
 
 ### Building Docker Image
 

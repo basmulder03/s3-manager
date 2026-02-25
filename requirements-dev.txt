@@ -1,0 +1,23 @@
+# Development dependencies for S3 Manager
+# Install with: pip install -r requirements-dev.txt
+
+# Include base requirements
+-r requirements.txt
+
+# Testing dependencies
+pytest==8.3.4
+pytest-cov==6.0.0
+pytest-mock==3.14.0
+
+# S3 mocking for unit tests (optional - use LocalStack in containers instead)
+# moto[s3]>=5.0,<6.0
+
+# Code quality
+black==24.10.0
+flake8==7.1.1
+mypy==1.14.0
+pylint==3.3.4
+
+# Development tools
+ipython==8.31.0
+ipdb==0.13.13
