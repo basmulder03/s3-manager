@@ -33,6 +33,10 @@ yarn-error.log*
 dist/
 build/
 
+# Bun
+bun.lockb
+.bun/
+
 # IDEs
 .vscode/
 .idea/
