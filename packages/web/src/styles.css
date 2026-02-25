@@ -30,7 +30,8 @@ body {
 code,
 .path-input,
 .items span,
-.key-value code {
+.key-value code,
+.ui-input {
   font-family: 'IBM Plex Mono', monospace;
 }
 
@@ -74,6 +75,28 @@ code,
   color: var(--accent);
   letter-spacing: 0.12em;
   font-size: 0.82rem;
+}
+
+.tabs {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.tabs a {
+  text-decoration: none;
+  border: 1px solid rgba(120, 224, 210, 0.35);
+  background: rgba(120, 224, 210, 0.06);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.34rem 0.76rem;
+  font-size: 0.88rem;
+}
+
+.tabs a.active {
+  background: rgba(120, 224, 210, 0.22);
+  border-color: rgba(120, 224, 210, 0.65);
 }
 
 .grid.two {
@@ -154,14 +177,10 @@ code,
 .path-input {
   flex: 1;
   min-width: 220px;
-  background: rgba(0, 0, 0, 0.35);
-  color: var(--text);
-  border: 1px solid rgba(120, 224, 210, 0.28);
-  border-radius: 8px;
-  padding: 0.55rem 0.65rem;
 }
 
 select,
+.ui-input,
 input[type='file'] {
   width: 100%;
   background: rgba(0, 0, 0, 0.35);
@@ -178,7 +197,7 @@ label {
   font-size: 0.84rem;
 }
 
-button {
+.ui-button {
   appearance: none;
   border: 1px solid rgba(120, 224, 210, 0.35);
   background: rgba(120, 224, 210, 0.1);
@@ -188,8 +207,21 @@ button {
   cursor: pointer;
 }
 
-button:hover {
+.ui-button:hover {
   background: rgba(120, 224, 210, 0.18);
+}
+
+.ui-button-muted {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(159, 184, 177, 0.3);
+}
+
+.ui-input {
+  outline: none;
+}
+
+.ui-input:focus {
+  border-color: rgba(120, 224, 210, 0.8);
 }
 
 .breadcrumbs {

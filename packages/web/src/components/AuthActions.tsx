@@ -1,4 +1,5 @@
 import { API_ORIGIN } from '@web/trpc/client';
+import { Button } from '@web/components/ui/Button';
 
 interface AuthActionsProps {
   authenticated: boolean;
@@ -28,19 +29,19 @@ export const AuthActions = ({ authenticated, onAfterRefresh }: AuthActionsProps)
   return (
     <div className="row-actions">
       {!authenticated ? (
-        <button type="button" onClick={login}>
+        <Button onClick={login}>
           Login
-        </button>
+        </Button>
       ) : null}
 
       {authenticated ? (
         <>
-          <button type="button" onClick={refreshSession}>
+          <Button onClick={refreshSession}>
             Refresh Session
-          </button>
-          <button type="button" onClick={logout}>
+          </Button>
+          <Button variant="muted" onClick={logout}>
             Logout
-          </button>
+          </Button>
         </>
       ) : null}
     </div>

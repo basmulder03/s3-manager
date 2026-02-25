@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { uploadObjectWithCookbook } from '@server/shared/upload/client';
 import { createUploadProceduresFromTrpc } from '@server/shared/upload/trpc-adapter';
 import { trpc, trpcProxyClient } from '@web/trpc/client';
+import { Button } from '@web/components/ui/Button';
+import { Input } from '@web/components/ui/Input';
 
 interface UploadPanelProps {
   selectedPath: string;
@@ -99,7 +101,7 @@ export const UploadPanel = ({ selectedPath, onUploadComplete }: UploadPanelProps
 
         <label>
           Prefix
-          <input
+          <Input
             className="path-input"
             value={prefix}
             onChange={(event) => setPrefix(event.target.value)}
@@ -109,7 +111,7 @@ export const UploadPanel = ({ selectedPath, onUploadComplete }: UploadPanelProps
 
         <label>
           File
-          <input
+          <Input
             type="file"
             onChange={(event) => {
               setFile(event.target.files?.[0] ?? null);
@@ -118,9 +120,9 @@ export const UploadPanel = ({ selectedPath, onUploadComplete }: UploadPanelProps
         </label>
 
         <div className="row-actions">
-          <button type="button" onClick={upload}>
+          <Button onClick={upload}>
             Upload File
-          </button>
+          </Button>
         </div>
       </div>
 

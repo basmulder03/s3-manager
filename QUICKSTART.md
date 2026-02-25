@@ -28,6 +28,7 @@ Stage 4 baseline now includes:
 - Auth controls in UI (login, logout, refresh session)
 - S3 browser navigation with breadcrumbs
 - File upload panel using typed upload cookbook (direct vs multipart)
+- Frontend routes: `/overview`, `/browser`, `/upload`
 
 ## Test Endpoints
 
@@ -117,6 +118,9 @@ bun run dev
 
 # Build for production
 bun run build
+
+# Frontend tests
+bun run test:web
 
 # Run production build
 bun run start

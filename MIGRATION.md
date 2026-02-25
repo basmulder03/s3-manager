@@ -178,10 +178,10 @@ bun run lint
 - [ ] Write auth tests (currently 0!)
 
 ### Phase 4: Frontend (Week 4)
-- [ ] React + TypeScript setup
-- [ ] tRPC client integration
-- [ ] Component library
-- [ ] State management (Zustand)
+- [x] React + TypeScript setup
+- [x] tRPC client integration
+- [x] Component library (baseline primitives + shared panels)
+- [x] State management (Zustand)
 
 ---
 
