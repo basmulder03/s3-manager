@@ -145,6 +145,12 @@ code,
   gap: 0.55rem;
 }
 
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
 .path-input {
   flex: 1;
   min-width: 220px;
@@ -153,6 +159,23 @@ code,
   border: 1px solid rgba(120, 224, 210, 0.28);
   border-radius: 8px;
   padding: 0.55rem 0.65rem;
+}
+
+select,
+input[type='file'] {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  border: 1px solid rgba(120, 224, 210, 0.28);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.84rem;
 }
 
 button {
@@ -173,6 +196,40 @@ button:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
+}
+
+.upload-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1.5fr 1fr;
+}
+
+.upload-fields {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.upload-status {
+  display: grid;
+  gap: 0.55rem;
+  align-content: start;
+  padding: 0.75rem;
+  border: 1px solid rgba(120, 224, 210, 0.16);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.progress-track {
+  height: 8px;
+  background: rgba(120, 224, 210, 0.1);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #78e0d2, #7ec7ff);
+  transition: width 150ms ease-out;
 }
 
 .items {
@@ -221,5 +278,9 @@ button:hover {
   .items li button {
     grid-template-columns: 62px 1fr;
     grid-auto-rows: auto;
+  }
+
+  .upload-grid {
+    grid-template-columns: 1fr;
   }
 }

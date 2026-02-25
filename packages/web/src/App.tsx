@@ -1,5 +1,7 @@
 import { Panel } from '@web/components/Panel';
 import { KeyValue } from '@web/components/KeyValue';
+import { AuthActions } from '@web/components/AuthActions';
+import { UploadPanel } from '@web/components/UploadPanel';
 import { trpc } from '@web/trpc/client';
 import { useUiStore } from '@web/state/ui';
 
@@ -25,6 +27,17 @@ export const App = () => {
   const authMe = trpc.auth.me.useQuery(undefined, { retry: false });
   const browse = trpc.s3.browse.useQuery({ virtualPath: selectedPath });
 
+  const authenticated = authMe.isSuccess;
+
+  const refreshAuthState = () => {
+    void authStatus.refetch();
+    void authMe.refetch();
+  };
+
+  const refreshBrowse = () => {
+    void browse.refetch();
+  };
+
   return (
     <main className="app-shell">
       <div className="hero-glow" />
@@ -47,6 +60,8 @@ export const App = () => {
         </Panel>
 
         <Panel title="Current User" subtitle="From `trpc.auth.me` (protected)">
+          <AuthActions authenticated={authenticated} onAfterRefresh={refreshAuthState} />
+
           {authMe.isError ? (
             <p className="state warn">Not authenticated yet. Use `/auth/login` to start OIDC flow.</p>
           ) : (
@@ -59,6 +74,10 @@ export const App = () => {
           )}
         </Panel>
       </section>
+
+      <Panel title="Uploader" subtitle="Uses typed upload cookbook with direct/multipart fallback">
+        <UploadPanel selectedPath={selectedPath} onUploadComplete={refreshBrowse} />
+      </Panel>
 
       <Panel title="S3 Browser" subtitle="From `trpc.s3.browse`">
         <div className="browser-controls">

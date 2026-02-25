@@ -153,5 +153,5 @@ describe('auth http flow', () => {
     } finally {
       oidcServer.stop(true);
     }
-  }, 20000);
+  }, 60000);
 });

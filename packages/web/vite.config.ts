@@ -8,6 +8,7 @@ export default defineConfig({
     alias: {
       '@web': resolve(__dirname, './src'),
       '@': resolve(__dirname, './src'),
+      '@server': resolve(__dirname, '../server/src'),
     },
   },
   server: {

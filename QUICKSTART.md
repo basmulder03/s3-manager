@@ -24,6 +24,11 @@ http://localhost:5173
 
 The frontend talks to `VITE_API_URL` (defaults to `http://localhost:3000/trpc`).
 
+Stage 4 baseline now includes:
+- Auth controls in UI (login, logout, refresh session)
+- S3 browser navigation with breadcrumbs
+- File upload panel using typed upload cookbook (direct vs multipart)
+
 ## Test Endpoints
 
 ```bash
@@ -141,6 +146,7 @@ S3_SECRET_KEY=test
 PORT=3000
 NODE_ENV=development
 WEB_ORIGIN=http://localhost:5173
+VITE_API_URL=http://localhost:3000/trpc
 LOCAL_DEV_MODE=true
 OIDC_PROVIDER=keycloak
 S3_REGION=us-east-1
