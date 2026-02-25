@@ -45,20 +45,15 @@
         </div>
 
         <main>
-            <div class="buckets-section">
-                <h2>S3 Buckets</h2>
-                <div id="bucketsContainer" class="loading">
-                    <p>Loading buckets...</p>
+            <div class="file-browser-section">
+                <div class="browser-header">
+                    <h2>📁 S3 File Browser</h2>
+                    <div class="breadcrumbs" id="breadcrumbs">
+                        <!-- Breadcrumbs will be inserted here -->
+                    </div>
                 </div>
-            </div>
-
-            <div class="objects-section" id="objectsSection" style="display: none;">
-                <div class="section-header">
-                    <h2>Objects in <span id="currentBucket"></span></h2>
-                    <button onclick="closeBucket()" class="btn btn-secondary">Close</button>
-                </div>
-                <div id="objectsContainer" class="loading">
-                    <p>Loading objects...</p>
+                <div id="browserContainer" class="browser-container">
+                    <p class="loading">Loading...</p>
                 </div>
             </div>
         </main>

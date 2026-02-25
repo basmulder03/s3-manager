@@ -49,136 +49,166 @@ async function requestPIMElevation() {
     }
 }
 
-// Bucket functions
-async function loadBuckets() {
-    const container = document.getElementById('bucketsContainer');
-    
-    try {
-        const data = await apiCall('/api/s3/buckets');
-        
-        if (data.buckets.length === 0) {
-            container.innerHTML = '<p class="info">No buckets found.</p>';
-            return;
-        }
-        
-        const html = `
-            <div class="bucket-list">
-                ${data.buckets.map(bucket => `
-                    <div class="bucket-item" data-bucket="${escapeHtml(bucket.name)}">
-                        <div class="bucket-name">📦 ${escapeHtml(bucket.name)}</div>
-                        <div class="bucket-date">Created: ${new Date(bucket.creationDate).toLocaleString()}</div>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-        
-        container.innerHTML = html;
-        
-        // Add event listeners to bucket items
-        container.querySelectorAll('.bucket-item').forEach(item => {
-            item.addEventListener('click', () => {
-                loadObjects(item.dataset.bucket);
-            });
-        });
-    } catch (error) {
-        container.innerHTML = `<p class="error">Failed to load buckets: ${error.message}</p>`;
-    }
-}
+// Global state for current path
+let currentPath = '';
 
-// Object functions
-async function loadObjects(bucketName) {
-    const section = document.getElementById('objectsSection');
-    const container = document.getElementById('objectsContainer');
-    const bucketSpan = document.getElementById('currentBucket');
+// Virtual Filesystem Browser
+async function browse(path = '') {
+    const container = document.getElementById('browserContainer');
+    const breadcrumbsContainer = document.getElementById('breadcrumbs');
     
-    bucketSpan.textContent = bucketName;
-    section.style.display = 'block';
-    container.innerHTML = '<p class="loading">Loading objects...</p>';
+    currentPath = path;
     
     try {
-        const data = await apiCall(`/api/s3/buckets/${bucketName}/objects`);
+        container.innerHTML = '<p class="loading">Loading...</p>';
         
-        if (data.objects.length === 0) {
-            container.innerHTML = '<p class="info">No objects found in this bucket.</p>';
+        const url = path ? `/api/s3/browse/${path}` : '/api/s3/browse';
+        const data = await apiCall(url);
+        
+        // Render breadcrumbs
+        renderBreadcrumbs(data.breadcrumbs, breadcrumbsContainer);
+        
+        // Render items
+        if (data.items.length === 0) {
+            container.innerHTML = '<p class="info">This folder is empty.</p>';
             return;
         }
         
         const html = `
-            <div class="object-list">
-                ${data.objects.map(obj => `
-                    <div class="object-item" data-key="${escapeHtml(obj.key)}">
-                        <div class="object-name">📄 ${escapeHtml(obj.key)}</div>
-                        <div class="object-meta">
-                            Size: ${formatBytes(obj.size)} | 
-                            Modified: ${new Date(obj.lastModified).toLocaleString()}
-                        </div>
-                        <div class="object-actions">
-                            <button class="btn btn-primary download-btn">
-                                Download
-                            </button>
-                            <button class="btn btn-danger delete-btn">
-                                Delete
-                            </button>
-                        </div>
-                    </div>
-                `).join('')}
+            <div class="file-browser">
+                ${data.items.map(item => renderItem(item)).join('')}
             </div>
         `;
         
         container.innerHTML = html;
         
         // Add event listeners
-        container.querySelectorAll('.object-item').forEach(item => {
-            const objectKey = item.dataset.key;
-            item.querySelector('.download-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                downloadObject(bucketName, objectKey);
-            });
-            item.querySelector('.delete-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                deleteObject(bucketName, objectKey);
-            });
+        container.querySelectorAll('.browser-item').forEach(item => {
+            const itemPath = item.dataset.path;
+            const itemType = item.dataset.type;
+            
+            if (itemType === 'directory') {
+                item.addEventListener('click', () => browse(itemPath));
+            } else {
+                // For files, add action buttons
+                const downloadBtn = item.querySelector('.download-btn');
+                const deleteBtn = item.querySelector('.delete-btn');
+                
+                if (downloadBtn) {
+                    downloadBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        downloadFile(itemPath);
+                    });
+                }
+                
+                if (deleteBtn) {
+                    deleteBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        deleteFile(itemPath);
+                    });
+                }
+            }
         });
     } catch (error) {
-        container.innerHTML = `<p class="error">Failed to load objects: ${error.message}</p>`;
+        container.innerHTML = `<p class="error">Failed to load: ${escapeHtml(error.message)}</p>`;
     }
 }
 
-async function downloadObject(bucketName, objectKey) {
+function renderBreadcrumbs(breadcrumbs, container) {
+    const html = breadcrumbs.map((crumb, index) => {
+        const isLast = index === breadcrumbs.length - 1;
+        return `
+            <span class="breadcrumb-item ${isLast ? 'active' : ''}" 
+                  ${!isLast ? `onclick="browse('${escapeHtml(crumb.path)}')"` : ''}>
+                ${escapeHtml(crumb.name)}
+            </span>
+            ${!isLast ? '<span class="breadcrumb-separator">/</span>' : ''}
+        `;
+    }).join('');
+    
+    container.innerHTML = html;
+}
+
+function renderItem(item) {
+    if (item.type === 'directory') {
+        return `
+            <div class="browser-item directory" data-path="${escapeHtml(item.path)}" data-type="directory">
+                <div class="item-icon">${item.icon}</div>
+                <div class="item-info">
+                    <div class="item-name">${escapeHtml(item.name)}</div>
+                    <div class="item-meta">
+                        ${item.lastModified ? `Modified: ${new Date(item.lastModified).toLocaleString()}` : 'Folder'}
+                    </div>
+                </div>
+            </div>
+        `;
+    } else {
+        return `
+            <div class="browser-item file" data-path="${escapeHtml(item.path)}" data-type="file">
+                <div class="item-icon">${item.icon}</div>
+                <div class="item-info">
+                    <div class="item-name">${escapeHtml(item.name)}</div>
+                    <div class="item-meta">
+                        ${formatBytes(item.size)} | Modified: ${new Date(item.lastModified).toLocaleString()}
+                    </div>
+                </div>
+                <div class="item-actions">
+                    <button class="btn btn-sm btn-primary download-btn" title="Download">
+                        ⬇️
+                    </button>
+                    <button class="btn btn-sm btn-danger delete-btn" title="Delete">
+                        🗑️
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+}
+
+async function downloadFile(virtualPath) {
     try {
-        const data = await apiCall(`/api/s3/buckets/${bucketName}/objects/${objectKey}`);
+        // Extract bucket and object key from virtual path
+        const parts = virtualPath.split('/');
+        const bucket = parts[0];
+        const objectKey = parts.slice(1).join('/');
+        
+        const data = await apiCall(`/api/s3/buckets/${bucket}/objects/${objectKey}`);
         
         // Open download URL in new tab
         window.open(data.downloadUrl, '_blank');
     } catch (error) {
-        showMessage('Failed to download object: ' + error.message, 'error');
+        showMessage('Failed to download file: ' + error.message, 'error');
     }
 }
 
-async function deleteObject(bucketName, objectKey) {
-    if (!confirm(`Are you sure you want to delete ${objectKey}?`)) {
+async function deleteFile(virtualPath) {
+    const parts = virtualPath.split('/');
+    const bucket = parts[0];
+    const objectKey = parts.slice(1).join('/');
+    const fileName = parts[parts.length - 1];
+    
+    if (!confirm(`Are you sure you want to delete "${fileName}"?`)) {
         return;
     }
     
     try {
-        await apiCall(`/api/s3/buckets/${bucketName}/objects/${objectKey}`, {
+        await apiCall(`/api/s3/buckets/${bucket}/objects/${objectKey}`, {
             method: 'DELETE'
         });
         
-        showMessage('Object deleted successfully', 'success');
-        loadObjects(bucketName);
+        showMessage('File deleted successfully', 'success');
+        
+        // Refresh current directory
+        browse(currentPath);
     } catch (error) {
-        showMessage('Failed to delete object: ' + error.message, 'error');
+        showMessage('Failed to delete file: ' + error.message, 'error');
     }
-}
-
-function closeBucket() {
-    document.getElementById('objectsSection').style.display = 'none';
 }
 
 // Utility functions
 function escapeHtml(unsafe) {
-    return unsafe
+    if (!unsafe) return '';
+    return String(unsafe)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
@@ -197,12 +227,15 @@ function formatBytes(bytes) {
 }
 
 function showMessage(message, type = 'info') {
-    const container = document.querySelector('main');
+    // Remove any existing messages
+    const existingMessages = document.querySelectorAll('.message-toast');
+    existingMessages.forEach(msg => msg.remove());
+    
     const messageDiv = document.createElement('div');
-    messageDiv.className = type;
+    messageDiv.className = `message-toast message-${type}`;
     messageDiv.textContent = message;
     
-    container.insertBefore(messageDiv, container.firstChild);
+    document.body.appendChild(messageDiv);
     
     setTimeout(() => {
         messageDiv.remove();
@@ -211,8 +244,8 @@ function showMessage(message, type = 'info') {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
-    const bucketsContainer = document.getElementById('bucketsContainer');
-    if (bucketsContainer && !bucketsContainer.classList.contains('welcome')) {
-        loadBuckets();
+    const browserContainer = document.getElementById('browserContainer');
+    if (browserContainer) {
+        browse('');  // Start at root (show all buckets)
     }
 });

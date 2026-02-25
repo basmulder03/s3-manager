@@ -173,3 +173,154 @@ def delete_object(bucket_name, object_key):
     except Exception as e:
         current_app.logger.error(f"Error deleting object: {e}")
         return jsonify({'error': 'Failed to delete object'}), 500
+
+@s3_bp.route('/browse', methods=['GET'])
+@s3_bp.route('/browse/<path:virtual_path>', methods=['GET'])
+@login_required
+@permission_required('view')
+def browse_filesystem(virtual_path=''):
+    """
+    Browse S3 as a unified virtual filesystem.
+    
+    Examples:
+      /api/s3/browse          -> List all buckets (root directory)
+      /api/s3/browse/my-bucket -> List contents of my-bucket
+      /api/s3/browse/my-bucket/folder1 -> List contents of folder1
+    """
+    try:
+        s3_client = get_s3_client()
+        
+        # Clean up path
+        virtual_path = virtual_path.strip('/')
+        
+        # Root: list all buckets as directories
+        if not virtual_path:
+            response = s3_client.list_buckets()
+            
+            items = [
+                {
+                    'name': bucket['Name'],
+                    'type': 'directory',
+                    'path': bucket['Name'],
+                    'size': None,
+                    'lastModified': bucket['CreationDate'].isoformat(),
+                    'icon': '📁'
+                }
+                for bucket in response.get('Buckets', [])
+            ]
+            
+            return jsonify({
+                'path': '/',
+                'breadcrumbs': [{'name': 'Home', 'path': ''}],
+                'items': items
+            })
+        
+        # Parse path: bucket/prefix
+        path_parts = virtual_path.split('/', 1)
+        bucket_name = path_parts[0]
+        prefix = path_parts[1] + '/' if len(path_parts) > 1 else ''
+        
+        # List objects with delimiter to get folder structure
+        kwargs = {
+            'Bucket': bucket_name,
+            'Prefix': prefix,
+            'Delimiter': '/'
+        }
+        
+        response = s3_client.list_objects_v2(**kwargs)
+        
+        items = []
+        
+        # Add subdirectories (common prefixes)
+        for common_prefix in response.get('CommonPrefixes', []):
+            folder_prefix = common_prefix['Prefix']
+            folder_name = folder_prefix[len(prefix):-1]  # Remove parent prefix and trailing slash
+            
+            items.append({
+                'name': folder_name,
+                'type': 'directory',
+                'path': f"{bucket_name}/{folder_prefix.rstrip('/')}",
+                'size': None,
+                'lastModified': None,
+                'icon': '📁'
+            })
+        
+        # Add files (objects)
+        for obj in response.get('Contents', []):
+            # Skip the prefix itself if it's a directory marker
+            if obj['Key'] == prefix:
+                continue
+                
+            file_name = obj['Key'][len(prefix):]  # Remove parent prefix
+            
+            items.append({
+                'name': file_name,
+                'type': 'file',
+                'path': f"{bucket_name}/{obj['Key']}",
+                'size': obj['Size'],
+                'lastModified': obj['LastModified'].isoformat(),
+                'etag': obj['ETag'],
+                'icon': get_file_icon(file_name)
+            })
+        
+        # Build breadcrumbs
+        breadcrumbs = [{'name': 'Home', 'path': ''}]
+        if virtual_path:
+            current_path = ''
+            for part in virtual_path.split('/'):
+                current_path = f"{current_path}/{part}" if current_path else part
+                breadcrumbs.append({
+                    'name': part,
+                    'path': current_path
+                })
+        
+        return jsonify({
+            'path': f"/{virtual_path}",
+            'breadcrumbs': breadcrumbs,
+            'items': sorted(items, key=lambda x: (x['type'] == 'file', x['name'].lower()))
+        })
+        
+    except ClientError as e:
+        current_app.logger.error(f"S3 ClientError: {e}")
+        return jsonify({'error': 'Failed to browse filesystem', 'details': str(e)}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error browsing filesystem: {e}")
+        return jsonify({'error': 'Failed to browse filesystem', 'details': str(e)}), 500
+
+def get_file_icon(filename):
+    """Get appropriate icon based on file extension"""
+    ext = filename.lower().split('.')[-1] if '.' in filename else ''
+    
+    icon_map = {
+        # Documents
+        'pdf': '📄',
+        'doc': '📝', 'docx': '📝',
+        'txt': '📃', 'md': '📃',
+        'xls': '📊', 'xlsx': '📊', 'csv': '📊',
+        'ppt': '📊', 'pptx': '📊',
+        
+        # Images
+        'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️',
+        'svg': '🖼️', 'bmp': '🖼️', 'ico': '🖼️',
+        
+        # Video
+        'mp4': '🎥', 'avi': '🎥', 'mov': '🎥', 'mkv': '🎥',
+        'webm': '🎥', 'flv': '🎥',
+        
+        # Audio
+        'mp3': '🎵', 'wav': '🎵', 'ogg': '🎵', 'flac': '🎵',
+        
+        # Archives
+        'zip': '🗜️', 'tar': '🗜️', 'gz': '🗜️', 'rar': '🗜️',
+        '7z': '🗜️', 'bz2': '🗜️',
+        
+        # Code
+        'py': '🐍', 'js': '📜', 'html': '🌐', 'css': '🎨',
+        'json': '📋', 'xml': '📋', 'yaml': '📋', 'yml': '📋',
+        'sh': '⚙️', 'bat': '⚙️',
+        
+        # Other
+        'log': '📋',
+    }
+    
+    return icon_map.get(ext, '📄')
