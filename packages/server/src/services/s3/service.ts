@@ -1,4 +1,7 @@
 import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
@@ -7,6 +10,9 @@ import {
   ListObjectsV2Command,
   PutObjectCommand,
   S3ServiceException,
+  UploadPartCommand,
+  type CompletedPart,
+  type S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getLogger } from '../../telemetry';
@@ -15,12 +21,19 @@ import { getS3Client } from './client';
 import { S3ServiceError } from './errors';
 import { buildBreadcrumbs, joinObjectKey, normalizeVirtualPath, parseVirtualPath } from './path';
 import type {
+  AbortMultipartUploadInput,
   BrowseItem,
   BrowseResult,
+  CompleteMultipartUploadInput,
+  CompleteMultipartUploadResult,
+  CreateMultipartPartUrlInput,
+  CreateMultipartPartUrlResult,
   CreateFolderInput,
   DeleteFolderInput,
   DeleteFolderResult,
   DeleteObjectInput,
+  InitiateMultipartUploadInput,
+  InitiateMultipartUploadResult,
   ListObjectsInput,
   ListObjectsResult,
   ObjectMetadataInput,
@@ -55,13 +68,42 @@ const metricActor = (actor: string | undefined): string => {
   return actor && actor.trim().length > 0 ? actor.trim() : 'anonymous';
 };
 
+const normalizeMetadataValue = (value: string): string => value.trim();
+
+const buildUploadMetadata = (actor: string, provided?: Record<string, string>): Record<string, string> => {
+  const metadata: Record<string, string> = {
+    uploaded_by: actor,
+    uploaded_at: new Date().toISOString(),
+    source: 's3-manager-web',
+  };
+
+  if (!provided) {
+    return metadata;
+  }
+
+  for (const [key, value] of Object.entries(provided)) {
+    const normalizedKey = key.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    const normalizedValue = normalizeMetadataValue(value);
+
+    if (normalizedKey.length === 0 || normalizedValue.length === 0) {
+      continue;
+    }
+
+    metadata[`app_${normalizedKey}`] = normalizedValue;
+  }
+
+  return metadata;
+};
+
 export class S3Service {
+  constructor(private readonly clientProvider: () => S3Client = getS3Client) {}
+
   async listBuckets(actor?: string): Promise<S3BucketSummary[]> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
 
     try {
-      const client = getS3Client();
+      const client = this.clientProvider();
       const response = await client.send(new ListBucketsCommand({}));
       const buckets = (response.Buckets ?? []).map<S3BucketSummary>((bucket) => ({
         name: bucket.Name ?? '',
@@ -100,7 +142,7 @@ export class S3Service {
     const safeActor = metricActor(actor);
 
     try {
-      const client = getS3Client();
+      const client = this.clientProvider();
       const response = await client.send(
         new ListObjectsV2Command({
           Bucket: input.bucketName,
@@ -159,7 +201,7 @@ export class S3Service {
     const safeActor = metricActor(actor);
 
     try {
-      const client = getS3Client();
+      const client = this.clientProvider();
       const headResponse = await client.send(
         new HeadObjectCommand({
           Bucket: input.bucketName,
@@ -218,14 +260,16 @@ export class S3Service {
     const safeActor = metricActor(actor);
 
     try {
-      const client = getS3Client();
+      const client = this.clientProvider();
       const expiresInSeconds = input.expiresInSeconds ?? 900;
+      const metadata = buildUploadMetadata(safeActor, input.metadata);
       const uploadUrl = await getSignedUrl(
         client,
         new PutObjectCommand({
           Bucket: input.bucketName,
           Key: input.objectKey,
           ContentType: input.contentType,
+          Metadata: metadata,
         }),
         {
           expiresIn: expiresInSeconds,
@@ -247,6 +291,12 @@ export class S3Service {
         uploadUrl,
         key: input.objectKey,
         expiresInSeconds,
+        requiredHeaders: {
+          ...(input.contentType ? { 'Content-Type': input.contentType } : {}),
+          ...Object.fromEntries(
+            Object.entries(metadata).map(([key, value]) => [`x-amz-meta-${key}`, value])
+          ),
+        },
       };
     } catch (error) {
       recordS3FileAccess(
@@ -268,7 +318,7 @@ export class S3Service {
     const safeActor = metricActor(actor);
 
     try {
-      const client = getS3Client();
+      const client = this.clientProvider();
       await client.send(
         new DeleteObjectCommand({
           Bucket: input.bucketName,
@@ -325,7 +375,7 @@ export class S3Service {
       }
 
       const { bucketName, prefix } = parseVirtualPath(normalizedPath);
-      const client = getS3Client();
+      const client = this.clientProvider();
       const response = await client.send(
         new ListObjectsV2Command({
           Bucket: bucketName,
@@ -426,7 +476,7 @@ export class S3Service {
       const { bucketName, prefix } = parseVirtualPath(input.path);
       const folderKey = `${joinObjectKey(prefix, input.folderName)}/`;
 
-      const client = getS3Client();
+      const client = this.clientProvider();
       await client.send(
         new PutObjectCommand({
           Bucket: bucketName,
@@ -474,7 +524,7 @@ export class S3Service {
         throw new S3ServiceError('Cannot delete bucket root with deleteFolder', 'INVALID_PATH');
       }
 
-      const client = getS3Client();
+      const client = this.clientProvider();
       let continuationToken: string | undefined;
       const keysToDelete: Array<{ Key: string }> = [];
 
@@ -538,6 +588,210 @@ export class S3Service {
         Date.now() - startedAt
       );
       throw mapError(error, 'Failed to delete folder');
+    }
+  }
+
+  async initiateMultipartUpload(
+    input: InitiateMultipartUploadInput,
+    actor?: string
+  ): Promise<InitiateMultipartUploadResult> {
+    const startedAt = Date.now();
+    const safeActor = metricActor(actor);
+
+    try {
+      const client = this.clientProvider();
+      const metadata = buildUploadMetadata(safeActor, input.metadata);
+      const response = await client.send(
+        new CreateMultipartUploadCommand({
+          Bucket: input.bucketName,
+          Key: input.objectKey,
+          ContentType: input.contentType,
+          Metadata: metadata,
+        })
+      );
+
+      if (!response.UploadId) {
+        throw new S3ServiceError('S3 did not return an uploadId', 'MULTIPART_INIT_FAILED');
+      }
+
+      recordS3FileAccess(
+        {
+          operation: 'write',
+          actor: safeActor,
+          bucket: input.bucketName,
+          objectKey: input.objectKey,
+          result: 'success',
+        },
+        Date.now() - startedAt
+      );
+
+      return {
+        uploadId: response.UploadId,
+        key: input.objectKey,
+      };
+    } catch (error) {
+      recordS3FileAccess(
+        {
+          operation: 'write',
+          actor: safeActor,
+          bucket: input.bucketName,
+          objectKey: input.objectKey,
+          result: 'failure',
+        },
+        Date.now() - startedAt
+      );
+      throw mapError(error, `Failed to start multipart upload for '${input.objectKey}'`);
+    }
+  }
+
+  async createMultipartPartUploadUrl(
+    input: CreateMultipartPartUrlInput,
+    actor?: string
+  ): Promise<CreateMultipartPartUrlResult> {
+    const startedAt = Date.now();
+    const safeActor = metricActor(actor);
+
+    try {
+      const client = this.clientProvider();
+      const expiresInSeconds = input.expiresInSeconds ?? 900;
+      const uploadUrl = await getSignedUrl(
+        client,
+        new UploadPartCommand({
+          Bucket: input.bucketName,
+          Key: input.objectKey,
+          UploadId: input.uploadId,
+          PartNumber: input.partNumber,
+        }),
+        {
+          expiresIn: expiresInSeconds,
+        }
+      );
+
+      recordS3FileAccess(
+        {
+          operation: 'write',
+          actor: safeActor,
+          bucket: input.bucketName,
+          objectKey: input.objectKey,
+          result: 'success',
+        },
+        Date.now() - startedAt
+      );
+
+      return {
+        uploadUrl,
+        partNumber: input.partNumber,
+        expiresInSeconds,
+      };
+    } catch (error) {
+      recordS3FileAccess(
+        {
+          operation: 'write',
+          actor: safeActor,
+          bucket: input.bucketName,
+          objectKey: input.objectKey,
+          result: 'failure',
+        },
+        Date.now() - startedAt
+      );
+      throw mapError(error, `Failed to create multipart URL for '${input.objectKey}' part ${input.partNumber}`);
+    }
+  }
+
+  async completeMultipartUpload(
+    input: CompleteMultipartUploadInput,
+    actor?: string
+  ): Promise<CompleteMultipartUploadResult> {
+    const startedAt = Date.now();
+    const safeActor = metricActor(actor);
+
+    try {
+      const client = this.clientProvider();
+      const parts: CompletedPart[] = input.parts
+        .map((part) => ({
+          PartNumber: part.partNumber,
+          ETag: part.etag,
+        }))
+        .sort((a, b) => (a.PartNumber ?? 0) - (b.PartNumber ?? 0));
+
+      const response = await client.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: input.bucketName,
+          Key: input.objectKey,
+          UploadId: input.uploadId,
+          MultipartUpload: {
+            Parts: parts,
+          },
+        })
+      );
+
+      recordS3FileAccess(
+        {
+          operation: 'write',
+          actor: safeActor,
+          bucket: input.bucketName,
+          objectKey: input.objectKey,
+          result: 'success',
+        },
+        Date.now() - startedAt
+      );
+
+      return {
+        key: input.objectKey,
+        etag: response.ETag ?? null,
+        location: response.Location ?? null,
+      };
+    } catch (error) {
+      recordS3FileAccess(
+        {
+          operation: 'write',
+          actor: safeActor,
+          bucket: input.bucketName,
+          objectKey: input.objectKey,
+          result: 'failure',
+        },
+        Date.now() - startedAt
+      );
+      throw mapError(error, `Failed to complete multipart upload for '${input.objectKey}'`);
+    }
+  }
+
+  async abortMultipartUpload(input: AbortMultipartUploadInput, actor?: string): Promise<void> {
+    const startedAt = Date.now();
+    const safeActor = metricActor(actor);
+
+    try {
+      const client = this.clientProvider();
+      await client.send(
+        new AbortMultipartUploadCommand({
+          Bucket: input.bucketName,
+          Key: input.objectKey,
+          UploadId: input.uploadId,
+        })
+      );
+
+      recordS3FileAccess(
+        {
+          operation: 'delete',
+          actor: safeActor,
+          bucket: input.bucketName,
+          objectKey: input.objectKey,
+          result: 'success',
+        },
+        Date.now() - startedAt
+      );
+    } catch (error) {
+      recordS3FileAccess(
+        {
+          operation: 'delete',
+          actor: safeActor,
+          bucket: input.bucketName,
+          objectKey: input.objectKey,
+          result: 'failure',
+        },
+        Date.now() - startedAt
+      );
+      throw mapError(error, `Failed to abort multipart upload for '${input.objectKey}'`);
     }
   }
 }

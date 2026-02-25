@@ -64,12 +64,64 @@ export interface PresignedUploadInput {
   objectKey: string;
   contentType?: string;
   expiresInSeconds?: number;
+  metadata?: Record<string, string>;
 }
 
 export interface PresignedUploadResult {
   uploadUrl: string;
   key: string;
   expiresInSeconds: number;
+  requiredHeaders: Record<string, string>;
+}
+
+export interface InitiateMultipartUploadInput {
+  bucketName: string;
+  objectKey: string;
+  contentType?: string;
+  metadata?: Record<string, string>;
+}
+
+export interface InitiateMultipartUploadResult {
+  uploadId: string;
+  key: string;
+}
+
+export interface CreateMultipartPartUrlInput {
+  bucketName: string;
+  objectKey: string;
+  uploadId: string;
+  partNumber: number;
+  expiresInSeconds?: number;
+}
+
+export interface CreateMultipartPartUrlResult {
+  uploadUrl: string;
+  partNumber: number;
+  expiresInSeconds: number;
+}
+
+export interface CompleteMultipartUploadPart {
+  partNumber: number;
+  etag: string;
+}
+
+export interface CompleteMultipartUploadInput {
+  bucketName: string;
+  objectKey: string;
+  uploadId: string;
+  parts: CompleteMultipartUploadPart[];
+}
+
+export interface CompleteMultipartUploadResult {
+  key: string;
+  etag: string | null;
+  location: string | null;
+}
+
+export interface AbortMultipartUploadInput {
+  bucketName: string;
+  objectKey: string;
+  uploadId: string;
 }
 
 export interface DeleteObjectInput {

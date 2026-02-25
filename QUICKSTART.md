@@ -29,6 +29,14 @@ curl http://localhost:3000/trpc/s3.listBuckets
 # S3 virtual filesystem root (Stage 2)
 curl "http://localhost:3000/trpc/s3.browse?input=%7B%22virtualPath%22%3A%22%22%7D"
 
+# S3 create presigned upload URL (Stage 2)
+curl -X POST http://localhost:3000/trpc/s3.createPresignedUpload \
+  -H 'content-type: application/json' \
+  -d '{"json":{"bucketName":"my-bucket","objectKey":"folder/file.txt","contentType":"text/plain"}}'
+
+# S3 upload cookbook contract (single + multipart)
+curl "http://localhost:3000/trpc/s3.uploadCookbook?input=%7B%22bucketName%22%3A%22my-bucket%22%2C%22objectKey%22%3A%22folder%2Fvideo.mp4%22%2C%22fileSizeBytes%22%3A52428800%7D"
+
 # Root endpoint
 curl http://localhost:3000/
 ```
@@ -98,6 +106,18 @@ OTEL_ENABLED=true
 OTEL_LOG_FORMAT=pretty
 OTEL_EXPORTER_TYPE=console
 ```
+
+Permission behavior for tRPC routes:
+- `LOCAL_DEV_MODE=true`: permissions come from `DEFAULT_ROLE` + `rolePermissions`
+- `LOCAL_DEV_MODE=false`: send `x-user-permissions` (comma-separated, e.g. `view,write`) or `x-user-role`
+
+Frontend upload helper:
+- Web-ready core: `packages/server/src/shared/upload/client.ts`
+- Shared contracts: `packages/server/src/shared/upload/contracts.ts`
+- Optional tRPC adapter: `packages/server/src/shared/upload/trpc-adapter.ts`
+- Backward-compatible export: `packages/server/src/services/s3/upload-client-helper.ts`
+- Function: `uploadObjectWithCookbook(...)`
+- Chooses direct or multipart strategy automatically using `s3.uploadCookbook`
 
 ## Adding a New tRPC Router
 
