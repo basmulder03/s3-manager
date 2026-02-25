@@ -753,3 +753,69 @@ def delete_multiple():
     except Exception as e:
         current_app.logger.error(f"Error deleting multiple items: {e}")
         return jsonify({'error': 'Failed to delete items', 'details': str(e)}), 500
+
+@s3_bp.route('/operations/properties', methods=['GET'])
+@login_required
+@permission_required('view')
+def get_properties():
+    """
+    Get detailed properties/metadata for a file.
+    
+    Query params:
+      - path: Virtual path to the file (bucket/key)
+    """
+    try:
+        virtual_path = request.args.get('path', '').strip('/')
+        
+        if not virtual_path:
+            return jsonify({'error': 'Path is required'}), 400
+        
+        # Parse virtual path
+        path_parts = virtual_path.split('/')
+        if len(path_parts) < 2:
+            return jsonify({'error': 'Invalid path - must include bucket and key'}), 400
+        
+        bucket_name = path_parts[0]
+        object_key = '/'.join(path_parts[1:])
+        
+        s3_client = get_s3_client()
+        
+        # Get object metadata using head_object
+        response = s3_client.head_object(Bucket=bucket_name, Key=object_key)
+        
+        # Extract metadata
+        properties = {
+            'name': object_key.split('/')[-1],
+            'key': object_key,
+            'size': response.get('ContentLength', 0),
+            'contentType': response.get('ContentType', 'application/octet-stream'),
+            'lastModified': response.get('LastModified').isoformat() if response.get('LastModified') else None,
+            'etag': response.get('ETag', '').strip('"'),
+            'storageClass': response.get('StorageClass', 'STANDARD'),
+            'metadata': response.get('Metadata', {}),
+            'versionId': response.get('VersionId'),
+            'cacheControl': response.get('CacheControl'),
+            'contentDisposition': response.get('ContentDisposition'),
+            'contentEncoding': response.get('ContentEncoding'),
+            'contentLanguage': response.get('ContentLanguage'),
+            'expires': response.get('Expires').isoformat() if response.get('Expires') else None,
+            'serverSideEncryption': response.get('ServerSideEncryption'),
+        }
+        
+        # Remove None values
+        properties = {k: v for k, v in properties.items() if v is not None}
+        
+        return jsonify(properties)
+        
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+        if error_code == 'NoSuchKey':
+            return jsonify({'error': 'File not found'}), 404
+        elif error_code == 'NoSuchBucket':
+            return jsonify({'error': 'Bucket not found'}), 404
+        else:
+            current_app.logger.error(f"S3 ClientError getting properties: {e}")
+            return jsonify({'error': 'Failed to get properties', 'details': str(e)}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error getting properties: {e}")
+        return jsonify({'error': 'Failed to get properties', 'details': str(e)}), 500

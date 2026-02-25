@@ -134,6 +134,45 @@
                     </div>
                 </div>
             </div>
+            
+            <!-- Properties Modal -->
+            <div id="propertiesModal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Properties</h3>
+                        <button onclick="closePropertiesModal()" class="modal-close">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="propertiesContent" class="properties-content">
+                            <p class="loading">Loading properties...</p>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button onclick="closePropertiesModal()" class="btn btn-primary">Close</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Context Menu -->
+            <div id="contextMenu" class="context-menu" style="display: none;">
+                <div class="context-menu-item" onclick="contextMenuAction('properties')">
+                    <span class="context-menu-icon">ℹ️</span>
+                    <span>Properties</span>
+                </div>
+                <div class="context-menu-item" onclick="contextMenuAction('download')">
+                    <span class="context-menu-icon">⬇️</span>
+                    <span>Download</span>
+                </div>
+                <div class="context-menu-item" onclick="contextMenuAction('rename')">
+                    <span class="context-menu-icon">✏️</span>
+                    <span>Rename</span>
+                </div>
+                <div class="context-menu-separator"></div>
+                <div class="context-menu-item context-menu-danger" onclick="contextMenuAction('delete')">
+                    <span class="context-menu-icon">🗑️</span>
+                    <span>Delete</span>
+                </div>
+            </div>
         </main>
         {% else %}
         <main>
