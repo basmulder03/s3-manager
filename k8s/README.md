@@ -53,13 +53,13 @@ See the [Helm chart documentation](../helm/s3-manager/README.md) for:
 | Use Case | Recommendation |
 |----------|----------------|
 | **Local testing with full stack** | Use `k8s/local/` |
-| **Local testing with existing S3** | Use Helm with `k8s-local/values-local.yaml` |
+| **Local testing with existing S3** | Use Helm with `k8s-helm-local/values-local.yaml` |
 | **Production deployment** | Use Helm with custom values file |
 | **CI/CD testing** | Use Helm with minimal test configuration |
 
 ## Additional Resources
 
 - [Helm Chart Documentation](../helm/s3-manager/README.md)
-- [Local Development Setup](../docs/LOCAL_K8S_SETUP.md)
-- [OIDC Configuration](../docs/OIDC_SETUP.md)
-- [Ingress Configuration](../docs/INGRESS_SETUP.md)
+- [Local Development Setup](../docs/deployment/local-k8s.md)
+- [OIDC Configuration](../docs/getting-started/oidc-providers.md)
+- [Ingress Configuration](../docs/deployment/ingress.md)

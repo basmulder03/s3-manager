@@ -12,15 +12,13 @@ The S3 Manager can be run locally in two ways:
 
 ## Prerequisites
 
-- **Container Runtime**: Docker or Podman (see [CONTAINER_RUNTIMES.md](CONTAINER_RUNTIMES.md))
+- **Container Runtime**: Docker or Podman
 - **Python 3.12+** (for direct Python execution)
 - **kubectl** and a local Kubernetes cluster (for k8s setup)
 
 ## Container Runtime Support
 
-This project supports **Docker**, **Podman**, and other OCI-compliant runtimes out of the box.
-
-For detailed information about Podman support, rootless containers, systemd integration, and runtime comparisons, see **[CONTAINER_RUNTIMES.md](CONTAINER_RUNTIMES.md)**.
+This project supports **Docker**, **Podman**, and other OCI-compliant runtimes out of the box with automatic detection. See the "Container Runtime Details" section below for more information.
 
 ## Option 1: Container-based (Recommended)
 
@@ -28,13 +26,10 @@ This is the easiest way to get started. Works with Docker, Podman, or compatible
 
 ### Quick Start
 
-**Using auto-detection script:**
+**Using auto-detection:**
 ```bash
-# Linux/macOS
-./start-local.sh
-
-# Windows
-start-local.bat
+# Auto-detects Docker or Podman
+make dev
 ```
 
 **Using Make (recommended):**
@@ -53,14 +48,12 @@ make help
 ```bash
 docker-compose up
 # or
-docker compose up
+docker compose up       # Newer Docker versions
 ```
 
 **Using Podman:**
 ```bash
-podman-compose up
-# or
-podman compose up  # Podman 4.0+
+podman compose up       # Podman 4.0+
 ```
 
 ### What Gets Started
@@ -111,8 +104,8 @@ make shell          # Open shell in app container
 make test           # Test connectivity
 
 # Using compose directly
-docker-compose logs -f        # Docker
-podman-compose logs -f        # Podman
+docker compose logs -f         # Docker
+podman compose logs -f         # Podman
 ```
 
 ### Stopping Services
@@ -122,14 +115,12 @@ podman-compose logs -f        # Podman
 make stop
 
 # Using compose
-docker-compose down           # Docker
-podman-compose down           # Podman
+docker compose down            # Docker/Podman
 
 # Stop and remove all data
 make clean
 # or
-docker-compose down -v        # Docker
-podman-compose down -v        # Podman
+docker compose down -v         # Docker/Podman
 ```
 
 ## Option 2: Direct Python Execution
@@ -286,14 +277,14 @@ minikube image load s3-manager:dev
 docker save s3-manager:dev | sudo k3s ctr images import -
 
 # 2. Deploy LocalStack (creates namespace, PVC, and deployment)
-kubectl apply -f k8s-local/localstack.yaml
+kubectl apply -f k8s-helm-local/localstack.yaml
 
 # 3. Wait for LocalStack to be ready
 kubectl wait --for=condition=ready pod -l app=localstack -n s3-manager --timeout=120s
 
 # 4. Install S3 Manager with Helm
 helm install s3-manager ./helm/s3-manager \
-  -f k8s-local/values-local.yaml \
+  -f k8s-helm-local/values-local.yaml \
   -n s3-manager
 
 # 5. Access the application
@@ -339,7 +330,7 @@ minikube addons enable ingress
 docker save s3-manager:dev | sudo k3s ctr images import -
 ```
 
-For detailed platform-specific instructions, see [k8s-local/README.md](k8s-local/README.md).
+For detailed platform-specific instructions, see [k8s-helm-local/README.md](../../k8s-helm-local/README.md).
 
 ### Accessing the Application
 
@@ -430,6 +421,158 @@ print(buckets)
 s3.upload_file('local-file.txt', 'demo-bucket', 'remote-file.txt')
 ```
 
+## Container Runtime Details
+
+### Supported Runtimes
+
+S3 Manager supports multiple OCI-compliant container runtimes:
+- ✅ **Docker** (20.10+) - Traditional container runtime
+- ✅ **Podman** (4.0+) - Daemonless, rootless-capable alternative
+- ✅ **Other OCI runtimes** - Any compatible runtime
+
+### Docker vs Podman
+
+| Feature | Docker | Podman |
+|---------|--------|--------|
+| **Daemon** | Required | Not required (daemonless) |
+| **Root Access** | Usually required | Rootless mode available |
+| **Systemd Integration** | Via Docker service | Native unit generation |
+| **Security** | Good | Enhanced (rootless) |
+| **Compatibility** | OCI compliant | OCI compliant + Docker compatible |
+| **Image Format** | OCI | OCI |
+
+### Podman-Specific Features
+
+#### Rootless Mode (Linux)
+
+Run containers without root privileges:
+```bash
+# Check if running rootless
+podman info | grep rootless
+# Should show: rootless: true
+
+# No sudo needed
+podman compose up
+```
+
+#### Systemd Integration
+
+Generate and install systemd services:
+```bash
+# Generate systemd unit files
+make podman-generate-systemd
+
+# Install as system services
+make podman-install-systemd
+
+# Enable and start
+sudo systemctl enable --now s3-manager-app
+sudo systemctl enable --now s3-manager-localstack
+
+# Check status
+systemctl status s3-manager-app
+```
+
+#### SELinux Compatibility
+
+Volume mounts automatically include `:Z` flag for SELinux:
+```yaml
+volumes:
+  - ./app:/app/app:Z  # Relabels for container access
+```
+
+### BuildKit Support
+
+Both Docker and Podman support BuildKit for faster builds:
+
+#### Enabling BuildKit
+
+**Docker:**
+```bash
+# Temporarily
+export DOCKER_BUILDKIT=1
+docker build -t s3-manager:latest .
+
+# Permanently - add to ~/.bashrc or ~/.zshrc
+export DOCKER_BUILDKIT=1
+
+# Or use buildx (recommended)
+docker buildx build -t s3-manager:latest .
+```
+
+**Podman:**
+```bash
+# BuildKit features work automatically in Podman 4.0+
+podman build -t s3-manager:latest .
+```
+
+#### BuildKit Benefits
+
+- ✅ **Faster builds** - Parallel build stages
+- ✅ **Better caching** - Cache mounts for pip packages
+- ✅ **Smaller images** - Optimized multi-stage builds
+- ✅ **Security** - Isolated build containers
+
+#### Build Commands
+
+```bash
+# Production image
+make build                                    # Auto-detects runtime
+docker buildx build -t s3-manager:latest .    # Docker with buildx
+podman build -t s3-manager:latest .           # Podman
+
+# Development image
+docker build -f Dockerfile.dev -t s3-manager:dev .
+podman build -f Dockerfile.dev -t s3-manager:dev .
+
+# Multi-platform build
+docker buildx build --platform linux/amd64,linux/arm64 -t s3-manager:latest .
+podman build --platform linux/amd64,linux/arm64 -t s3-manager:latest .
+```
+
+### Runtime Selection
+
+The project automatically detects your container runtime:
+
+**Auto-detection order:**
+1. Check for `podman` command
+2. Check for `docker` command
+3. Select appropriate compose command (`podman compose` or `docker-compose`)
+4. Choose correct compose file
+
+**Manual override:**
+```bash
+# Force Docker
+CONTAINER_RUNTIME=docker make start
+
+# Force Podman
+CONTAINER_RUNTIME=podman make start
+```
+
+### Migration Between Runtimes
+
+**From Docker to Podman:**
+```bash
+# 1. Install Podman
+# 2. Stop Docker containers
+docker-compose down
+
+# 3. Start with Podman (auto-detected)
+make start
+```
+
+**From Podman to Docker:**
+```bash
+# 1. Install Docker
+# 2. Stop Podman containers
+podman compose down
+
+# 3. Start with Docker (auto-detected)
+make start
+```
+
+No configuration changes needed!
+
 ## Troubleshooting
 
 ### LocalStack "Device or resource busy" error
@@ -450,12 +593,12 @@ docker-compose down -v
 docker-compose up
 
 # Or for Podman
-podman-compose down -v
-podman-compose up
+podman compose down -v
+podman compose up
 
 # For Kubernetes (kind/minikube/k3s)
 kubectl delete -f k8s-local/localstack.yaml
-kubectl apply -f k8s-local/localstack.yaml
+kubectl apply -f k8s-helm-local/localstack.yaml
 ```
 
 **Note**: The current configuration uses `PERSISTENCE=1` and mounts to `/var/lib/localstack` to avoid this issue.
@@ -534,6 +677,6 @@ docker-compose up
 
 ## Next Steps
 
-- Read [CONFIGURATION.md](CONFIGURATION.md) for advanced configuration options
-- Read [DEPLOYMENT.md](DEPLOYMENT.md) for production deployment guide
-- Check [README.md](README.md) for general project information
+- Read [configuration.md](configuration.md) for advanced configuration options
+- Read [../deployment/kubernetes.md](../deployment/kubernetes.md) for production deployment guide
+- Check [../../README.md](../../README.md) for general project information

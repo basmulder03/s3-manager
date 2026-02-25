@@ -159,8 +159,8 @@ docker-compose up -d
 
 ## 📚 Additional Resources
 
-- [OIDC Setup Guide](./docs/OIDC_SETUP.md) - Detailed provider configuration
-- [Environment Variables](./.env.example) - All configuration options
+- [OIDC Setup Guide](oidc-providers.md) - Detailed provider configuration
+- [Environment Variables](../../.env.example) - All configuration options
 - [Keycloak Documentation](https://www.keycloak.org/documentation) - Official Keycloak docs
 
 ## 🎓 Next Steps
@@ -169,5 +169,5 @@ docker-compose up -d
 2. ✅ Login with test users
 3. ✅ Test S3 operations (upload, download, delete)
 4. ✅ Explore Keycloak admin console
-5. 📖 Read [OIDC_SETUP.md](./docs/OIDC_SETUP.md) for production deployment
+5. 📖 Read [OIDC Setup Guide](oidc-providers.md) for production deployment
 6. 🔧 Customize roles and permissions in `config.py`

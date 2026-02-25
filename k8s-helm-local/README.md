@@ -26,7 +26,7 @@ The PVC is created automatically when you apply `localstack.yaml`. All local Kub
 
 ```bash
 # Single command - creates namespace, PVC, and LocalStack deployment
-kubectl apply -f k8s-local/localstack.yaml
+kubectl apply -f k8s-helm-local/localstack.yaml
 ```
 
 The PVC requests 5Gi of storage by default. You can modify this in `localstack.yaml` if needed.
@@ -73,7 +73,7 @@ docker save s3-manager:dev | sudo k3s ctr images import -
 
 ```bash
 # Deploy LocalStack (creates namespace, PVC, and deployment automatically)
-kubectl apply -f k8s-local/localstack.yaml
+kubectl apply -f k8s-helm-local/localstack.yaml
 
 # Wait for LocalStack to be ready
 kubectl wait --for=condition=ready pod -l app=localstack -n s3-manager --timeout=120s
@@ -93,7 +93,7 @@ localstack-pvc    Bound    pvc-xxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx     5Gi        
 ```bash
 # Install with Helm using local values
 helm install s3-manager ./helm/s3-manager \
-  -f k8s-local/values-local.yaml \
+  -f k8s-helm-local/values-local.yaml \
   -n s3-manager
 
 # Check deployment status
@@ -211,7 +211,7 @@ kubectl exec -it -n s3-manager deployment/s3-manager -- \
 helm uninstall s3-manager -n s3-manager
 
 # Delete LocalStack and PVC (this deletes all S3 data)
-kubectl delete -f k8s-local/localstack.yaml
+kubectl delete -f k8s-helm-local/localstack.yaml
 
 # Or delete entire namespace (removes everything including PVC)
 kubectl delete namespace s3-manager
@@ -248,8 +248,8 @@ OSError: [Errno 16] Device or resource busy: '/tmp/localstack'
 
 If you're still seeing this error, ensure you're using the latest `localstack.yaml`:
 ```bash
-kubectl delete -f k8s-local/localstack.yaml
-kubectl apply -f k8s-local/localstack.yaml
+kubectl delete -f k8s-helm-local/localstack.yaml
+kubectl apply -f k8s-helm-local/localstack.yaml
 ```
 
 ### Pods not starting

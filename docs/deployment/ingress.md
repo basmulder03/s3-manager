@@ -140,7 +140,7 @@ kubectl get pods -n envoy-gateway-system
 
 **Step 1: Configure Keycloak (if not using local dev instance)**
 
-See [OIDC_SETUP.md](./OIDC_SETUP.md#keycloak) for Keycloak configuration details.
+See [OIDC Setup Guide](../getting-started/oidc-providers.md#keycloak) for Keycloak configuration details.
 
 **Step 2: Create OIDC client secret:**
 
@@ -196,7 +196,7 @@ curl -I https://s3-manager.example.com
 
 **Step 1: Configure Azure AD App Registration**
 
-See [OIDC_SETUP.md](./OIDC_SETUP.md#azure-ad) for Azure AD configuration details.
+See [OIDC Setup Guide](../getting-started/oidc-providers.md#azure-ad) for Azure AD configuration details.
 
 **Step 2: Create OIDC client secret:**
 
@@ -242,7 +242,7 @@ config:
 
 **Step 1: Configure Google OAuth Client**
 
-See [OIDC_SETUP.md](./OIDC_SETUP.md#google-oauth) for Google OAuth configuration details.
+See [OIDC Setup Guide](../getting-started/oidc-providers.md#google-oauth) for Google OAuth configuration details.
 
 **Step 2: Create OIDC client secret:**
 
@@ -514,7 +514,7 @@ kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- sh
 
 If you encounter issues not covered here:
 
-1. Check the [OIDC Setup Guide](./OIDC_SETUP.md) for authentication-specific issues
+1. Check the [OIDC Setup Guide](../getting-started/oidc-providers.md) for authentication-specific issues
 2. Review Helm chart values and templates in `helm/s3-manager/`
 3. Enable debug logging in the application (set `LOG_LEVEL=DEBUG`)
 4. Check [Envoy Gateway documentation](https://gateway.envoyproxy.io/)
@@ -557,7 +557,7 @@ If you encounter issues not covered here:
 
 ## Next Steps
 
-- Review [OIDC Setup Guide](./OIDC_SETUP.md) for detailed OIDC provider configuration
-- See [QUICKSTART.md](../QUICKSTART.md) for local development setup
+- Review [OIDC Setup Guide](../getting-started/oidc-providers.md) for detailed OIDC provider configuration
+- See [Quickstart Guide](../getting-started/quickstart.md) for local development setup
 - Explore example values files in `helm/s3-manager/values-*.yaml`
 - Set up monitoring and alerting for production deployments

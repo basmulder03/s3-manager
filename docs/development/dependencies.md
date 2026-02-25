@@ -90,7 +90,7 @@ pip install -r requirements-dev.txt
 docker build -t s3-manager:prod .
 
 # Development builds also use requirements.txt
-docker-compose up  # or podman-compose up
+docker-compose up  # or podman compose up
 ```
 
 ## Moto (Optional)

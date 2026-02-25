@@ -1,6 +1,6 @@
 # Scripts
 
-This directory contains configuration files for S3 Manager.
+This directory contains configuration and initialization scripts for S3 Manager.
 
 ## Files
 
@@ -9,20 +9,28 @@ This directory contains configuration files for S3 Manager.
 Pre-configured Keycloak realm for S3 Manager with:
 - Realm: `s3-manager`
 - Client: `s3-manager-client` (secret: `dev-client-secret-12345`)
-- Users: admin, editor, viewer (all with password123)
+- Users: admin, editor, viewer (all with password matching username + "123")
 - Roles: S3-Admin, S3-Editor, S3-Viewer
 - Protocol mappers for realm roles and groups
 
 Used by:
 - `docker-compose.yml` for local development
-- `k8s/keycloak/keycloak-local.yaml` for local Kubernetes
+- `k8s/local/keycloak/` for local Kubernetes
 
-## Deployment
+### `localstack-init.sh`
 
-For deploying S3 Manager locally with Kubernetes:
-- [Local Kubernetes Setup Guide](../docs/LOCAL_K8S_SETUP.md) - Quick deployment instructions
-- [Kubernetes Manifests](../k8s/) - Ready-to-deploy manifests with Kustomize
+Initialization script for LocalStack that creates test S3 buckets:
+- `test-bucket` - Empty bucket for testing
+- `demo-bucket` - Contains sample files and folder structure
+- `uploads` - Empty bucket for upload testing
 
-For other deployment options:
-- [OIDC Setup Guide](../docs/OIDC_SETUP.md) - OIDC provider configuration  
-- [Ingress Setup Guide](../docs/INGRESS_SETUP.md) - Production Kubernetes deployment
+Used by:
+- `docker-compose.yml` via volume mount
+- LocalStack container startup
+
+## Related Documentation
+
+- [Local Development Guide](../docs/getting-started/local-development.md) - Local setup instructions
+- [OIDC Setup Guide](../docs/getting-started/oidc-providers.md) - OIDC provider configuration  
+- [Ingress Setup Guide](../docs/deployment/ingress.md) - Production Kubernetes deployment
+- [Local Kubernetes Guide](../docs/deployment/local-k8s.md) - Local K8s with full stack

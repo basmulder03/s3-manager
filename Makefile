@@ -10,16 +10,12 @@ RUNTIME := $(shell command -v podman 2> /dev/null && echo podman || echo docker)
 # Detect compose command based on runtime
 ifeq ($(RUNTIME),podman)
     COMPOSE := $(shell command -v podman-compose 2> /dev/null && echo podman-compose || (podman compose version > /dev/null 2>&1 && echo "podman compose" || echo ""))
-    COMPOSE_FILE := podman-compose.yml
 else
     COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || (command -v docker-compose 2> /dev/null && echo docker-compose || echo ""))
-    COMPOSE_FILE := docker-compose.yml
 endif
 
-# Fallback to docker-compose.yml if podman-compose.yml doesn't exist
-ifeq ($(wildcard $(COMPOSE_FILE)),)
-    COMPOSE_FILE := docker-compose.yml
-endif
+# Always use docker-compose.yml (works with both Docker and Podman)
+COMPOSE_FILE := docker-compose.yml
 
 # Check if compose command is available
 ifeq ($(COMPOSE),)
@@ -34,13 +30,23 @@ help: ## Show this help message
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-start: ## Start all services
+start: ## Start all services (full stack with Keycloak)
 	@echo "Starting services with $(RUNTIME)..."
 	$(COMPOSE) -f $(COMPOSE_FILE) up -d
 	@echo "Waiting for services to be ready..."
 	@sleep 5
 	@echo "✓ Services started!"
 	@echo "Access the application at: http://localhost:8080"
+	@echo "Keycloak admin console: http://localhost:8090 (admin/admin)"
+
+dev-quick: ## Start quick mode (LocalStack + App only, mock auth, no Keycloak)
+	@echo "Starting quick mode (no Keycloak)..."
+	@LOCAL_DEV_MODE=true OIDC_PROVIDER=mock $(COMPOSE) -f $(COMPOSE_FILE) up -d localstack s3-manager
+	@echo "Waiting for services to be ready..."
+	@sleep 3
+	@echo "✓ Quick mode started!"
+	@echo "Access the application at: http://localhost:8080"
+	@echo "Auto-logged in as Local Developer (S3-Admin)"
 
 stop: ## Stop all services
 	@echo "Stopping services..."

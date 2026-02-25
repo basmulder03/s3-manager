@@ -79,12 +79,12 @@ docker-compose up -d localstack
 
 **Using Podman Compose:**
 ```bash
-podman-compose up -d localstack
+podman compose up -d localstack
 ```
 
 **Using Kubernetes (kind/minikube):**
 ```bash
-kubectl apply -f k8s-local/localstack.yaml
+kubectl apply -f k8s-helm-local/localstack.yaml
 kubectl port-forward svc/localstack 4566:4566
 ```
 

@@ -22,6 +22,43 @@ The application consists of:
 - **Storage**: S3-compatible storage (Rook-Ceph, AWS S3, MinIO, LocalStack via boto3)
 - **Deployment**: Helm chart with Envoy Gateway or NGINX Ingress support
 
+## Project Structure
+
+```
+s3-manager/
+├── app/                           # Application source code
+│   ├── auth/                      # Authentication module (OIDC)
+│   ├── s3/                        # S3 operations module
+│   ├── static/                    # Frontend assets (JS, CSS)
+│   └── templates/                 # HTML templates
+├── docs/                          # Documentation
+│   ├── getting-started/           # Getting started guides
+│   │   ├── quickstart.md          # Quick start guide
+│   │   ├── local-development.md   # Local development setup
+│   │   ├── configuration.md       # Configuration reference
+│   │   └── oidc-providers.md      # OIDC provider setup
+│   ├── deployment/                # Deployment documentation
+│   │   ├── kubernetes.md          # Kubernetes deployment
+│   │   ├── ingress.md             # Ingress setup (Envoy/NGINX)
+│   │   └── local-k8s.md           # Local K8s testing
+│   └── development/               # Development documentation
+│       ├── testing.md             # Testing guide
+│       └── dependencies.md        # Dependency management
+├── helm/s3-manager/               # Helm chart for Kubernetes
+├── k8s/                           # Kubernetes manifests
+│   └── local/                     # Full local K8s stack (Envoy + Keycloak + LocalStack)
+├── k8s-helm-local/                # Simplified local Helm deployment (LocalStack only)
+├── scripts/                       # Utility scripts
+└── tests/                         # Test suite (pytest, playwright)
+```
+
+### Local Kubernetes Options
+
+Two options are available for local Kubernetes testing:
+
+- **`k8s-helm-local/`**: Simplified Helm deployment with LocalStack S3 only (quick testing)
+- **`k8s/local/`**: Full stack with Envoy Gateway, Keycloak, and LocalStack (complete environment)
+
 ## Prerequisites
 
 ### For Kubernetes Deployment
@@ -38,7 +75,7 @@ The application consists of:
 
 - Docker or Podman (for containerized development)
 - Python 3.9+ (for direct development)
-- See [QUICKSTART.md](QUICKSTART.md) for detailed local setup
+- See [docs/getting-started/quickstart.md](docs/getting-started/quickstart.md) for detailed local setup
 
 ## Quick Start
 
@@ -52,13 +89,19 @@ make dev
 
 # Or use compose directly
 docker-compose up       # Docker
-podman-compose up       # Podman
+docker compose up       # Docker (newer syntax)
+podman compose up       # Podman (4.0+)
 
 # Access at http://localhost:8080
 # Login with: admin/admin123, editor/editor123, or viewer/viewer123
 ```
 
-See **[QUICKSTART.md](QUICKSTART.md)** for complete local development guide.
+**Quick Start (without Keycloak):**
+```bash
+make dev-quick          # Starts LocalStack + App only (mock auth)
+```
+
+See **[docs/getting-started/quickstart.md](docs/getting-started/quickstart.md)** for complete local development guide.
 
 ### Kubernetes Deployment
 
@@ -113,24 +156,30 @@ helm install s3-manager ./helm/s3-manager \
   --set ingress.hostname=s3-manager.example.com
 ```
 
-See **[docs/INGRESS_SETUP.md](docs/INGRESS_SETUP.md)** for comprehensive deployment guides.
+See **[docs/deployment/ingress.md](docs/deployment/ingress.md)** for comprehensive deployment guides.
 
 ## Documentation
 
-- **[QUICKSTART.md](QUICKSTART.md)** - Local development quick start guide
-- **[docs/OIDC_SETUP.md](docs/OIDC_SETUP.md)** - OIDC provider configuration (Keycloak, Azure AD, Google)
-- **[docs/INGRESS_SETUP.md](docs/INGRESS_SETUP.md)** - Kubernetes ingress deployment guide
-- **[docs/LOCAL_K8S_SETUP.md](docs/LOCAL_K8S_SETUP.md)** - Local Kubernetes testing with Envoy Gateway, Keycloak, and Rook-Ceph
-- **[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)** - Detailed local development setup
-- **[CONTAINER_RUNTIMES.md](CONTAINER_RUNTIMES.md)** - Docker, Podman, and runtime options
-- **[TESTING.md](TESTING.md)** - Comprehensive testing documentation
-- **[DEPENDENCIES.md](DEPENDENCIES.md)** - Dependency details and management
+### Getting Started
+- **[docs/getting-started/quickstart.md](docs/getting-started/quickstart.md)** - Local development quick start guide
+- **[docs/getting-started/local-development.md](docs/getting-started/local-development.md)** - Detailed local development setup
+- **[docs/getting-started/configuration.md](docs/getting-started/configuration.md)** - Configuration reference
+- **[docs/getting-started/oidc-providers.md](docs/getting-started/oidc-providers.md)** - OIDC provider configuration (Keycloak, Azure AD, Google)
+
+### Deployment
+- **[docs/deployment/kubernetes.md](docs/deployment/kubernetes.md)** - Kubernetes deployment guide
+- **[docs/deployment/ingress.md](docs/deployment/ingress.md)** - Kubernetes ingress deployment guide (Envoy Gateway, NGINX)
+- **[docs/deployment/local-k8s.md](docs/deployment/local-k8s.md)** - Local Kubernetes testing with Envoy Gateway, Keycloak, and Rook-Ceph
+
+### Development
+- **[docs/development/testing.md](docs/development/testing.md)** - Comprehensive testing documentation
+- **[docs/development/dependencies.md](docs/development/dependencies.md)** - Dependency details and management
 
 ## Configuration Examples
 
 ### OIDC Providers
 
-S3 Manager supports three OIDC providers. See [docs/OIDC_SETUP.md](docs/OIDC_SETUP.md) for detailed setup instructions.
+S3 Manager supports three OIDC providers. See [docs/getting-started/oidc-providers.md](docs/getting-started/oidc-providers.md) for detailed setup instructions.
 
 #### Keycloak Configuration
 
@@ -328,14 +377,12 @@ podman-compose up       # Podman
 
 This project supports multiple container runtimes out of the box:
 - ✅ **Docker** (with Docker Compose)
-- ✅ **Podman** (with podman-compose)
+- ✅ **Podman** (4.0+ with built-in compose support)
 - ✅ **Other OCI-compliant runtimes**
 
-See **[CONTAINER_RUNTIMES.md](CONTAINER_RUNTIMES.md)** for Podman setup, rootless containers, and systemd integration.
-
 For more local development options, see:
-- **[QUICKSTART.md](QUICKSTART.md)** - Quick start guide
-- **[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)** - Detailed local development setup
+- **[docs/getting-started/quickstart.md](docs/getting-started/quickstart.md)** - Quick start guide
+- **[docs/getting-started/local-development.md](docs/getting-started/local-development.md)** - Detailed local development setup
 
 ### Production-like Local Development
 
@@ -373,7 +420,7 @@ python run.py
 
 The application will be available at `http://localhost:8080`.
 
-**Note:** For dependency details, see [DEPENDENCIES.md](DEPENDENCIES.md).
+**Note:** For dependency details, see [docs/development/dependencies.md](docs/development/dependencies.md).
 
 ### Building Docker Image
 
@@ -489,9 +536,8 @@ make start  # or docker-compose up -d localstack
 
 **Run all tests:**
 ```bash
-# Using test runner script
-./run-tests.sh all              # Linux/macOS
-.\run-tests.ps1 all             # Windows
+# Using Makefile (recommended)
+make test-all
 
 # Or using pytest directly
 pytest -v
@@ -500,17 +546,16 @@ pytest -v
 **Run specific test suites:**
 ```bash
 # Backend API tests only
-./run-tests.sh backend
+make test-api
 
 # E2E UI tests only
-./run-tests.sh e2e
+make test-e2e
 
 # With coverage report
-./run-tests.sh coverage
+make test-coverage
 
-# Using Makefile
-make test-all
-make test-api
+# Quick tests (unit + api, no E2E)
+make test-quick
 make test-e2e
 make test-coverage
 ```
@@ -536,7 +581,57 @@ pytest -m integration  # Integration tests
 pytest -m unit         # Unit tests only
 ```
 
-See [TESTING.md](TESTING.md) for comprehensive testing documentation.
+See [docs/development/testing.md](docs/development/testing.md) for comprehensive testing documentation.
+
+## Quick Reference
+
+### One-Command Startup
+
+```bash
+make dev              # Auto-detects Docker/Podman, starts everything
+```
+
+**Quick mode (no Keycloak):**
+```bash
+make dev-quick        # Mock auth, faster startup
+```
+
+### Common Commands
+
+| Action | Make (Recommended) | Docker/Podman |
+|--------|-------------------|---------------|
+| Start full stack | `make dev` or `make start` | `docker compose up -d` or `podman compose up -d` |
+| Start quick mode | `make dev-quick` | `docker compose up -d localstack s3-manager` |
+| Stop | `make stop` | `docker compose down` or `podman compose down` |
+| Logs | `make logs` | `docker compose logs -f` or `podman compose logs -f` |
+| Clean | `make clean` | `docker compose down -v` or `podman compose down -v` |
+| Rebuild | `make rebuild` | `docker compose build` or `podman compose build` |
+| Shell | `make shell` | `docker exec -it s3-manager-app sh` |
+| Status | `make status` | `docker compose ps` or `podman compose ps` |
+
+### Access Points
+
+- **Application**: http://localhost:8080
+- **LocalStack S3**: http://localhost:4566
+
+### Default Credentials (Local Dev Mode)
+
+- **Users**: admin/admin123, editor/editor123, viewer/viewer123
+- **S3 Access Key**: test
+- **S3 Secret Key**: test
+
+### Quick Tests
+
+```bash
+# Test S3 endpoint
+curl http://localhost:4566/_localstack/health
+
+# Test application
+curl http://localhost:8080/auth/user
+
+# Run all tests
+make test
+```
 
 ## Contributing
 
@@ -544,7 +639,7 @@ Contributions are welcome! Please follow these guidelines:
 1. Fork the repository
 2. Create a feature branch
 3. Write tests for new features
-4. Ensure all tests pass (`./run-tests.sh all`)
+4. Ensure all tests pass (`make test-all`)
 5. Submit a pull request
 
 ## License

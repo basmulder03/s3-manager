@@ -1397,8 +1397,8 @@ sudo sed -i.bak '/s3-manager.local/d' /etc/hosts
 
 ## Next Steps
 
-- **Production Deployment**: See [docs/INGRESS_SETUP.md](../docs/INGRESS_SETUP.md) for production Kubernetes setup
-- **OIDC Configuration**: See [docs/OIDC_SETUP.md](../docs/OIDC_SETUP.md) for Azure AD, Google OAuth setup
+- **Production Deployment**: See [Ingress Setup Guide](ingress.md) for production Kubernetes setup
+- **OIDC Configuration**: See [OIDC Setup Guide](../getting-started/oidc-providers.md) for Azure AD, Google OAuth setup
 - **Customize Keycloak**: Add more users, configure groups, customize themes
 - **Monitor Ceph**: Deploy Prometheus + Grafana for Ceph monitoring
 - **CI/CD Integration**: Use these manifests in your CI/CD pipelines
