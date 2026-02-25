@@ -1,0 +1,47 @@
+{{- if and .Values.ingress.enabled (eq .Values.ingress.type "envoy") .Values.envoyGateway.enabled -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "s3-manager.fullname" . }}
+  labels:
+    {{- include "s3-manager.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  parentRefs:
+    - name: {{ .Values.envoyGateway.gateway.name }}
+      namespace: {{ .Values.envoyGateway.gateway.namespace }}
+  hostnames:
+    {{- range .Values.ingress.hosts }}
+    - {{ .host | quote }}
+    {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    {{- range .paths }}
+    - matches:
+        - path:
+            type: {{ .pathType }}
+            value: {{ .path }}
+      {{- if $.Values.envoyGateway.filters }}
+      filters:
+        {{- if $.Values.envoyGateway.filters.responseHeaders }}
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            {{- if $.Values.envoyGateway.filters.responseHeaders.set }}
+            set:
+              {{- toYaml $.Values.envoyGateway.filters.responseHeaders.set | nindent 14 }}
+            {{- end }}
+            {{- if $.Values.envoyGateway.filters.removeResponseHeaders }}
+            remove:
+              {{- toYaml $.Values.envoyGateway.filters.removeResponseHeaders | nindent 14 }}
+            {{- end }}
+        {{- end }}
+      {{- end }}
+      backendRefs:
+        - name: {{ include "s3-manager.fullname" $ }}
+          port: {{ $.Values.service.port }}
+    {{- end }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,30 @@
+{{- if and .Values.ingress.enabled (eq .Values.ingress.type "envoy") .Values.envoyGateway.enabled .Values.envoyGateway.rateLimit.enabled -}}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ include "s3-manager.fullname" . }}-ratelimit
+  labels:
+    {{- include "s3-manager.labels" . | nindent 4 }}
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: {{ include "s3-manager.fullname" . }}
+  rateLimit:
+    type: Global
+    global:
+      rules:
+        {{- range .Values.envoyGateway.rateLimit.rules }}
+        - clientSelectors:
+            - headers:
+                - name: x-forwarded-for
+                  type: Distinct
+          limit:
+            requests: {{ .limit.requests }}
+            unit: {{ .limit.unit }}
+          {{- if .matches }}
+          matches:
+            {{- toYaml .matches | nindent 12 }}
+          {{- end }}
+        {{- end }}
+{{- end }}

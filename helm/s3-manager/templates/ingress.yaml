@@ -1,27 +1,38 @@
-{{- if .Values.ingress.enabled -}}
+{{- if and .Values.ingress.enabled (or (eq .Values.ingress.type "standard") (eq .Values.ingress.type "nginx")) -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "s3-manager.fullname" . }}
   labels:
     {{- include "s3-manager.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
   annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-spec:
-  {{- if .Values.ingress.className }}
-  ingressClassName: {{ .Values.ingress.className }}
-  {{- end }}
-  {{- if .Values.ingress.tls }}
-  tls:
-    {{- range .Values.ingress.tls }}
-    - hosts:
-        {{- range .hosts }}
-        - {{ . | quote }}
-        {{- end }}
-      secretName: {{ .secretName }}
+    {{- if .Values.ingress.tls.certManager.enabled }}
+    cert-manager.io/{{ .Values.ingress.tls.certManager.issuerKind | lower }}: {{ .Values.ingress.tls.certManager.issuer | quote }}
     {{- end }}
+    {{- if eq .Values.ingress.type "nginx" }}
+    {{- with .Values.nginxIngress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if .Values.nginxIngress.oauth2Proxy.enabled }}
+    {{- with .Values.nginxIngress.oauth2Proxy.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if or .Values.ingress.className (eq .Values.ingress.type "nginx") }}
+  ingressClassName: {{ .Values.ingress.className | default "nginx" }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        {{- range .Values.ingress.hosts }}
+        - {{ .host | quote }}
+        {{- end }}
+      secretName: {{ .Values.ingress.tls.secretName }}
   {{- end }}
   rules:
     {{- range .Values.ingress.hosts }}

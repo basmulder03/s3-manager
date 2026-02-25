@@ -1,37 +1,153 @@
 # S3 Manager
 
-A lightweight, secure web application for managing S3 buckets with Microsoft Entra ID (Azure AD) authentication and Privileged Identity Management (PIM) integration. Designed specifically for viewing and managing Rook-Ceph S3 buckets within Kubernetes clusters.
+A lightweight, secure web application for managing S3 buckets with multi-provider OIDC authentication. Designed for viewing and managing S3-compatible storage (including Rook-Ceph, AWS S3, MinIO, and LocalStack) within Kubernetes clusters or locally.
 
 ## Features
 
-- 🔐 **Microsoft Entra ID Authentication** - Secure OAuth2 authentication with Azure AD
+- 🔐 **Multi-Provider OIDC Authentication** - Support for Keycloak, Azure AD/Entra ID, and Google OAuth
 - 👥 **Role-Based Access Control (RBAC)** - Configurable roles with granular permissions
-- 🔑 **PIM Integration** - Privilege elevation through Azure Privileged Identity Management
+- 🚪 **Modern Ingress Integration** - First-class Envoy Gateway support with native OIDC + legacy NGINX Ingress
 - 📦 **S3 Bucket Management** - View, list, download, upload, and delete objects
 - ☸️ **Kubernetes Native** - Deploy via Helm chart with full K8s integration
 - 🪶 **Lightweight** - Minimal resource footprint with Python Flask backend
-- 🎨 **Modern UI** - Clean, responsive web interface
+- 🎨 **Modern UI** - Clean, responsive web interface with ES6 modules
+- 🐳 **Local Development** - Docker/Podman compose with Keycloak and LocalStack included
 
 ## Architecture
 
 The application consists of:
-- **Backend**: Python Flask REST API
-- **Frontend**: Vanilla JavaScript with modern CSS
-- **Authentication**: Microsoft Entra ID OAuth2 + MSAL
-- **Storage**: Rook-Ceph S3 (via boto3)
-- **Deployment**: Helm chart for Kubernetes
+- **Backend**: Python Flask REST API with modular OIDC provider abstraction
+- **Frontend**: Vanilla JavaScript ES6 modules with JSDoc type annotations
+- **Authentication**: Multi-provider OIDC (Keycloak, Azure AD, Google OAuth)
+- **Storage**: S3-compatible storage (Rook-Ceph, AWS S3, MinIO, LocalStack via boto3)
+- **Deployment**: Helm chart with Envoy Gateway or NGINX Ingress support
 
 ## Prerequisites
 
-- Kubernetes cluster (1.20+)
+### For Kubernetes Deployment
+
+- Kubernetes cluster (1.26+)
 - Helm 3.x
-- Rook-Ceph deployed with RGW (S3 gateway)
-- Microsoft Entra ID (Azure AD) tenant
-- Azure AD application registration
+- S3-compatible storage endpoint (Rook-Ceph, AWS S3, MinIO, etc.)
+- OIDC provider (Keycloak, Azure AD, or Google OAuth)
+- Ingress controller:
+  - **Envoy Gateway** (recommended) - Modern Gateway API with native OIDC
+  - **NGINX Ingress** (legacy) - Traditional ingress with oauth2-proxy
+
+### For Local Development
+
+- Docker or Podman (for containerized development)
+- Python 3.9+ (for direct development)
+- See [QUICKSTART.md](QUICKSTART.md) for detailed local setup
 
 ## Quick Start
 
-### 1. Register Azure AD Application
+### Local Development (Fastest Way to Try)
+
+Get started in minutes with Docker/Podman and included Keycloak + LocalStack:
+
+```bash
+# Auto-detects Docker or Podman
+make dev
+
+# Or use compose directly
+docker-compose up       # Docker
+podman-compose up       # Podman
+
+# Access at http://localhost:8080
+# Login with: admin/admin123, editor/editor123, or viewer/viewer123
+```
+
+See **[QUICKSTART.md](QUICKSTART.md)** for complete local development guide.
+
+### Kubernetes Deployment
+
+Choose your preferred deployment method:
+
+#### Option 1: Envoy Gateway with Keycloak (Recommended)
+
+Modern, Kubernetes-native approach with built-in OIDC:
+
+```bash
+# 1. Install Envoy Gateway and Gateway API CRDs
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.0.0 -n envoy-gateway-system --create-namespace
+
+# 2. Create OIDC client secret
+kubectl create secret generic s3-manager-oidc-secret \
+  --from-literal=client-secret='your-keycloak-client-secret'
+
+# 3. Deploy S3 Manager
+helm install s3-manager ./helm/s3-manager \
+  -f ./helm/s3-manager/values-envoy-keycloak.yaml \
+  --set oidcSecret.create=false \
+  --set ingress.hostname=s3-manager.example.com \
+  --set ingress.envoy.oidc.keycloak.issuerUrl=https://keycloak.example.com/realms/s3-manager
+```
+
+#### Option 2: Envoy Gateway with Azure AD
+
+For organizations using Microsoft Entra ID (Azure AD):
+
+```bash
+# Deploy with Azure AD configuration
+helm install s3-manager ./helm/s3-manager \
+  -f ./helm/s3-manager/values-envoy-azure.yaml \
+  --set oidcSecret.create=false \
+  --set ingress.hostname=s3-manager.example.com \
+  --set ingress.envoy.oidc.azure.issuerUrl=https://login.microsoftonline.com/<tenant-id>/v2.0 \
+  --set ingress.envoy.oidc.azure.clientId=<application-client-id> \
+  --set config.azure.tenantId=<tenant-id> \
+  --set config.azure.clientId=<application-client-id>
+```
+
+#### Option 3: NGINX Ingress (Legacy)
+
+For existing NGINX Ingress deployments (requires oauth2-proxy):
+
+```bash
+# Deploy with NGINX Ingress
+helm install s3-manager ./helm/s3-manager \
+  -f ./helm/s3-manager/values-nginx.yaml \
+  --set oidcSecret.create=false \
+  --set ingress.hostname=s3-manager.example.com
+```
+
+See **[docs/INGRESS_SETUP.md](docs/INGRESS_SETUP.md)** for comprehensive deployment guides.
+
+## Documentation
+
+- **[QUICKSTART.md](QUICKSTART.md)** - Local development quick start guide
+- **[docs/OIDC_SETUP.md](docs/OIDC_SETUP.md)** - OIDC provider configuration (Keycloak, Azure AD, Google)
+- **[docs/INGRESS_SETUP.md](docs/INGRESS_SETUP.md)** - Kubernetes ingress deployment guide
+- **[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)** - Detailed local development setup
+- **[CONTAINER_RUNTIMES.md](CONTAINER_RUNTIMES.md)** - Docker, Podman, and runtime options
+- **[TESTING.md](TESTING.md)** - Comprehensive testing documentation
+- **[DEPENDENCIES.md](DEPENDENCIES.md)** - Dependency details and management
+
+## Configuration Examples
+
+### OIDC Providers
+
+S3 Manager supports three OIDC providers. See [docs/OIDC_SETUP.md](docs/OIDC_SETUP.md) for detailed setup instructions.
+
+#### Keycloak Configuration
+
+```yaml
+config:
+  oidcProvider: keycloak
+  keycloak:
+    authority: https://keycloak.example.com/realms/s3-manager
+    clientId: s3-manager-client
+    redirectUri: https://s3-manager.example.com/auth/callback
+    scope: "openid profile email roles"
+    roleMapping:
+      S3-Admin: [view, write, delete]
+      S3-Editor: [view, write]
+      S3-Viewer: [view]
+```
+
+#### Azure AD Configuration
 
 1. Go to [Azure Portal](https://portal.azure.com) → Azure Active Directory → App registrations
 2. Click "New registration"
@@ -50,86 +166,90 @@ The application consists of:
    - Add Microsoft Graph → Delegated permissions → `GroupMember.Read.All`
    - Grant admin consent
 
-### 2. Create Azure AD Groups (Roles)
-
-Create security groups for different access levels:
-- `S3-Viewer` - Read-only access
-- `S3-Editor` - Read and write access
-- `S3-Admin` - Full access (read, write, delete)
-
-Assign users to appropriate groups.
-
-### 3. Get Rook-Ceph S3 Credentials
-
-```bash
-# Get the RGW endpoint
-kubectl get svc -n rook-ceph rook-ceph-rgw-my-store
-
-# Get S3 credentials
-kubectl get secret -n rook-ceph rook-ceph-object-user-my-store-my-user -o jsonpath='{.data.AccessKey}' | base64 -d
-kubectl get secret -n rook-ceph rook-ceph-object-user-my-store-my-user -o jsonpath='{.data.SecretKey}' | base64 -d
-```
-
-### 4. Configure Helm Values
-
-Create a `values.yaml` file:
+7. Create security groups for different access levels:
+   - `S3-Viewer` - Read-only access
+   - `S3-Editor` - Read and write access
+   - `S3-Admin` - Full access (read, write, delete)
 
 ```yaml
-image:
-  repository: your-registry/s3-manager
-  tag: "1.0.0"
-
-ingress:
-  enabled: true
-  className: "nginx"
-  hosts:
-    - host: s3-manager.your-domain.com
-      paths:
-        - path: /
-          pathType: Prefix
-  tls:
-    - secretName: s3-manager-tls
-      hosts:
-        - s3-manager.your-domain.com
-
 config:
-  secretKey: "generate-a-secure-random-key-here"
-  
-  azureAd:
+  oidcProvider: azure
+  azure:
     tenantId: "your-tenant-id"
     clientId: "your-client-id"
-    clientSecret: "your-client-secret"
-  
-  pim:
-    enabled: true
-  
-  s3:
-    endpoint: "http://rook-ceph-rgw.rook-ceph.svc.cluster.local:8080"
-    accessKey: "your-s3-access-key"
-    secretKey: "your-s3-secret-key"
-    region: "us-east-1"
+    redirectUri: https://s3-manager.example.com/auth/callback
+    scope: "openid profile email User.Read GroupMember.Read.All"
+    roleMapping:
+      "group-object-id-1": [view, write, delete]  # S3-Admin group
+      "group-object-id-2": [view, write]          # S3-Editor group
+      "group-object-id-3": [view]                 # S3-Viewer group
 ```
 
-### 5. Deploy with Helm
+#### Google OAuth Configuration
 
-```bash
-# Build and push Docker image
-docker build -t your-registry/s3-manager:1.0.0 .
-docker push your-registry/s3-manager:1.0.0
-
-# Install Helm chart
-helm install s3-manager ./helm/s3-manager -f values.yaml -n s3-manager --create-namespace
-
-# Check deployment status
-kubectl get pods -n s3-manager
-kubectl get ingress -n s3-manager
+```yaml
+config:
+  oidcProvider: google
+  google:
+    clientId: "your-google-client-id"
+    redirectUri: https://s3-manager.example.com/auth/callback
+    scope: "openid profile email"
+    allowedDomains: ["example.com"]
+    domainRoleMapping:
+      "admin@example.com": [view, write, delete]
+      "example.com": [view]  # Default for domain
 ```
 
-### 6. Access the Application
+### Ingress Configuration
 
-Navigate to `https://s3-manager.your-domain.com` and log in with your Microsoft account.
+#### Envoy Gateway (Recommended)
 
-## Configuration
+```yaml
+ingress:
+  enabled: true
+  type: envoy
+  gatewayApi:
+    gatewayName: eg
+    gatewayNamespace: envoy-gateway-system
+  hostname: s3-manager.example.com
+  
+  envoy:
+    oidc:
+      enabled: true
+      provider: keycloak
+      keycloak:
+        issuerUrl: https://keycloak.example.com/realms/s3-manager
+        clientId: s3-manager-client
+        clientSecretRef:
+          name: s3-manager-oidc-secret
+          key: client-secret
+    
+    rateLimiting:
+      enabled: true
+      requests: 100
+      unit: Second
+    
+    securityHeaders:
+      enabled: true
+      strictTransportSecurity: "max-age=31536000; includeSubDomains"
+```
+
+#### NGINX Ingress (Legacy)
+
+```yaml
+ingress:
+  enabled: true
+  type: nginx
+  className: nginx
+  hostname: s3-manager.example.com
+  
+  nginx:
+    oauth2Proxy:
+      enabled: true
+      url: http://oauth2-proxy.auth-system.svc.cluster.local
+    annotations:
+      nginx.ingress.kubernetes.io/limit-rps: "100"
+```
 
 ### Role Permissions
 
@@ -150,21 +270,22 @@ config:
   defaultRole: "S3-Viewer"
 ```
 
-### PIM Configuration
-
-Enable PIM for privilege elevation:
-
-```yaml
-config:
-  pim:
-    enabled: true
-```
-
-When enabled, users can request elevated privileges through the UI, which triggers Azure PIM workflows.
-
 ### S3 Configuration
 
 Configure S3/Rook-Ceph connection:
+
+#### Get Rook-Ceph S3 Credentials
+
+```bash
+# Get the RGW endpoint
+kubectl get svc -n rook-ceph rook-ceph-rgw-my-store
+
+# Get S3 credentials
+kubectl get secret -n rook-ceph rook-ceph-object-user-my-store-my-user -o jsonpath='{.data.AccessKey}' | base64 -d
+kubectl get secret -n rook-ceph rook-ceph-object-user-my-store-my-user -o jsonpath='{.data.SecretKey}' | base64 -d
+```
+
+#### Configuration in values.yaml
 
 ```yaml
 config:
@@ -179,25 +300,9 @@ config:
 
 ## Development
 
-### Local Development
+### Local Development with Containers
 
-For local development and debugging without Azure AD or Rook-Ceph, see **[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)** for detailed instructions on:
-
-- Running with containers (Docker/Podman) + LocalStack (S3 emulator)
-- Running directly with Python for debugging
-- Deploying to local Kubernetes clusters (minikube, kind, k3s)
-- Mock authentication bypass for development
-
-**Container Runtime Support:**
-
-This project supports multiple container runtimes out of the box:
-- ✅ **Docker** (with Docker Compose)
-- ✅ **Podman** (with podman-compose)
-- ✅ **Other OCI-compliant runtimes**
-
-See **[CONTAINER_RUNTIMES.md](CONTAINER_RUNTIMES.md)** for Podman setup, rootless containers, and systemd integration.
-
-**Quick Start:**
+For local development and debugging without Azure AD or Rook-Ceph, the fastest way is using Docker/Podman with included Keycloak and LocalStack:
 
 ```bash
 # Auto-detects Docker or Podman
@@ -212,8 +317,24 @@ docker-compose up       # Docker
 podman-compose up       # Podman
 
 # Access at http://localhost:8080
-# Auto-logged in as "Local Developer" with full permissions
+# Login with pre-configured users:
+#   - admin/admin123 (full permissions)
+#   - editor/editor123 (view + write)
+#   - viewer/viewer123 (view only)
 ```
+
+**Container Runtime Support:**
+
+This project supports multiple container runtimes out of the box:
+- ✅ **Docker** (with Docker Compose)
+- ✅ **Podman** (with podman-compose)
+- ✅ **Other OCI-compliant runtimes**
+
+See **[CONTAINER_RUNTIMES.md](CONTAINER_RUNTIMES.md)** for Podman setup, rootless containers, and systemd integration.
+
+For more local development options, see:
+- **[QUICKSTART.md](QUICKSTART.md)** - Quick start guide
+- **[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)** - Detailed local development setup
 
 ### Production-like Local Development
 
@@ -287,11 +408,10 @@ helm install s3-manager ./helm/s3-manager -f values.yaml --dry-run --debug
 ## API Endpoints
 
 ### Authentication
-- `GET /auth/login` - Initiate Azure AD login
+- `GET /auth/login` - Initiate OIDC login
 - `GET /auth/callback` - OAuth callback
 - `GET /auth/logout` - Logout
 - `GET /auth/user` - Get current user info
-- `POST /auth/pim/elevate` - Request PIM elevation
 
 ### S3 Operations
 - `GET /api/s3/buckets` - List all buckets
@@ -302,24 +422,33 @@ helm install s3-manager ./helm/s3-manager -f values.yaml --dry-run --debug
 
 ## Security Considerations
 
-1. **Secrets Management**: Use Kubernetes secrets or external secret managers (e.g., Azure Key Vault, HashiCorp Vault)
-2. **TLS/SSL**: Always use HTTPS in production with valid certificates
-3. **Session Security**: Configure secure session cookies
-4. **Network Policies**: Restrict access to S3 endpoints within the cluster
+1. **Secrets Management**: Use Kubernetes secrets or external secret managers (e.g., Azure Key Vault, HashiCorp Vault, Sealed Secrets)
+2. **TLS/SSL**: Always use HTTPS in production with valid certificates (use cert-manager for automated certificate management)
+3. **Session Security**: Configure secure session cookies with appropriate expiration and secure flags
+4. **Network Policies**: Restrict access to S3 endpoints and OIDC providers within the cluster
 5. **RBAC**: Follow principle of least privilege for role assignments
-6. **Audit Logging**: Enable logging for all operations
-7. **Regular Updates**: Keep dependencies and base images updated
+6. **Audit Logging**: Enable logging for all operations and authentication events
+7. **Regular Updates**: Keep dependencies and base images updated for security patches
+8. **OIDC Client Secrets**: Rotate client secrets regularly and store them securely in Kubernetes secrets
+9. **Rate Limiting**: Configure appropriate rate limits to prevent abuse (built-in with Envoy Gateway)
+10. **Security Headers**: Enable security headers (CSP, HSTS, X-Frame-Options) via ingress configuration
 
 ## Troubleshooting
 
 ### Authentication Issues
 
 ```bash
-# Check Azure AD configuration
-kubectl logs -n s3-manager deployment/s3-manager | grep "auth"
+# Check OIDC configuration
+kubectl logs -n s3-manager deployment/s3-manager | grep "oidc\|auth"
 
 # Verify redirect URI matches
 echo "https://$(kubectl get ingress -n s3-manager s3-manager -o jsonpath='{.spec.rules[0].host}')/auth/callback"
+
+# For Envoy Gateway, check SecurityPolicy
+kubectl describe securitypolicy -n s3-manager
+
+# For NGINX Ingress, check oauth2-proxy
+kubectl logs -n auth-system -l app=oauth2-proxy
 ```
 
 ### S3 Connection Issues

@@ -1,0 +1,23 @@
+{{- if and .Values.ingress.enabled (eq .Values.ingress.type "envoy") .Values.envoyGateway.enabled -}}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: {{ include "s3-manager.fullname" . }}
+  labels:
+    {{- include "s3-manager.labels" . | nindent 4 }}
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: {{ include "s3-manager.fullname" . }}
+  {{- if .Values.envoyGateway.timeout }}
+  timeout:
+    http:
+      {{- if .Values.envoyGateway.timeout.request }}
+      requestTimeout: {{ .Values.envoyGateway.timeout.request }}
+      {{- end }}
+      {{- if .Values.envoyGateway.timeout.idle }}
+      idleTimeout: {{ .Values.envoyGateway.timeout.idle }}
+      {{- end }}
+  {{- end }}
+{{- end }}

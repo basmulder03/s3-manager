@@ -1,0 +1,185 @@
+# Example values for S3 Manager with Envoy Gateway and Keycloak OIDC
+# Deploy with: helm install s3-manager ./helm/s3-manager -f ./helm/s3-manager/values-envoy-keycloak.yaml
+
+replicaCount: 2
+
+image:
+  repository: your-registry/s3-manager
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# Ingress Configuration - Envoy Gateway
+ingress:
+  enabled: true
+  type: envoy  # Use Envoy Gateway (recommended)
+  
+  # Gateway API settings
+  gatewayApi:
+    gatewayName: eg  # Name of the Gateway resource
+    gatewayNamespace: envoy-gateway-system  # Namespace where Gateway is deployed
+  
+  hostname: s3-manager.example.com
+  
+  tls:
+    enabled: true
+    secretName: s3-manager-tls
+    certManager:
+      enabled: true
+      issuerName: letsencrypt-prod
+      issuerKind: ClusterIssuer
+
+  # Envoy Gateway specific configurations
+  envoy:
+    # OIDC Authentication via SecurityPolicy
+    oidc:
+      enabled: true
+      provider: keycloak
+      
+      # Keycloak Configuration
+      keycloak:
+        issuerUrl: https://keycloak.example.com/realms/s3-manager
+        clientId: s3-manager-client
+        # Client secret stored in Kubernetes secret (see oidcSecret below)
+        clientSecretRef:
+          name: s3-manager-oidc-secret
+          key: client-secret
+        redirectUrl: https://s3-manager.example.com/auth/callback
+        logoutUrl: https://s3-manager.example.com/auth/logout
+        scopes:
+          - openid
+          - profile
+          - email
+          - roles
+    
+    # Rate Limiting via BackendTrafficPolicy
+    rateLimiting:
+      enabled: true
+      requests: 100
+      unit: Second  # Second, Minute, Hour
+      
+    # Security Headers
+    securityHeaders:
+      enabled: true
+      xssProtection: "1; mode=block"
+      contentTypeNosniff: "nosniff"
+      frameOptions: SAMEORIGIN
+      strictTransportSecurity: "max-age=31536000; includeSubDomains"
+      contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
+      
+    # Timeouts via ClientTrafficPolicy
+    timeouts:
+      requestTimeout: 60s
+      idleTimeout: 300s
+      
+    # CORS Configuration
+    cors:
+      enabled: false
+      allowOrigins:
+        - https://s3-manager.example.com
+      allowMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+      allowHeaders:
+        - Content-Type
+        - Authorization
+      exposeHeaders:
+        - Content-Length
+      maxAge: 86400
+      allowCredentials: true
+
+# OIDC Secret - stores client credentials
+oidcSecret:
+  create: true
+  name: s3-manager-oidc-secret
+  # Set these values via --set flags or use external-secrets
+  clientSecret: ""  # REQUIRED: Set via --set oidcSecret.clientSecret=<value>
+
+# Application Configuration
+config:
+  oidcProvider: keycloak
+  
+  # Keycloak settings
+  keycloak:
+    authority: https://keycloak.example.com/realms/s3-manager
+    clientId: s3-manager-client
+    redirectUri: https://s3-manager.example.com/auth/callback
+    logoutUri: https://s3-manager.example.com/auth/logout
+    scope: "openid profile email roles"
+    
+    # Role mapping from Keycloak roles to app permissions
+    roleMapping:
+      S3-Admin:
+        - view
+        - write
+        - delete
+      S3-Editor:
+        - view
+        - write
+      S3-Viewer:
+        - view
+  
+  # S3/LocalStack Configuration
+  s3:
+    endpoint: http://localstack:4566
+    region: us-east-1
+    bucket: my-bucket
+    accessKeyId: test
+    secretAccessKey: test
+    useSSL: false
+
+# Resource limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+# Autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+# Security Context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+# Node selection
+nodeSelector: {}
+tolerations: []
+affinity: {}

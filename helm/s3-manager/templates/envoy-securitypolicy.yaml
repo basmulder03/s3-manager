@@ -1,0 +1,34 @@
+{{- if and .Values.ingress.enabled (eq .Values.ingress.type "envoy") .Values.envoyGateway.enabled .Values.envoyGateway.oidc.enabled -}}
+{{- $provider := index .Values.envoyGateway.oidc .Values.envoyGateway.oidc.provider -}}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ include "s3-manager.fullname" . }}-oidc
+  labels:
+    {{- include "s3-manager.labels" . | nindent 4 }}
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: {{ include "s3-manager.fullname" . }}
+  oidc:
+    provider:
+      issuer: {{ $provider.issuer | quote }}
+      {{- if $provider.authorizationEndpoint }}
+      authorizationEndpoint: {{ $provider.authorizationEndpoint | quote }}
+      {{- end }}
+      {{- if $provider.tokenEndpoint }}
+      tokenEndpoint: {{ $provider.tokenEndpoint | quote }}
+      {{- end }}
+    clientID: {{ $provider.clientID | quote }}
+    clientSecret:
+      name: {{ $provider.clientSecret.name | quote }}
+      key: {{ $provider.clientSecret.key | quote }}
+    scopes:
+      {{- toYaml $provider.scopes | nindent 6 }}
+    redirectURL: {{ .Values.envoyGateway.oidc.redirectURL | quote }}
+    logoutPath: {{ .Values.envoyGateway.oidc.logoutPath | quote }}
+    cookieNames:
+      accessToken: {{ .Values.envoyGateway.oidc.cookieNames.accessToken | quote }}
+      idToken: {{ .Values.envoyGateway.oidc.cookieNames.idToken | quote }}
+{{- end }}

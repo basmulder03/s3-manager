@@ -37,20 +37,228 @@ service:
   port: 80
   targetPort: 8080
 
+# =============================================================================
+# INGRESS CONFIGURATION
+# =============================================================================
+# Choose your ingress type: 'envoy', 'nginx', or 'standard'
+# - envoy: Use Envoy Gateway (recommended for new deployments)
+# - nginx: Use NGINX Ingress Controller (legacy, being deprecated)
+# - standard: Use standard Kubernetes Ingress (basic routing only)
+# =============================================================================
+
 ingress:
   enabled: true
-  className: "nginx"
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  # Type of ingress controller: 'envoy', 'nginx', or 'standard'
+  type: envoy
+  
+  # Common ingress settings
+  className: ""  # Will be set automatically based on type if empty
+  
+  # Hostname configuration
   hosts:
     - host: s3-manager.example.com
       paths:
         - path: /
           pathType: Prefix
+  
+  # TLS configuration
   tls:
-    - secretName: s3-manager-tls
-      hosts:
-        - s3-manager.example.com
+    enabled: true
+    secretName: s3-manager-tls
+    # For cert-manager integration
+    certManager:
+      enabled: true
+      issuer: letsencrypt-prod
+      issuerKind: ClusterIssuer  # or 'Issuer'
+  
+  # Additional annotations (will be merged with type-specific annotations)
+  annotations: {}
+
+# =============================================================================
+# ENVOY GATEWAY CONFIGURATION
+# =============================================================================
+envoyGateway:
+  # Enable Envoy Gateway specific features
+  enabled: true
+  
+  # Gateway reference (must be pre-created)
+  gateway:
+    name: eg
+    namespace: envoy-gateway-system
+  
+  # OIDC Authentication via SecurityPolicy
+  oidc:
+    enabled: true
+    # OIDC Provider type: 'keycloak', 'azure', 'google', 'generic'
+    provider: keycloak
+    
+    # Provider-specific configurations
+    keycloak:
+      issuer: "https://keycloak.example.com/realms/s3-manager"
+      clientID: "s3-manager-client"
+      clientSecret:
+        name: s3-manager-oidc-secret
+        key: client-secret
+      scopes:
+        - openid
+        - profile
+        - email
+      # Keycloak-specific token claim for roles
+      claimMappings:
+        roles: "realm_access.roles"
+    
+    azure:
+      issuer: "https://login.microsoftonline.com/{tenant-id}/v2.0"
+      clientID: "your-azure-client-id"
+      clientSecret:
+        name: s3-manager-oidc-secret
+        key: client-secret
+      scopes:
+        - openid
+        - profile
+        - email
+    
+    google:
+      issuer: "https://accounts.google.com"
+      clientID: "your-google-client-id.apps.googleusercontent.com"
+      clientSecret:
+        name: s3-manager-oidc-secret
+        key: client-secret
+      scopes:
+        - openid
+        - profile
+        - email
+    
+    # Generic OIDC configuration (for custom providers)
+    generic:
+      issuer: "https://your-oidc-provider.com"
+      clientID: "your-client-id"
+      clientSecret:
+        name: s3-manager-oidc-secret
+        key: client-secret
+      scopes:
+        - openid
+        - profile
+        - email
+      authorizationEndpoint: ""  # Auto-discovered if empty
+      tokenEndpoint: ""  # Auto-discovered if empty
+    
+    # Cookie settings for OIDC session
+    cookieNames:
+      accessToken: "AccessToken"
+      idToken: "IdToken"
+    
+    # Redirect URLs
+    redirectURL: "https://s3-manager.example.com/oauth2/callback"
+    logoutPath: "/oauth2/logout"
+    
+  # Rate limiting
+  rateLimit:
+    enabled: true
+    # Rules for different endpoints
+    rules:
+      - name: api-rate-limit
+        limit:
+          requests: 100
+          unit: Minute  # Second, Minute, Hour
+        matches:
+          - path:
+              type: PathPrefix
+              value: /api/
+      
+      - name: auth-rate-limit
+        limit:
+          requests: 10
+          unit: Minute
+        matches:
+          - path:
+              type: PathPrefix
+              value: /auth/
+  
+  # Request/Response transformation
+  filters:
+    # Add security headers
+    responseHeaders:
+      set:
+        - name: X-Frame-Options
+          value: DENY
+        - name: X-Content-Type-Options
+          value: nosniff
+        - name: X-XSS-Protection
+          value: "1; mode=block"
+        - name: Strict-Transport-Security
+          value: max-age=31536000; includeSubDomains
+    
+    # Remove sensitive headers from responses
+    removeResponseHeaders:
+      - X-Powered-By
+      - Server
+  
+  # CORS configuration
+  cors:
+    enabled: false
+    allowOrigins:
+      - https://s3-manager.example.com
+    allowMethods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    allowHeaders:
+      - Content-Type
+      - Authorization
+    exposeHeaders:
+      - Content-Length
+      - Content-Range
+    maxAge: 86400
+    allowCredentials: true
+  
+  # Timeout configuration
+  timeout:
+    request: 60s
+    idle: 300s
+
+# =============================================================================
+# NGINX INGRESS CONFIGURATION (Legacy - Being Deprecated)
+# =============================================================================
+nginxIngress:
+  # Enable NGINX Ingress specific features
+  enabled: false
+  
+  # NGINX-specific annotations
+  annotations:
+    # Basic configuration
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains";
+    
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-rpm: "1000"
+    
+    # Request size limits
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    
+    # Timeouts
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+  
+  # OAuth2 Proxy integration for OIDC (if using oauth2-proxy)
+  oauth2Proxy:
+    enabled: false
+    # Assumes oauth2-proxy is deployed separately
+    annotations:
+      nginx.ingress.kubernetes.io/auth-url: "https://oauth2-proxy.example.com/oauth2/auth"
+      nginx.ingress.kubernetes.io/auth-signin: "https://oauth2-proxy.example.com/oauth2/start?rd=$scheme://$host$request_uri"
+      nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Request-User,X-Auth-Request-Email,X-Auth-Request-Access-Token"
 
 resources:
   limits:
@@ -73,7 +281,9 @@ tolerations: []
 
 affinity: {}
 
-# Application configuration
+# =============================================================================
+# APPLICATION CONFIGURATION
+# =============================================================================
 config:
   # IMPORTANT: Generate a secure random secret key
   # Example: python3 -c "import secrets; print(secrets.token_hex(32))"
@@ -81,22 +291,39 @@ config:
   secretKey: "CHANGE-ME-GENERATE-A-SECURE-RANDOM-KEY"
   sessionCookieSecure: true
   
-  # Local development mode - bypasses Azure AD authentication
+  # Local development mode - bypasses OIDC authentication
   # Set to true for local development only
   localDevMode: false
   
   # Flask debug mode (enable for local development)
   flaskDebug: false
   
+  # OIDC Provider Selection
+  # Supported values: 'keycloak', 'azure', 'azuread', 'google'
+  oidcProvider: keycloak
+  
+  # Keycloak Configuration
+  keycloak:
+    serverUrl: "https://keycloak.example.com"
+    realm: "s3-manager"
+    clientId: "s3-manager-client"
+    clientSecret: ""  # Set via secret
+    scopes: "openid profile email"
+  
   # Microsoft Entra ID (Azure AD) configuration
   azureAd:
     tenantId: ""
     clientId: ""
-    clientSecret: ""
+    clientSecret: ""  # Set via secret
   
-  # PIM configuration
+  # Google OAuth configuration
+  google:
+    clientId: ""
+    clientSecret: ""  # Set via secret
+  
+  # PIM configuration (Azure AD only)
   pim:
-    enabled: true
+    enabled: false
   
   # Role-based permissions
   rolePermissions:
@@ -115,8 +342,8 @@ config:
   # S3/Rook-Ceph configuration
   s3:
     endpoint: "http://rook-ceph-rgw.rook-ceph.svc.cluster.local:8080"
-    accessKey: ""
-    secretKey: ""
+    accessKey: ""  # Set via secret
+    secretKey: ""  # Set via secret
     region: "us-east-1"
     useSSL: false
     verifySSL: false
@@ -126,3 +353,8 @@ externalSecrets:
   enabled: false
   secretStore: cluster-secret-store
   secrets: []
+    # Example:
+    # - name: oidc-client-secret
+    #   key: s3-manager/oidc-client-secret
+    # - name: s3-credentials
+    #   key: s3-manager/s3-credentials
