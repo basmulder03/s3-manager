@@ -52,8 +52,64 @@
                         <!-- Breadcrumbs will be inserted here -->
                     </div>
                 </div>
+                
+                <!-- Toolbar with action buttons -->
+                <div class="toolbar" id="toolbar" style="display: none;">
+                    <div class="toolbar-left">
+                        <button onclick="showUploadModal()" class="btn btn-primary" title="Upload files">
+                            ⬆️ Upload
+                        </button>
+                        <button onclick="showFolderModal()" class="btn btn-secondary" title="Create new folder">
+                            📁+ New Folder
+                        </button>
+                        <button onclick="deleteSelectedItems()" class="btn btn-danger delete-selected-btn" disabled title="Delete selected items">
+                            🗑️ Delete Selected
+                        </button>
+                    </div>
+                    <div class="toolbar-right">
+                        <span class="selection-info" style="display: none;">0 items selected</span>
+                    </div>
+                </div>
+                
                 <div id="browserContainer" class="browser-container">
                     <p class="loading">Loading...</p>
+                </div>
+            </div>
+            
+            <!-- Upload Modal -->
+            <div id="uploadModal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Upload File</h3>
+                        <button onclick="closeUploadModal()" class="modal-close">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Upload files to: <strong id="uploadPath"></strong></p>
+                        <input type="file" id="uploadFileInput" multiple class="file-input" />
+                        <p class="info-text">You can also drag and drop files directly onto the file browser.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button onclick="closeUploadModal()" class="btn btn-secondary">Cancel</button>
+                        <button onclick="uploadFile()" class="btn btn-primary">Upload</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Create Folder Modal -->
+            <div id="folderModal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Create New Folder</h3>
+                        <button onclick="closeFolderModal()" class="modal-close">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <label for="newFolderName">Folder Name:</label>
+                        <input type="text" id="newFolderName" class="text-input" placeholder="Enter folder name" />
+                    </div>
+                    <div class="modal-footer">
+                        <button onclick="closeFolderModal()" class="btn btn-secondary">Cancel</button>
+                        <button onclick="createNewFolder()" class="btn btn-primary">Create</button>
+                    </div>
                 </div>
             </div>
         </main>

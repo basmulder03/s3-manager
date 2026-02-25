@@ -324,3 +324,367 @@ def get_file_icon(filename):
     }
     
     return icon_map.get(ext, '📄')
+
+@s3_bp.route('/operations/upload', methods=['POST'])
+@login_required
+@permission_required('write')
+def upload_to_path():
+    """
+    Upload file(s) to a virtual path.
+    
+    Form data:
+      - file: The file to upload (required)
+      - path: Virtual path (e.g., 'bucket-name/folder1/folder2')
+    """
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        virtual_path = request.form.get('path', '').strip('/')
+        
+        if not file.filename:
+            return jsonify({'error': 'Empty filename'}), 400
+        
+        # Parse virtual path
+        if not virtual_path:
+            return jsonify({'error': 'Cannot upload to root. Please select a bucket.'}), 400
+        
+        path_parts = virtual_path.split('/', 1)
+        bucket_name = path_parts[0]
+        prefix = path_parts[1] + '/' if len(path_parts) > 1 else ''
+        
+        # Construct full object key
+        object_key = prefix + file.filename
+        
+        s3_client = get_s3_client()
+        
+        # Upload to S3
+        s3_client.upload_fileobj(
+            file,
+            bucket_name,
+            object_key,
+            ExtraArgs={'ContentType': file.content_type} if file.content_type else {}
+        )
+        
+        return jsonify({
+            'message': 'File uploaded successfully',
+            'filename': file.filename,
+            'path': f"{bucket_name}/{object_key}"
+        })
+        
+    except ClientError as e:
+        current_app.logger.error(f"S3 ClientError: {e}")
+        return jsonify({'error': 'Failed to upload file', 'details': str(e)}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error uploading file: {e}")
+        return jsonify({'error': 'Failed to upload file', 'details': str(e)}), 500
+
+@s3_bp.route('/operations/create-folder', methods=['POST'])
+@login_required
+@permission_required('write')
+def create_folder():
+    """
+    Create a new folder (S3 prefix) at the given virtual path.
+    
+    JSON body:
+      - path: Parent virtual path (e.g., 'bucket-name/folder1')
+      - folderName: Name of the new folder
+    """
+    try:
+        data = request.get_json()
+        virtual_path = data.get('path', '').strip('/')
+        folder_name = data.get('folderName', '').strip('/')
+        
+        if not folder_name:
+            return jsonify({'error': 'Folder name is required'}), 400
+        
+        if not virtual_path:
+            return jsonify({'error': 'Cannot create folder in root. Please select a bucket.'}), 400
+        
+        # Parse virtual path
+        path_parts = virtual_path.split('/', 1)
+        bucket_name = path_parts[0]
+        prefix = path_parts[1] + '/' if len(path_parts) > 1 else ''
+        
+        # Create folder by uploading an empty object with trailing slash
+        folder_key = prefix + folder_name + '/'
+        
+        s3_client = get_s3_client()
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=folder_key,
+            Body=b''
+        )
+        
+        return jsonify({
+            'message': 'Folder created successfully',
+            'folderName': folder_name,
+            'path': f"{bucket_name}/{folder_key}"
+        })
+        
+    except ClientError as e:
+        current_app.logger.error(f"S3 ClientError: {e}")
+        return jsonify({'error': 'Failed to create folder', 'details': str(e)}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error creating folder: {e}")
+        return jsonify({'error': 'Failed to create folder', 'details': str(e)}), 500
+
+@s3_bp.route('/operations/delete-folder', methods=['DELETE'])
+@login_required
+@permission_required('delete')
+def delete_folder():
+    """
+    Delete a folder and all its contents.
+    
+    JSON body:
+      - path: Virtual path to the folder (e.g., 'bucket-name/folder1/subfolder')
+    """
+    try:
+        data = request.get_json()
+        virtual_path = data.get('path', '').strip('/')
+        
+        if not virtual_path:
+            return jsonify({'error': 'Path is required'}), 400
+        
+        # Parse virtual path
+        path_parts = virtual_path.split('/', 1)
+        bucket_name = path_parts[0]
+        
+        if len(path_parts) < 2:
+            return jsonify({'error': 'Cannot delete buckets. Use S3/Rook-Ceph tools to manage buckets.'}), 400
+        
+        prefix = path_parts[1] + '/'
+        
+        s3_client = get_s3_client()
+        
+        # List all objects with this prefix
+        objects_to_delete = []
+        continuation_token = None
+        
+        while True:
+            kwargs = {
+                'Bucket': bucket_name,
+                'Prefix': prefix
+            }
+            
+            if continuation_token:
+                kwargs['ContinuationToken'] = continuation_token
+            
+            response = s3_client.list_objects_v2(**kwargs)
+            
+            # Collect objects to delete
+            for obj in response.get('Contents', []):
+                objects_to_delete.append({'Key': obj['Key']})
+            
+            # Check if there are more objects
+            if not response.get('IsTruncated', False):
+                break
+            
+            continuation_token = response.get('NextContinuationToken')
+        
+        if not objects_to_delete:
+            return jsonify({'message': 'Folder is already empty or does not exist'}), 200
+        
+        # Delete all objects (S3 allows up to 1000 objects per request)
+        deleted_count = 0
+        for i in range(0, len(objects_to_delete), 1000):
+            batch = objects_to_delete[i:i+1000]
+            s3_client.delete_objects(
+                Bucket=bucket_name,
+                Delete={'Objects': batch}
+            )
+            deleted_count += len(batch)
+        
+        return jsonify({
+            'message': 'Folder deleted successfully',
+            'deletedCount': deleted_count
+        })
+        
+    except ClientError as e:
+        current_app.logger.error(f"S3 ClientError: {e}")
+        return jsonify({'error': 'Failed to delete folder', 'details': str(e)}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error deleting folder: {e}")
+        return jsonify({'error': 'Failed to delete folder', 'details': str(e)}), 500
+
+@s3_bp.route('/operations/rename', methods=['POST'])
+@login_required
+@permission_required('write')
+def rename_item():
+    """
+    Rename a file or folder by copying to new name and deleting old.
+    
+    JSON body:
+      - oldPath: Current virtual path
+      - newName: New name (just the name, not full path)
+    """
+    try:
+        data = request.get_json()
+        old_virtual_path = data.get('oldPath', '').strip('/')
+        new_name = data.get('newName', '').strip('/')
+        
+        if not old_virtual_path or not new_name:
+            return jsonify({'error': 'Both oldPath and newName are required'}), 400
+        
+        # Parse old path
+        old_parts = old_virtual_path.split('/')
+        bucket_name = old_parts[0]
+        
+        if len(old_parts) < 2:
+            return jsonify({'error': 'Cannot rename buckets'}), 400
+        
+        old_key = '/'.join(old_parts[1:])
+        
+        # Construct new path (same parent, new name)
+        parent_parts = old_parts[:-1]
+        new_virtual_path = '/'.join(parent_parts + [new_name])
+        new_key = '/'.join(old_parts[1:-1] + [new_name])
+        
+        s3_client = get_s3_client()
+        
+        # Check if it's a folder (ends with /)
+        is_folder = old_key.endswith('/')
+        
+        if is_folder:
+            # For folders, need to rename all objects with this prefix
+            new_key = new_key + '/'
+            prefix = old_key
+            
+            # List all objects
+            objects_to_rename = []
+            continuation_token = None
+            
+            while True:
+                kwargs = {
+                    'Bucket': bucket_name,
+                    'Prefix': prefix
+                }
+                
+                if continuation_token:
+                    kwargs['ContinuationToken'] = continuation_token
+                
+                response = s3_client.list_objects_v2(**kwargs)
+                
+                for obj in response.get('Contents', []):
+                    objects_to_rename.append(obj['Key'])
+                
+                if not response.get('IsTruncated', False):
+                    break
+                
+                continuation_token = response.get('NextContinuationToken')
+            
+            # Copy each object to new location
+            for obj_key in objects_to_rename:
+                # Replace old prefix with new prefix
+                new_obj_key = obj_key.replace(prefix, new_key, 1)
+                
+                s3_client.copy_object(
+                    Bucket=bucket_name,
+                    CopySource={'Bucket': bucket_name, 'Key': obj_key},
+                    Key=new_obj_key
+                )
+                
+                # Delete old object
+                s3_client.delete_object(Bucket=bucket_name, Key=obj_key)
+            
+            return jsonify({
+                'message': 'Folder renamed successfully',
+                'oldPath': old_virtual_path,
+                'newPath': new_virtual_path,
+                'itemsRenamed': len(objects_to_rename)
+            })
+        else:
+            # For files, simple copy and delete
+            s3_client.copy_object(
+                Bucket=bucket_name,
+                CopySource={'Bucket': bucket_name, 'Key': old_key},
+                Key=new_key
+            )
+            
+            s3_client.delete_object(Bucket=bucket_name, Key=old_key)
+            
+            return jsonify({
+                'message': 'File renamed successfully',
+                'oldPath': old_virtual_path,
+                'newPath': new_virtual_path
+            })
+        
+    except ClientError as e:
+        current_app.logger.error(f"S3 ClientError: {e}")
+        return jsonify({'error': 'Failed to rename item', 'details': str(e)}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error renaming item: {e}")
+        return jsonify({'error': 'Failed to rename item', 'details': str(e)}), 500
+
+@s3_bp.route('/operations/delete-multiple', methods=['DELETE'])
+@login_required
+@permission_required('delete')
+def delete_multiple():
+    """
+    Delete multiple files/folders.
+    
+    JSON body:
+      - paths: Array of virtual paths to delete
+    """
+    try:
+        data = request.get_json()
+        paths = data.get('paths', [])
+        
+        if not paths:
+            return jsonify({'error': 'No paths provided'}), 400
+        
+        s3_client = get_s3_client()
+        deleted_items = 0
+        errors = []
+        
+        for virtual_path in paths:
+            try:
+                virtual_path = virtual_path.strip('/')
+                path_parts = virtual_path.split('/')
+                bucket_name = path_parts[0]
+                
+                if len(path_parts) < 2:
+                    errors.append({'path': virtual_path, 'error': 'Cannot delete buckets'})
+                    continue
+                
+                object_key = '/'.join(path_parts[1:])
+                
+                # Check if it's a folder
+                if object_key.endswith('/'):
+                    # Delete folder and contents
+                    prefix = object_key
+                    objects_to_delete = []
+                    
+                    response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+                    
+                    for obj in response.get('Contents', []):
+                        objects_to_delete.append({'Key': obj['Key']})
+                    
+                    if objects_to_delete:
+                        s3_client.delete_objects(
+                            Bucket=bucket_name,
+                            Delete={'Objects': objects_to_delete}
+                        )
+                        deleted_items += len(objects_to_delete)
+                else:
+                    # Delete single file
+                    s3_client.delete_object(Bucket=bucket_name, Key=object_key)
+                    deleted_items += 1
+                    
+            except ClientError as e:
+                errors.append({'path': virtual_path, 'error': str(e)})
+        
+        result = {
+            'message': f'Deleted {deleted_items} item(s)',
+            'deletedCount': deleted_items
+        }
+        
+        if errors:
+            result['errors'] = errors
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        current_app.logger.error(f"Error deleting multiple items: {e}")
+        return jsonify({'error': 'Failed to delete items', 'details': str(e)}), 500
