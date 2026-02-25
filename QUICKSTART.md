@@ -11,6 +11,19 @@ bun run dev
 PORT=3001 bun run dev
 ```
 
+## Running the Frontend (Stage 4)
+
+```bash
+# From project root
+cd packages/web
+bun run dev
+
+# Open
+http://localhost:5173
+```
+
+The frontend talks to `VITE_API_URL` (defaults to `http://localhost:3000/trpc`).
+
 ## Test Endpoints
 
 ```bash
@@ -79,6 +92,13 @@ packages/server/src/
 │   └── s3.ts          # S3 tRPC procedures
 ├── app.ts             # Hono app setup (middleware, CORS, etc.)
 └── index.ts           # Entry point (loads env, starts server)
+
+packages/web/src/
+├── App.tsx            # Stage 4 frontend shell (health/auth/s3)
+├── trpc/client.ts     # Typed tRPC client
+├── state/ui.ts        # Zustand UI state
+├── components/        # Reusable UI components
+└── styles.css         # Visual theme
 ```
 
 ## Common Commands
@@ -120,6 +140,7 @@ S3_SECRET_KEY=test
 # Optional (defaults shown)
 PORT=3000
 NODE_ENV=development
+WEB_ORIGIN=http://localhost:5173
 LOCAL_DEV_MODE=true
 OIDC_PROVIDER=keycloak
 S3_REGION=us-east-1

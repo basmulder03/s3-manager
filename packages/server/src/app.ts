@@ -21,7 +21,7 @@ export const createApp = () => {
   app.use(
     '*',
     cors({
-      origin: config.nodeEnv === 'production' ? ['https://your-domain.com'] : '*',
+      origin: [config.web.origin],
       credentials: true,
     })
   );

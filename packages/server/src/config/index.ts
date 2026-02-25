@@ -107,6 +107,10 @@ const configSchema = z.object({
     version: z.string().default('2.0.0'),
   }),
 
+  web: z.object({
+    origin: z.string().url().default('http://localhost:5173'),
+  }),
+
   // Telemetry / Observability Configuration
   telemetry: z.object({
     enabled: trueBooleanString,
@@ -246,6 +250,11 @@ export const loadConfig = (): Config => {
 
       // App (use defaults)
       app: {},
+
+      // Web
+      web: {
+        origin: process.env.WEB_ORIGIN,
+      },
 
       // Telemetry
       telemetry: {
