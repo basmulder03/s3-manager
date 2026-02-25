@@ -5,6 +5,7 @@ import { appRouter } from './trpc/router';
 import { createContext } from './trpc';
 import { config } from './config';
 import { getLogger, getTelemetryStatus, telemetryMiddleware } from './telemetry';
+import { registerAuthHttpRoutes } from './http/auth';
 
 /**
  * Create and configure Hono application
@@ -66,6 +67,8 @@ export const createApp = () => {
       },
     });
   });
+
+  registerAuthHttpRoutes(app);
 
   // tRPC endpoint
   app.use(

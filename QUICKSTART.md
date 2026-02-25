@@ -23,6 +23,29 @@ curl http://localhost:3000/health/ready
 # Server info
 curl http://localhost:3000/trpc/health.info
 
+# Auth status (Stage 3)
+curl http://localhost:3000/trpc/auth.status
+
+# Current authenticated user (Stage 3)
+curl http://localhost:3000/trpc/auth.me \
+  -H 'Authorization: Bearer <access-token>'
+
+# Introspect current token if provider supports it (Stage 3)
+curl http://localhost:3000/trpc/auth.introspect \
+  -H 'Authorization: Bearer <access-token>'
+
+# OIDC login start (Stage 3)
+curl -i http://localhost:3000/auth/login
+
+# Current HTTP auth user from cookie/header (Stage 3)
+curl -i http://localhost:3000/auth/user
+
+# Refresh tokens using refresh cookie (Stage 3)
+curl -i -X POST http://localhost:3000/auth/refresh
+
+# Logout (revokes access/refresh tokens when revocation endpoint is available)
+curl -i http://localhost:3000/auth/logout
+
 # S3 buckets (Stage 2)
 curl http://localhost:3000/trpc/s3.listBuckets
 
@@ -105,11 +128,25 @@ S3_REGION=us-east-1
 OTEL_ENABLED=true
 OTEL_LOG_FORMAT=pretty
 OTEL_EXPORTER_TYPE=console
+
+# Auth
+AUTH_REQUIRED=false
+AUTH_ROLES_CLAIM=roles
+AUTH_ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS=3600
+AUTH_REFRESH_TOKEN_COOKIE_MAX_AGE_SECONDS=2592000
+AUTH_REVOKE_ON_LOGOUT=true
 ```
+
+Production auth/cookie baseline:
+- `AUTH_REQUIRED=true`
+- `SESSION_COOKIE_SECURE=true`
+- If cross-site cookies are required: `SESSION_COOKIE_SAME_SITE=None` and keep secure=true
+- Keep token lifetimes explicit with `AUTH_ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS` and `AUTH_REFRESH_TOKEN_COOKIE_MAX_AGE_SECONDS`
 
 Permission behavior for tRPC routes:
 - `LOCAL_DEV_MODE=true`: permissions come from `DEFAULT_ROLE` + `rolePermissions`
-- `LOCAL_DEV_MODE=false`: send `x-user-permissions` (comma-separated, e.g. `view,write`) or `x-user-role`
+- `LOCAL_DEV_MODE=false`: bearer access token is verified against OIDC JWKS
+- fallback `x-user-permissions` header only applies when `AUTH_REQUIRED=false`
 
 Frontend upload helper:
 - Web-ready core: `packages/server/src/shared/upload/client.ts`

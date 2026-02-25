@@ -59,6 +59,18 @@ const configSchema = z.object({
   // OIDC Redirect Configuration
   oidcRedirectPath: z.string().default('/auth/callback'),
 
+  // Authentication / JWT Verification Configuration
+  auth: z.object({
+    required: booleanString,
+    issuer: z.string().url().optional(),
+    audience: z.string().optional(),
+    rolesClaim: z.string().default('roles'),
+    clockToleranceSeconds: z.coerce.number().int().nonnegative().default(10),
+    accessTokenCookieMaxAgeSeconds: z.coerce.number().int().positive().default(3600),
+    refreshTokenCookieMaxAgeSeconds: z.coerce.number().int().positive().default(2592000),
+    revokeOnLogout: trueBooleanString,
+  }),
+
   // PIM Configuration
   pim: z.object({
     enabled: booleanString,
@@ -201,6 +213,18 @@ export const loadConfig = (): Config => {
       // OIDC
       oidcRedirectPath: process.env.OIDC_REDIRECT_PATH,
 
+      // Auth
+      auth: {
+        required: process.env.AUTH_REQUIRED,
+        issuer: process.env.AUTH_ISSUER,
+        audience: process.env.AUTH_AUDIENCE,
+        rolesClaim: process.env.AUTH_ROLES_CLAIM,
+        clockToleranceSeconds: process.env.AUTH_CLOCK_TOLERANCE_SECONDS,
+        accessTokenCookieMaxAgeSeconds: process.env.AUTH_ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS,
+        refreshTokenCookieMaxAgeSeconds: process.env.AUTH_REFRESH_TOKEN_COOKIE_MAX_AGE_SECONDS,
+        revokeOnLogout: process.env.AUTH_REVOKE_ON_LOGOUT,
+      },
+
       // PIM
       pim: {
         enabled: process.env.PIM_ENABLED,
@@ -256,8 +280,14 @@ export const loadConfig = (): Config => {
       if (!config.session.cookieSecure) {
         console.warn('[WARN] SESSION_COOKIE_SECURE should be true in production');
       }
+      if (config.session.cookieSameSite === 'None' && !config.session.cookieSecure) {
+        throw new Error('SESSION_COOKIE_SECURE must be true when SESSION_COOKIE_SAME_SITE=None');
+      }
       if (config.localDevMode) {
         throw new Error('LOCAL_DEV_MODE cannot be enabled in production');
+      }
+      if (!config.auth.required) {
+        throw new Error('AUTH_REQUIRED must be true in production');
       }
     }
 
@@ -282,6 +312,10 @@ export const getConfig = (): Config => {
     _config = loadConfig();
   }
   return _config;
+};
+
+export const resetConfigForTests = (): void => {
+  _config = null;
 };
 
 // For convenience, export as config (but it's actually a getter)
