@@ -1,42 +1,38 @@
 # Local Access URLs
 
-All services are now accessible via NodePort on your localhost:
+All services are accessible via `kubectl port-forward`.
 
-## Access Methods
+## Access Method
 
-### Direct Access via NodePort (Fixed Ports)
+### Port Forwarding (Required)
 
-These ports are always available:
-- **S3 Manager**: http://localhost:30080
-- **Keycloak**: http://localhost:30081  
-- **LocalStack**: http://localhost:30082
-
-### Port Forwarding (If NodePort doesn't work)
-
-If the NodePort services don't work after laptop sleep/Docker restart:
+Open three separate terminal windows and run these commands:
 
 ```powershell
-# S3 Manager
+# Terminal 1 - S3 Manager
 kubectl port-forward -n s3-manager-test svc/s3-manager 9080:80
 
-# Keycloak
+# Terminal 2 - Keycloak
 kubectl port-forward -n keycloak svc/keycloak 9081:80
 
-# LocalStack  
+# Terminal 3 - LocalStack  
 kubectl port-forward -n localstack svc/localstack 9082:4566
 ```
 
-Then access at http://localhost:9080, http://localhost:9081, http://localhost:9082
+Then access:
+- **S3 Manager**: http://localhost:9080
+- **Keycloak**: http://localhost:9081
+- **LocalStack**: http://localhost:9082
 
 ### S3 Manager Application
-**URL**: http://localhost:30080
+**URL**: http://localhost:9080
 
 Main application for managing S3 buckets and objects.
 
 ### Keycloak (Authentication)
-**URL**: http://localhost:30081
+**URL**: http://localhost:9081
 
-Admin Console: http://localhost:30081/admin
+Admin Console: http://localhost:9081/admin
 - Username: `admin`
 - Password: `admin`
 
@@ -44,11 +40,11 @@ Realm: `s3-manager`
 Client: `s3-manager-client`
 
 ### LocalStack S3 API
-**URL**: http://localhost:30082
+**URL**: http://localhost:9082
 
 AWS CLI Example:
 ```bash
-aws --endpoint-url=http://localhost:30082 s3 ls
+aws --endpoint-url=http://localhost:9082 s3 ls
 ```
 
 Credentials (default for LocalStack):
@@ -62,34 +58,34 @@ Credentials (default for LocalStack):
 ### 1. Test LocalStack S3
 ```bash
 # List buckets
-aws --endpoint-url=http://localhost:30082 s3 ls
+aws --endpoint-url=http://localhost:9082 s3 ls
 
 # Create a test bucket
-aws --endpoint-url=http://localhost:30082 s3 mb s3://my-test-bucket
+aws --endpoint-url=http://localhost:9082 s3 mb s3://my-test-bucket
 
 # Upload a file
 echo "Hello from LocalStack" > test.txt
-aws --endpoint-url=http://localhost:30082 s3 cp test.txt s3://my-test-bucket/
+aws --endpoint-url=http://localhost:9082 s3 cp test.txt s3://my-test-bucket/
 
 # List objects
-aws --endpoint-url=http://localhost:30082 s3 ls s3://my-test-bucket/
+aws --endpoint-url=http://localhost:9082 s3 ls s3://my-test-bucket/
 ```
 
 ### 2. Test Keycloak
-Open http://localhost:30081 in your browser and log in with admin/admin
+Open http://localhost:9081 in your browser and log in with admin/admin
 
 ### 3. Test S3 Manager
-Open http://localhost:30080 in your browser
+Open http://localhost:9080 in your browser
 
 ---
 
-## Port Mappings
+## Service Details
 
-| Service | Internal Port | NodePort | URL |
-|---------|--------------|----------|-----|
-| S3 Manager | 80 | 30080 | http://localhost:30080 |
-| Keycloak | 8080 | 30081 | http://localhost:30081 |
-| LocalStack | 4566 | 30082 | http://localhost:30082 |
+| Service | Internal Port | Port Forward | URL |
+|---------|--------------|--------------|-----|
+| S3 Manager | 80 | 9080 | http://localhost:9080 |
+| Keycloak | 8080 | 9081 | http://localhost:9081 |
+| LocalStack | 4566 | 9082 | http://localhost:9082 |
 
 ---
 
@@ -97,15 +93,15 @@ Open http://localhost:30080 in your browser
 
 ```
 ┌─────────────────┐
-│   S3 Manager    │ ← http://localhost:30080
-│  (Port 30080)   │
+│   S3 Manager    │ ← http://localhost:9080
+│  (Port Forward) │
 └────────┬────────┘
          │
-         ├─→ Keycloak (Port 30081)     ← Authentication
-         │   http://localhost:30081
+         ├─→ Keycloak (Port Forward)   ← Authentication
+         │   http://localhost:9081
          │
-         └─→ LocalStack (Port 30082)   ← S3 Storage
-             http://localhost:30082
+         └─→ LocalStack (Port Forward) ← S3 Storage
+             http://localhost:9082
 ```
 
 ## Troubleshooting

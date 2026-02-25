@@ -1,6 +1,6 @@
 # Local Kubernetes Setup with kind
 
-This guide explains how to set up the S3 Manager application on a local kind cluster with NodePort access.
+This guide explains how to set up the S3 Manager application on a local kind cluster.
 
 ## Prerequisites
 
@@ -9,42 +9,23 @@ This guide explains how to set up the S3 Manager application on a local kind clu
 - `kubectl` CLI installed
 - S3 Manager Docker image built: `docker build -t s3-manager:dev .`
 
-## Why NodePort Doesn't Work by Default
-
-kind clusters run inside Docker containers. By default, NodePort services (ports 30000-32767) are only accessible inside the Docker network, not from your host machine.
-
-To access NodePort services from `localhost`, you need to configure **extraPortMappings** when creating the kind cluster.
-
 ## Setup Instructions
 
-### Step 1: Delete Existing Cluster (If Needed)
+### Step 1: Create kind Cluster (If Needed)
 
-If you already have a kind cluster:
-
-```bash
-kind delete cluster --name kind-cluster
-```
-
-### Step 2: Create Cluster with Port Mappings
-
-The `kind-config.yaml` file is already configured with the required port mappings:
+If you don't have a kind cluster yet:
 
 ```bash
-kind create cluster --name kind-cluster --config k8s/local/kind-config.yaml
+kind create cluster --name kind-cluster
 ```
 
-This creates a cluster that maps:
-- Container port 30080 → localhost:30080 (S3 Manager)
-- Container port 30081 → localhost:30081 (Keycloak)
-- Container port 30082 → localhost:30082 (LocalStack)
-
-### Step 3: Load Docker Image into kind
+### Step 2: Load Docker Image into kind
 
 ```bash
 kind load docker-image s3-manager:dev --name kind-cluster
 ```
 
-### Step 4: Install Envoy Gateway
+### Step 3: Install Envoy Gateway
 
 ```bash
 kubectl apply -f https://github.com/envoyproxy/gateway/releases/download/v1.3.0/install.yaml
@@ -56,13 +37,13 @@ Wait for Envoy Gateway to be ready:
 kubectl wait --for=condition=available deployment/envoy-gateway -n envoy-gateway-system --timeout=180s
 ```
 
-### Step 5: Deploy All Services
+### Step 4: Deploy All Services
 
 ```bash
 kubectl apply -k k8s/local/
 ```
 
-### Step 6: Wait for Pods to be Ready
+### Step 5: Wait for Pods to be Ready
 
 ```bash
 # Wait for all pods to be running
@@ -71,35 +52,9 @@ kubectl wait --for=condition=ready pod -l app=localstack -n localstack --timeout
 kubectl wait --for=condition=ready pod -l app=s3-manager -n s3-manager-test --timeout=180s
 ```
 
-### Step 7: Verify Services
+### Step 6: Access Services via Port-Forwarding
 
-Check that all pods are running:
-
-```bash
-kubectl get pods -A | grep -E "(s3-manager|keycloak|localstack|envoy)"
-```
-
-Test NodePort access:
-
-```bash
-curl http://localhost:30080/health    # S3 Manager
-curl http://localhost:30081           # Keycloak
-curl http://localhost:30082/_localstack/health  # LocalStack
-```
-
-## Access Your Services
-
-Once deployed, access the services at:
-
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| **S3 Manager** | http://localhost:30080 | Via Keycloak OIDC |
-| **Keycloak Admin** | http://localhost:30081/admin | admin / admin |
-| **LocalStack S3** | http://localhost:30082 | test / test |
-
-## Alternative: Port-Forwarding (Without Cluster Recreation)
-
-If you don't want to recreate your cluster, use port-forwarding instead:
+Open three separate terminal windows and run these commands:
 
 ```bash
 # Terminal 1 - S3 Manager
@@ -112,24 +67,43 @@ kubectl port-forward -n keycloak svc/keycloak 9081:80
 kubectl port-forward -n localstack svc/localstack 9082:4566
 ```
 
-Then access:
-- S3 Manager: http://localhost:9080
-- Keycloak: http://localhost:9081
-- LocalStack: http://localhost:9082
+### Step 7: Verify Services
+
+Check that all pods are running:
+
+```bash
+kubectl get pods -A | grep -E "(s3-manager|keycloak|localstack|envoy)"
+```
+
+Test service access via port-forwarding (in separate terminals):
+
+```bash
+curl http://localhost:9080/health    # S3 Manager
+curl http://localhost:9081           # Keycloak
+curl http://localhost:9082/_localstack/health  # LocalStack
+```
+
+## Access Your Services
+
+Once deployed and port-forwarding is running, access the services at:
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| **S3 Manager** | http://localhost:9080 | Via Keycloak OIDC |
+| **Keycloak Admin** | http://localhost:9081/admin | admin / admin |
+| **LocalStack S3** | http://localhost:9082 | test / test |
 
 ## Configuration Files
 
 All configuration is in YAML files:
 
-- **`kind-config.yaml`** - kind cluster configuration with port mappings
 - **`keycloak/`** - Keycloak deployment with pre-configured realm
 - **`localstack/`** - LocalStack S3 service deployment
   - `deployment.yaml` - LocalStack pod configuration
   - `service.yaml` - ClusterIP service
-  - `nodeport-service.yaml` - NodePort service on port 30081
 - **`test-deployment/`** - S3 Manager application
   - `s3-manager-test.yaml` - Main deployment
-  - `nodeport-service.yaml` - NodePort service on port 30080
+  - `service.yaml` - ClusterIP service
 - **`envoy-gateway/`** - Gateway configuration and HTTPRoutes
 
 ## Testing the Setup
@@ -138,19 +112,19 @@ All configuration is in YAML files:
 
 ```bash
 # Create a test bucket
-aws --endpoint-url=http://localhost:30082 s3 mb s3://test-bucket
+aws --endpoint-url=http://localhost:9082 s3 mb s3://test-bucket
 
 # List buckets
-aws --endpoint-url=http://localhost:30082 s3 ls
+aws --endpoint-url=http://localhost:9082 s3 ls
 
 # Upload a file
 echo "Hello from LocalStack" > test.txt
-aws --endpoint-url=http://localhost:30082 s3 cp test.txt s3://test-bucket/
+aws --endpoint-url=http://localhost:9082 s3 cp test.txt s3://test-bucket/
 ```
 
 ### Test Keycloak
 
-Open http://localhost:30081/admin in your browser:
+Open http://localhost:9081/admin in your browser:
 - Username: `admin`
 - Password: `admin`
 
@@ -158,7 +132,7 @@ Navigate to the `s3-manager` realm to see the configured client.
 
 ### Test S3 Manager
 
-Open http://localhost:30080 in your browser. You should be redirected to Keycloak for authentication.
+Open http://localhost:9080 in your browser. You should be redirected to Keycloak for authentication.
 
 ## Troubleshooting
 
@@ -173,17 +147,15 @@ kubectl logs -n keycloak -l app=keycloak --tail=50
 kubectl logs -n localstack -l app=localstack --tail=50
 ```
 
-### NodePort not accessible
+### Port-forwarding disconnects
 
-Verify the kind cluster has port mappings:
+If port-forwarding drops (common after laptop sleep), just restart the port-forward commands:
 
 ```bash
-docker ps --filter "name=kind-cluster-control-plane"
+kubectl port-forward -n s3-manager-test svc/s3-manager 9080:80
+kubectl port-forward -n keycloak svc/keycloak 9081:80
+kubectl port-forward -n localstack svc/localstack 9082:4566
 ```
-
-Look for port mappings like `0.0.0.0:30080->30080/tcp` in the PORTS column.
-
-If missing, your cluster wasn't created with `kind-config.yaml`. Recreate it following Step 2.
 
 ### After laptop sleep
 
@@ -192,13 +164,7 @@ kind clusters sometimes need Docker Desktop to be restarted after sleep:
 1. Restart Docker Desktop
 2. Wait 30 seconds
 3. Test again: `kubectl get nodes`
-
-If nodes are not ready, restart the cluster:
-
-```bash
-kind delete cluster --name kind-cluster
-# Then follow setup steps again
-```
+4. Restart your port-forward commands if needed
 
 ## Architecture
 
@@ -206,13 +172,13 @@ kind delete cluster --name kind-cluster
 ┌─────────────────────────────────────────────────┐
 │              kind Cluster (Docker)              │
 │                                                 │
-│  ┌──────────────┐     Port Mapping             │
-│  │  S3 Manager  │ ← 30080:80 → localhost:30080  │
+│  ┌──────────────┐     Port Forward             │
+│  │  S3 Manager  │ ← :80 → localhost:9080        │
 │  └──────┬───────┘                               │
 │         │                                       │
-│         ├─→ Keycloak ← 30081:80 → localhost:30081
+│         ├─→ Keycloak ← :80 → localhost:9081     │
 │         │                                       │
-│         └─→ LocalStack ← 30082:4566 → localhost:30082
+│         └─→ LocalStack ← :4566 → localhost:9082 │
 │                                                 │
 └─────────────────────────────────────────────────┘
 ```
