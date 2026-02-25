@@ -1,8 +1,7 @@
 from flask import Blueprint, redirect, url_for, session, request, jsonify, current_app
-import msal
-import requests
-import jwt
+import secrets
 from functools import wraps
+from .oidc_providers import get_oidc_provider
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -25,16 +24,45 @@ def create_mock_user():
         'access_token': 'mock_token_for_local_dev'
     }
 
-def get_msal_app():
-    """Create MSAL confidential client application"""
+def get_oidc_provider_instance():
+    """
+    Get the configured OIDC provider instance
+    
+    Returns:
+        OIDCProvider instance or None if in local dev mode
+    """
     if is_local_dev_mode():
         return None
     
-    return msal.ConfidentialClientApplication(
-        current_app.config['AZURE_AD_CLIENT_ID'],
-        authority=current_app.config['AZURE_AD_AUTHORITY'],
-        client_credential=current_app.config['AZURE_AD_CLIENT_SECRET']
-    )
+    provider_type = current_app.config.get('OIDC_PROVIDER', 'keycloak')
+    
+    # Build provider config based on type
+    if provider_type in ['azure', 'azuread']:
+        config = {
+            'client_id': current_app.config['AZURE_AD_CLIENT_ID'],
+            'client_secret': current_app.config['AZURE_AD_CLIENT_SECRET'],
+            'authority': current_app.config['AZURE_AD_AUTHORITY'],
+            'scopes': current_app.config['AZURE_AD_SCOPES']
+        }
+    elif provider_type == 'keycloak':
+        config = {
+            'server_url': current_app.config['KEYCLOAK_SERVER_URL'],
+            'realm': current_app.config['KEYCLOAK_REALM'],
+            'client_id': current_app.config['KEYCLOAK_CLIENT_ID'],
+            'client_secret': current_app.config['KEYCLOAK_CLIENT_SECRET'],
+            'scopes': current_app.config['KEYCLOAK_SCOPES']
+        }
+    elif provider_type == 'google':
+        config = {
+            'client_id': current_app.config['GOOGLE_CLIENT_ID'],
+            'client_secret': current_app.config['GOOGLE_CLIENT_SECRET'],
+            'scopes': current_app.config['GOOGLE_SCOPES'],
+            'domain_roles': current_app.config.get('GOOGLE_DOMAIN_ROLES', {})
+        }
+    else:
+        raise ValueError(f"Unsupported OIDC provider: {provider_type}")
+    
+    return get_oidc_provider(provider_type, config)
 
 def login_required(f):
     """Decorator to require authentication"""
@@ -71,26 +99,8 @@ def permission_required(permission):
         return decorated_function
     return decorator
 
-def get_user_roles(access_token):
-    """Fetch user roles from Microsoft Graph API"""
-    headers = {'Authorization': f'Bearer {access_token}'}
-    
-    try:
-        # Get user's group memberships
-        graph_url = 'https://graph.microsoft.com/v1.0/me/memberOf'
-        response = requests.get(graph_url, headers=headers)
-        
-        if response.status_code == 200:
-            groups = response.json().get('value', [])
-            # Extract display names of groups
-            return [group.get('displayName') for group in groups if 'displayName' in group]
-    except Exception as e:
-        current_app.logger.error(f"Error fetching user roles: {e}")
-    
-    return []
-
 def map_roles_to_permissions(roles):
-    """Map Microsoft Entra roles to application permissions"""
+    """Map provider roles to application permissions"""
     permissions = set()
     role_permissions = current_app.config['ROLE_PERMISSIONS']
     
@@ -108,87 +118,123 @@ def map_roles_to_permissions(roles):
 
 @auth_bp.route('/login')
 def login():
-    """Initiate Azure AD login"""
+    """Initiate OIDC login flow"""
     # In local dev mode, create mock session and redirect
     if is_local_dev_mode():
         session['user'] = create_mock_user()
         session.permanent = True
         return redirect('/')
     
-    msal_app = get_msal_app()
-    
-    # Build authorization URL
-    redirect_uri = url_for('auth.callback', _external=True)
-    auth_url = msal_app.get_authorization_request_url(
-        scopes=current_app.config['AZURE_AD_SCOPES'],
-        redirect_uri=redirect_uri
-    )
-    
-    return redirect(auth_url)
+    try:
+        provider = get_oidc_provider_instance()
+        
+        # Generate state for CSRF protection
+        state = secrets.token_urlsafe(32)
+        session['oauth_state'] = state
+        
+        # Build redirect URI
+        redirect_uri = url_for('auth.callback', _external=True)
+        
+        # Get authorization URL from provider
+        auth_url = provider.get_authorization_url(redirect_uri, state)
+        
+        return redirect(auth_url)
+    except Exception as e:
+        current_app.logger.error(f"Error initiating login: {e}")
+        return jsonify({'error': 'Failed to initiate login'}), 500
 
 @auth_bp.route('/callback')
 def callback():
-    """Handle Azure AD callback"""
+    """Handle OIDC callback"""
     # In local dev mode, just redirect to home
     if is_local_dev_mode():
         return redirect('/')
     
-    if 'code' not in request.args:
-        return jsonify({'error': 'No authorization code received'}), 400
-    
-    msal_app = get_msal_app()
-    redirect_uri = url_for('auth.callback', _external=True)
-    
-    # Acquire token
-    result = msal_app.acquire_token_by_authorization_code(
-        request.args['code'],
-        scopes=current_app.config['AZURE_AD_SCOPES'],
-        redirect_uri=redirect_uri
-    )
-    
-    if 'error' in result:
-        return jsonify({'error': result.get('error_description', 'Authentication failed')}), 400
-    
-    # Decode ID token to get user info
-    id_token = result.get('id_token')
-    access_token = result.get('access_token')
-    
     try:
-        # Decode token - in production, you should verify the signature with proper keys
-        # For now, we extract claims without full verification as Azure AD has already validated it
-        # TODO: Implement proper signature verification using Microsoft's public keys
-        user_info = jwt.decode(id_token, options={"verify_signature": False})
+        # Verify state for CSRF protection
+        state = request.args.get('state')
+        if not state or state != session.get('oauth_state'):
+            return jsonify({'error': 'Invalid state parameter'}), 400
         
-        # Fetch user roles
-        roles = get_user_roles(access_token)
+        # Clear the state from session
+        session.pop('oauth_state', None)
+        
+        # Check for authorization code
+        if 'code' not in request.args:
+            error = request.args.get('error', 'No authorization code received')
+            error_description = request.args.get('error_description', '')
+            current_app.logger.error(f"OAuth error: {error} - {error_description}")
+            return jsonify({'error': error_description or error}), 400
+        
+        provider = get_oidc_provider_instance()
+        redirect_uri = url_for('auth.callback', _external=True)
+        
+        # Exchange code for tokens
+        token_result = provider.exchange_code_for_token(
+            request.args['code'],
+            redirect_uri
+        )
+        
+        access_token = token_result.get('access_token')
+        
+        # Store id_token in provider config if available (for Azure AD)
+        if 'id_token' in token_result:
+            provider.config['id_token'] = token_result['id_token']
+        
+        # Get user information
+        user_info = provider.get_user_info(access_token)
+        
+        # Get user roles from provider
+        roles = provider.get_user_roles(access_token, user_info)
+        
+        # Map roles to permissions
         permissions = map_roles_to_permissions(roles)
+        
+        # Extract user details (handle different provider formats)
+        name = user_info.get('name') or user_info.get('preferred_username') or user_info.get('email', 'Unknown User')
+        email = user_info.get('email') or user_info.get('preferred_username', '')
         
         # Store user session
         session['user'] = {
-            'name': user_info.get('name', 'Unknown User'),
-            'email': user_info.get('preferred_username', ''),
+            'name': name,
+            'email': email,
             'roles': roles,
             'permissions': permissions,
-            'access_token': access_token
+            'access_token': access_token,
+            'provider': current_app.config.get('OIDC_PROVIDER')
         }
         session.permanent = True
         
         return redirect('/')
+        
     except Exception as e:
-        current_app.logger.error(f"Error processing authentication: {e}")
-        return jsonify({'error': 'Failed to process authentication'}), 500
+        current_app.logger.error(f"Error processing authentication callback: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Failed to process authentication: {str(e)}'}), 500
 
 @auth_bp.route('/logout')
 def logout():
     """Logout user"""
+    provider_type = session.get('user', {}).get('provider')
+    
+    # Clear session
     session.clear()
     
     # In local dev mode, just redirect to login
     if is_local_dev_mode():
         return redirect(url_for('auth.login'))
     
-    logout_url = f"{current_app.config['AZURE_AD_AUTHORITY']}/oauth2/v2.0/logout"
-    return redirect(logout_url)
+    try:
+        # Get provider logout URL
+        provider = get_oidc_provider_instance()
+        logout_url = provider.get_logout_url(url_for('index', _external=True))
+        
+        return redirect(logout_url)
+    except Exception as e:
+        current_app.logger.error(f"Error during logout: {e}")
+        # Fallback to home page
+        return redirect('/')
 
 @auth_bp.route('/user')
 @login_required
@@ -200,15 +246,20 @@ def get_user():
         'email': user.get('email'),
         'roles': user.get('roles', []),
         'permissions': user.get('permissions', []),
+        'provider': user.get('provider', 'local'),
         'localDevMode': is_local_dev_mode()
     })
 
 @auth_bp.route('/pim/elevate', methods=['POST'])
 @login_required
 def elevate_privileges():
-    """Request privilege elevation via PIM"""
+    """Request privilege elevation via PIM (Azure AD specific)"""
     if not current_app.config['PIM_ENABLED']:
         return jsonify({'error': 'PIM is not enabled'}), 400
+    
+    # PIM is Azure AD specific
+    if current_app.config.get('OIDC_PROVIDER') not in ['azure', 'azuread']:
+        return jsonify({'error': 'PIM is only available with Azure AD'}), 400
     
     data = request.get_json()
     requested_role = data.get('role')

@@ -1,424 +1,173 @@
-# S3 Manager - Quick Start Guide
+# Quick Start - Local Development
 
-## Overview
-
-S3 Manager is a lightweight web application for managing S3 buckets in Rook-Ceph clusters with Microsoft Entra ID (Azure AD) authentication and PIM support.
-
-## Prerequisites Checklist
-
-Before deploying, ensure you have:
-
-- [ ] Kubernetes cluster (1.20+) with kubectl access
-- [ ] Helm 3.x installed
-- [ ] Rook-Ceph deployed with S3 gateway (RGW)
-- [ ] Azure AD tenant with admin access
-- [ ] Container registry access (Docker Hub, ACR, etc.)
-- [ ] Ingress controller installed (nginx recommended)
-- [ ] Cert-manager (optional, for TLS)
-
-## Step 1: Azure AD Setup (15 minutes)
-
-### Create App Registration
-
-1. Go to Azure Portal → Azure Active Directory → App registrations
-2. Click "New registration"
-3. Fill in:
-   - **Name:** S3 Manager
-   - **Account types:** Single tenant
-   - **Redirect URI:** `https://your-domain.com/auth/callback`
-4. Note the **Application (client) ID** and **Directory (tenant) ID**
-
-### Create Client Secret
-
-1. Go to Certificates & secrets → New client secret
-2. Add description: "S3 Manager Secret"
-3. Set expiration (e.g., 24 months)
-4. **Copy the secret value immediately** (you won't see it again!)
-
-### Configure API Permissions
-
-1. Go to API permissions → Add permission
-2. Select Microsoft Graph → Delegated permissions
-3. Add:
-   - `User.Read`
-   - `GroupMember.Read.All`
-4. Click "Grant admin consent for [your organization]"
-
-### Create Security Groups
-
-Create three security groups for role-based access:
+## 🚀 One-Command Setup
 
 ```bash
-# Using Azure CLI
-az ad group create --display-name "S3-Viewer" --mail-nickname "S3-Viewer"
-az ad group create --display-name "S3-Editor" --mail-nickname "S3-Editor"
-az ad group create --display-name "S3-Admin" --mail-nickname "S3-Admin"
-```
-
-**Or via Azure Portal:**
-1. Go to Azure AD → Groups → New group
-2. Group type: Security
-3. Create groups: S3-Viewer, S3-Editor, S3-Admin
-4. Add members to each group
-
-**Role Permissions:**
-- **S3-Viewer:** Can list buckets and objects, download files
-- **S3-Editor:** Can also upload files
-- **S3-Admin:** Can also delete files
-
-## Step 2: Get Rook-Ceph Credentials (5 minutes)
-
-### Find RGW Service
-
-```bash
-kubectl get svc -n rook-ceph | grep rgw
-```
-
-Example output:
-```
-rook-ceph-rgw-my-store   ClusterIP   10.96.1.100   <none>   8080/TCP
-```
-
-Your S3 endpoint: `http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:8080`
-
-### Get S3 Access Keys
-
-```bash
-# Replace 'my-store' and 'my-user' with your actual names
-STORE_NAME="my-store"
-USER_NAME="my-user"
-
-# Get Access Key
-kubectl get secret -n rook-ceph \
-  rook-ceph-object-user-${STORE_NAME}-${USER_NAME} \
-  -o jsonpath='{.data.AccessKey}' | base64 -d && echo
-
-# Get Secret Key
-kubectl get secret -n rook-ceph \
-  rook-ceph-object-user-${STORE_NAME}-${USER_NAME} \
-  -o jsonpath='{.data.SecretKey}' | base64 -d && echo
-```
-
-## Step 3: Build Docker Image (10 minutes)
-
-### Build Image
-
-```bash
-# Clone repository if not already done
-git clone https://github.com/basmulder03/s3-manager.git
+# Clone the repository
+git clone <repo-url>
 cd s3-manager
 
-# Build image
-docker build -t s3-manager:1.0.0 .
+# Copy environment configuration
+cp .env.example .env
+
+# Start all services
+docker-compose up -d
+
+# Wait for services to be healthy (30-60 seconds)
+docker-compose ps
 ```
 
-### Push to Registry
+## 🌐 Access Points
 
-**For Docker Hub:**
-```bash
-docker login
-docker tag s3-manager:1.0.0 your-username/s3-manager:1.0.0
-docker push your-username/s3-manager:1.0.0
-```
+| Service          | URL                                   | Credentials              |
+|------------------|---------------------------------------|--------------------------|
+| S3 Manager App   | http://localhost:8080                 | See test users below     |
+| Keycloak Admin   | http://localhost:8090/admin           | admin / admin            |
+| LocalStack (S3)  | http://localhost:4566                 | test / test              |
 
-**For Azure Container Registry:**
-```bash
-az acr login --name yourregistry
-docker tag s3-manager:1.0.0 yourregistry.azurecr.io/s3-manager:1.0.0
-docker push yourregistry.azurecr.io/s3-manager:1.0.0
-```
+## 👥 Test Users
 
-## Step 4: Configure Deployment (10 minutes)
+Login to S3 Manager with these pre-configured users:
 
-### Generate Secret Key
+| Username | Password   | Role       | Permissions           |
+|----------|------------|------------|-----------------------|
+| admin    | admin123   | S3-Admin   | view, write, delete   |
+| editor   | editor123  | S3-Editor  | view, write           |
+| viewer   | viewer123  | S3-Viewer  | view only             |
 
-```bash
-python3 -c "import secrets; print(secrets.token_hex(32))"
-```
-
-Save this output - you'll need it in the next step.
-
-### Create values.yaml
-
-Create a file `values-production.yaml`:
-
-```yaml
-replicaCount: 2
-
-image:
-  repository: your-registry/s3-manager  # Update with your registry
-  tag: "1.0.0"
-  pullPolicy: IfNotPresent
-
-# For private registries
-imagePullSecrets:
-  - name: registry-secret  # If needed
-
-ingress:
-  enabled: true
-  className: "nginx"
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-  hosts:
-    - host: s3-manager.your-domain.com  # UPDATE THIS
-      paths:
-        - path: /
-          pathType: Prefix
-  tls:
-    - secretName: s3-manager-tls
-      hosts:
-        - s3-manager.your-domain.com  # UPDATE THIS
-
-config:
-  secretKey: "YOUR-GENERATED-SECRET-KEY"  # From step above
-  sessionCookieSecure: true
-  
-  azureAd:
-    tenantId: "YOUR-TENANT-ID"      # From Step 1
-    clientId: "YOUR-CLIENT-ID"      # From Step 1
-    clientSecret: "YOUR-CLIENT-SECRET"  # From Step 1
-  
-  pim:
-    enabled: true  # Set to false if not using PIM
-  
-  rolePermissions:
-    S3-Viewer:
-      - view
-    S3-Editor:
-      - view
-      - write
-    S3-Admin:
-      - view
-      - write
-      - delete
-  
-  defaultRole: "S3-Viewer"
-  
-  s3:
-    endpoint: "http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:8080"  # From Step 2
-    accessKey: "YOUR-S3-ACCESS-KEY"  # From Step 2
-    secretKey: "YOUR-S3-SECRET-KEY"  # From Step 2
-    region: "us-east-1"
-    useSSL: false
-    verifySSL: false
-
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
-```
-
-### Create Image Pull Secret (if using private registry)
+## 🔧 Common Commands
 
 ```bash
-kubectl create namespace s3-manager
+# View logs
+docker-compose logs -f s3-manager
+docker-compose logs -f keycloak
 
-kubectl create secret docker-registry registry-secret \
-  --namespace s3-manager \
-  --docker-server=yourregistry.azurecr.io \
-  --docker-username=your-username \
-  --docker-password=your-password
+# Restart services
+docker-compose restart s3-manager
+
+# Stop all services
+docker-compose down
+
+# Stop and remove volumes (clean slate)
+docker-compose down -v
+
+# Rebuild after code changes
+docker-compose up -d --build
 ```
 
-## Step 5: Deploy to Kubernetes (5 minutes)
+## 📁 Project Structure
 
-### Deploy with Helm
+```
+s3-manager/
+├── app/
+│   ├── auth/                    # Authentication module
+│   │   ├── __init__.py          # Auth routes and decorators
+│   │   └── oidc_providers.py    # OIDC provider implementations
+│   ├── s3/                      # S3 operations module
+│   ├── static/                  # Frontend assets
+│   │   └── js/
+│   │       ├── app.js           # Main entry point
+│   │       ├── types.js         # JSDoc type definitions
+│   │       └── modules/         # Modular ES6 code
+│   └── templates/               # HTML templates
+├── scripts/
+│   ├── keycloak-realm.json      # Keycloak configuration
+│   └── localstack-init.sh       # LocalStack initialization
+├── config.py                    # Application configuration
+├── docker-compose.yml           # Local development stack
+└── .env.example                 # Environment template
+```
 
+## 🎯 Development Workflow
+
+### 1. Make Code Changes
+
+Frontend changes (JavaScript/CSS) are hot-reloaded automatically via volume mount.
+
+Backend changes (Python) require a container restart:
 ```bash
-# Create namespace
-kubectl create namespace s3-manager
-
-# Install application
-helm install s3-manager ./helm/s3-manager \
-  -f values-production.yaml \
-  -n s3-manager
-
-# Watch deployment
-kubectl get pods -n s3-manager -w
+docker-compose restart s3-manager
 ```
 
-### Verify Deployment
+### 2. Test Different User Roles
 
+1. Logout from the app
+2. Login with a different test user
+3. Verify permission-based access control works
+
+### 3. Manage Keycloak Users
+
+1. Go to http://localhost:8090/admin
+2. Login with admin / admin
+3. Navigate to: s3-manager realm → Users
+4. Add/edit users and assign roles
+
+### 4. Test S3 Operations
+
+The LocalStack container provides a local S3 service:
+- Create buckets
+- Upload files
+- Test permissions with different users
+
+## 🔒 Authentication Modes
+
+### Keycloak (Default - Recommended)
 ```bash
-# Check pod status
-kubectl get pods -n s3-manager
-
-# Check logs
-kubectl logs -n s3-manager -l app.kubernetes.io/name=s3-manager
-
-# Check ingress
-kubectl get ingress -n s3-manager
-
-# Test health endpoint
-kubectl port-forward -n s3-manager svc/s3-manager 8080:80
-curl http://localhost:8080/health
+OIDC_PROVIDER=keycloak
+LOCAL_DEV_MODE=false
 ```
 
-Expected output:
-```json
-{"service":"S3 Manager","status":"healthy"}
-```
-
-## Step 6: Configure DNS (5 minutes)
-
-### Get Ingress IP
-
+### Mock Mode (No Authentication)
 ```bash
-kubectl get ingress -n s3-manager s3-manager \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+LOCAL_DEV_MODE=true
+OIDC_PROVIDER=keycloak  # ignored when LOCAL_DEV_MODE=true
 ```
 
-### Update DNS
-
-Create an A record:
-- **Name:** s3-manager (or your subdomain)
-- **Type:** A
-- **Value:** [Ingress IP from above]
-- **TTL:** 300 (5 minutes)
-
-### Verify DNS
-
+### Azure AD (Production)
 ```bash
-nslookup s3-manager.your-domain.com
-# or
-dig s3-manager.your-domain.com
+OIDC_PROVIDER=azure
+LOCAL_DEV_MODE=false
+# Configure Azure AD settings in .env
 ```
 
-## Step 7: Test Application (10 minutes)
+## 🐛 Troubleshooting
 
-### Access Application
+### "Connection refused" when logging in
+**Issue:** Keycloak not ready yet  
+**Solution:** Wait 30-60 seconds after `docker-compose up`, then try again
 
-1. Open browser: `https://s3-manager.your-domain.com`
-2. Click "Login with Microsoft"
-3. Authenticate with Azure AD account
-4. Grant consent if prompted
-5. You should see the S3 Manager dashboard
+### "Invalid redirect URI"
+**Issue:** Redirect URI mismatch  
+**Solution:** Update `redirectUris` in `scripts/keycloak-realm.json` to match your URL
 
-### Test Basic Functions
+### "No permissions" after login
+**Issue:** User has no roles assigned  
+**Solution:** Assign a role in Keycloak admin console
 
-1. **View Buckets:** Should list all S3 buckets
-2. **Browse Objects:** Click a bucket to view objects
-3. **Download File:** Click download on any object
-4. **Check Permissions:** Verify role badges show your permissions
+### Frontend changes not reflecting
+**Issue:** Browser cache  
+**Solution:** Hard refresh (Ctrl+F5) or clear browser cache
 
-### Test Role-Based Access
-
-1. **S3-Viewer:** Can only view and download
-2. **S3-Editor:** Can also see upload buttons
-3. **S3-Admin:** Can also see delete buttons
-
-### Test PIM (if enabled)
-
-1. Click "Request Elevated Access (PIM)"
-2. Enter target role (e.g., "S3-Admin")
-3. Check Azure portal for PIM activation request
-
-## Troubleshooting
-
-### Cannot Login
-
+### Python module not found
+**Issue:** Dependencies not installed in container  
+**Solution:** 
 ```bash
-# Check logs
-kubectl logs -n s3-manager -l app.kubernetes.io/name=s3-manager | grep auth
-
-# Verify redirect URI matches exactly
-echo "https://$(kubectl get ingress -n s3-manager s3-manager -o jsonpath='{.spec.rules[0].host}')/auth/callback"
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
 ```
 
-Compare with Azure AD app registration redirect URI.
+## 📚 Additional Resources
 
-### Cannot List Buckets
+- [OIDC Setup Guide](./docs/OIDC_SETUP.md) - Detailed provider configuration
+- [Environment Variables](./.env.example) - All configuration options
+- [Keycloak Documentation](https://www.keycloak.org/documentation) - Official Keycloak docs
 
-```bash
-# Test S3 connection from pod
-kubectl exec -n s3-manager -it deployment/s3-manager -- python3 -c "
-import boto3
-import os
-s3 = boto3.client('s3',
-    endpoint_url=os.environ['S3_ENDPOINT'],
-    aws_access_key_id=os.environ['S3_ACCESS_KEY'],
-    aws_secret_access_key=os.environ['S3_SECRET_KEY'])
-print(s3.list_buckets())
-"
-```
+## 🎓 Next Steps
 
-### Certificate Issues
-
-```bash
-# Check cert-manager certificate
-kubectl get certificate -n s3-manager
-
-# Check certificate details
-kubectl describe certificate -n s3-manager s3-manager-tls
-```
-
-## Maintenance
-
-### Update Application
-
-```bash
-# Build new version
-docker build -t your-registry/s3-manager:1.0.1 .
-docker push your-registry/s3-manager:1.0.1
-
-# Update values.yaml with new tag
-# Then upgrade
-helm upgrade s3-manager ./helm/s3-manager \
-  -f values-production.yaml \
-  -n s3-manager
-```
-
-### Backup Configuration
-
-```bash
-# Backup Helm values
-cp values-production.yaml backups/values-$(date +%Y%m%d).yaml
-
-# Backup Kubernetes resources
-kubectl get all -n s3-manager -o yaml > backup-$(date +%Y%m%d).yaml
-```
-
-### Monitor Resources
-
-```bash
-# Check resource usage
-kubectl top pods -n s3-manager
-
-# Check logs
-kubectl logs -n s3-manager -l app.kubernetes.io/name=s3-manager -f
-```
-
-## Security Checklist
-
-- [ ] Changed default secret key to secure random value
-- [ ] Configured TLS/HTTPS with valid certificate
-- [ ] Using private container registry with authentication
-- [ ] Azure AD client secret stored securely
-- [ ] S3 credentials stored as Kubernetes secret
-- [ ] Network policies configured (optional)
-- [ ] Resource limits set on pods
-- [ ] Regular security updates scheduled
-- [ ] Audit logging enabled
-- [ ] Backup procedures in place
-
-## Support
-
-- **Documentation:** See README.md, DEPLOYMENT.md, CONFIGURATION.md
-- **Issues:** https://github.com/basmulder03/s3-manager/issues
-- **Validation:** Run `./validate.sh` to verify setup
-
-## Estimated Total Time
-
-- Azure AD Setup: ~15 minutes
-- Rook-Ceph Config: ~5 minutes
-- Docker Build: ~10 minutes
-- Configuration: ~10 minutes
-- Deployment: ~5 minutes
-- DNS Setup: ~5 minutes
-- Testing: ~10 minutes
-
-**Total: ~60 minutes**
+1. ✅ Get local environment running
+2. ✅ Login with test users
+3. ✅ Test S3 operations (upload, download, delete)
+4. ✅ Explore Keycloak admin console
+5. 📖 Read [OIDC_SETUP.md](./docs/OIDC_SETUP.md) for production deployment
+6. 🔧 Customize roles and permissions in `config.py`

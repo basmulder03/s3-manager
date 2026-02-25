@@ -1,6 +1,32 @@
 version: '3.8'
 
 services:
+  # Keycloak - Local OIDC provider for development
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: s3-manager-keycloak
+    command: start-dev --import-realm
+    ports:
+      - "8090:8080"      # Keycloak admin console
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: dev-file
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - keycloak_data:/opt/keycloak/data:Z
+      - ./scripts/keycloak-realm.json:/opt/keycloak/data/import/realm.json:Z
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    networks:
+      - s3-manager-network
+    # Podman compatibility: Use userns_mode for rootless containers
+    userns_mode: "keep-id"
+
   # LocalStack - Local AWS cloud stack for S3 emulation
   localstack:
     image: localstack/localstack:latest
@@ -41,14 +67,24 @@ services:
     ports:
       - "8080:8080"
     environment:
-      # Development mode - disables Azure AD authentication
-      LOCAL_DEV_MODE: "true"
+      # Development mode - use Keycloak OIDC instead of mock auth
+      LOCAL_DEV_MODE: "false"
       FLASK_DEBUG: "true"
       
       # Flask secret
       SECRET_KEY: "dev-secret-key-change-in-production"
       
-      # Azure AD (not used in local dev mode)
+      # OIDC Provider (keycloak, azure, google)
+      OIDC_PROVIDER: "keycloak"
+      
+      # Keycloak Configuration
+      KEYCLOAK_SERVER_URL: "http://keycloak:8080"
+      KEYCLOAK_REALM: "s3-manager"
+      KEYCLOAK_CLIENT_ID: "s3-manager-client"
+      KEYCLOAK_CLIENT_SECRET: "dev-client-secret-12345"
+      KEYCLOAK_SCOPES: "openid profile email"
+      
+      # Azure AD (not used when OIDC_PROVIDER=keycloak)
       AZURE_AD_TENANT_ID: ""
       AZURE_AD_CLIENT_ID: ""
       AZURE_AD_CLIENT_SECRET: ""
@@ -74,6 +110,8 @@ services:
       - ./config.py:/app/config.py:Z
       - ./run.py:/app/run.py:Z
     depends_on:
+      keycloak:
+        condition: service_healthy
       localstack:
         condition: service_healthy
     networks:
@@ -82,6 +120,8 @@ services:
     userns_mode: "keep-id"
 
 volumes:
+  keycloak_data:
+    driver: local
   localstack_data:
     driver: local
 

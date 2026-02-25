@@ -8,16 +8,38 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
     
     # Local Development Mode
-    # When enabled, bypasses Azure AD authentication with a mock user
+    # When enabled, bypasses OIDC authentication with a mock user
     LOCAL_DEV_MODE = os.environ.get('LOCAL_DEV_MODE', 'false').lower() == 'true'
+    
+    # OIDC Provider Configuration
+    # Supported providers: 'azure', 'keycloak', 'google'
+    OIDC_PROVIDER = os.environ.get('OIDC_PROVIDER', 'keycloak')
     
     # Microsoft Entra ID (Azure AD) Configuration
     AZURE_AD_TENANT_ID = os.environ.get('AZURE_AD_TENANT_ID', '')
     AZURE_AD_CLIENT_ID = os.environ.get('AZURE_AD_CLIENT_ID', '')
     AZURE_AD_CLIENT_SECRET = os.environ.get('AZURE_AD_CLIENT_SECRET', '')
     AZURE_AD_AUTHORITY = f"https://login.microsoftonline.com/{AZURE_AD_TENANT_ID}" if AZURE_AD_TENANT_ID else ""
-    AZURE_AD_REDIRECT_PATH = "/auth/callback"
     AZURE_AD_SCOPES = ["User.Read"]
+    
+    # Keycloak Configuration
+    KEYCLOAK_SERVER_URL = os.environ.get('KEYCLOAK_SERVER_URL', 'http://keycloak:8080')
+    KEYCLOAK_REALM = os.environ.get('KEYCLOAK_REALM', 's3-manager')
+    KEYCLOAK_CLIENT_ID = os.environ.get('KEYCLOAK_CLIENT_ID', 's3-manager-client')
+    KEYCLOAK_CLIENT_SECRET = os.environ.get('KEYCLOAK_CLIENT_SECRET', 'your-keycloak-client-secret')
+    KEYCLOAK_SCOPES = os.environ.get('KEYCLOAK_SCOPES', 'openid profile email')
+    
+    # Google OAuth Configuration
+    GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+    GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+    GOOGLE_SCOPES = os.environ.get('GOOGLE_SCOPES', 'openid profile email')
+    # Map email domains to roles for Google auth (since Google doesn't provide groups by default)
+    GOOGLE_DOMAIN_ROLES = {
+        # Example: 'yourcompany.com': ['S3-Admin']
+    }
+    
+    # Generic OIDC redirect path
+    OIDC_REDIRECT_PATH = "/auth/callback"
     
     # PIM Configuration
     PIM_ENABLED = os.environ.get('PIM_ENABLED', 'false').lower() == 'true'
