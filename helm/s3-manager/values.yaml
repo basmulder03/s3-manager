@@ -42,7 +42,7 @@ service:
 # =============================================================================
 # Choose your ingress type: 'envoy', 'nginx', or 'standard'
 # - envoy: Use Envoy Gateway (recommended for new deployments)
-# - nginx: Use NGINX Ingress Controller (legacy, being deprecated)
+# - nginx: Use NGINX Ingress Controller (alternative option)
 # - standard: Use standard Kubernetes Ingress (basic routing only)
 # =============================================================================
 
@@ -294,9 +294,12 @@ config:
   # Local development mode - bypasses OIDC authentication
   # Set to true for local development only
   localDevMode: false
-  
-  # Flask debug mode (enable for local development)
-  flaskDebug: false
+
+  # Browser origin for CORS
+  webOrigin: "https://s3-manager.example.com"
+
+  # Require authenticated users (recommended in production)
+  authRequired: true
   
   # OIDC Provider Selection
   # Supported values: 'keycloak', 'azure', 'azuread', 'google'

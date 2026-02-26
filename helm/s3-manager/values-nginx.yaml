@@ -1,7 +1,7 @@
 # Example values for S3 Manager with NGINX Ingress and oauth2-proxy
 # Deploy with: helm install s3-manager ./helm/s3-manager -f ./helm/s3-manager/values-nginx.yaml
 
-# NOTE: NGINX Ingress is considered legacy. We recommend using Envoy Gateway for new deployments.
+# NOTE: NGINX Ingress is supported. Envoy Gateway is the recommended default for new deployments.
 # See values-envoy-keycloak.yaml or values-envoy-azure.yaml for modern alternatives.
 
 replicaCount: 2
@@ -16,10 +16,10 @@ service:
   port: 80
   targetPort: 8080
 
-# Ingress Configuration - NGINX Ingress (Legacy)
+# Ingress Configuration - NGINX Ingress (Alternative)
 ingress:
   enabled: true
-  type: nginx  # Use NGINX Ingress (legacy)
+  type: nginx  # Use NGINX Ingress
   
   className: nginx  # IngressClass name
   hostname: s3-manager.example.com

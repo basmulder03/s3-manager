@@ -320,7 +320,7 @@ If something goes wrong:
 # List revisions
 helm history s3-manager -n s3-manager
 
-# Rollback to previous version
+# Rollback to previous revision
 helm rollback s3-manager -n s3-manager
 
 # Or rollback to specific revision

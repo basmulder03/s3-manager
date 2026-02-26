@@ -23,7 +23,7 @@ metadata:
   name: s3-manager-config
   namespace: s3-manager-test
 data:
-  # Flask settings
+  # Application settings
   FLASK_ENV: "development"
   LOG_LEVEL: "DEBUG"
   

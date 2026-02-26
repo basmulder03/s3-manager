@@ -1,6 +1,6 @@
 # Stage 5 Parity Matrix
 
-This matrix tracks parity between legacy browser behavior and the new TypeScript frontend.
+This matrix tracks parity for browser behavior in the TypeScript frontend.
 
 ## Scope
 
@@ -10,7 +10,7 @@ This matrix tracks parity between legacy browser behavior and the new TypeScript
 
 ## Current Status
 
-| Area | Legacy Behavior | New Frontend | Status |
+| Area | Target Behavior | New Frontend | Status |
 | --- | --- | --- | --- |
 | Browse navigation | Breadcrumb + folder drill-down | Breadcrumb + folder drill-down | Complete |
 | Create folder | Modal + API call | Inline folder input + `s3.createFolder` | Complete |
@@ -27,7 +27,7 @@ This matrix tracks parity between legacy browser behavior and the new TypeScript
 
 - Context-menu focus/ARIA pass for accessibility hardening
 - End-to-end parity suite against LocalStack + OIDC provider in CI
-- Deep legacy UX nuances (exact timing/ordering of multi-download start)
+- Deep UX nuances (exact timing/ordering of multi-download start)
 
 ## Verification Commands
 

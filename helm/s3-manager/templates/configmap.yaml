@@ -5,8 +5,12 @@ metadata:
   labels:
     {{ include "s3-manager.labels" . | nindent 4 }}
 data:
+  PORT: {{ .Values.service.targetPort | quote }}
+  NODE_ENV: "production"
   LOCAL_DEV_MODE: {{ .Values.config.localDevMode | default false | quote }}
-  FLASK_DEBUG: {{ .Values.config.flaskDebug | default false | quote }}
+  WEB_ORIGIN: {{ .Values.config.webOrigin | quote }}
+  OIDC_PROVIDER: {{ .Values.config.oidcProvider | quote }}
+  AUTH_REQUIRED: {{ .Values.config.authRequired | quote }}
   DEFAULT_ROLE: {{ .Values.config.defaultRole | quote }}
   PIM_ENABLED: {{ .Values.config.pim.enabled | quote }}
   S3_ENDPOINT: {{ .Values.config.s3.endpoint | quote }}

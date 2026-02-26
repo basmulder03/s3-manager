@@ -14,7 +14,7 @@ Pre-configured Keycloak realm for S3 Manager with:
 - Protocol mappers for realm roles and groups
 
 Used by:
-- `docker-compose.yml` for local development
+- `docker-compose.local-dev.yml` for local infrastructure
 - `k8s/local/keycloak/` for local Kubernetes
 
 ### `localstack-init.sh`
@@ -25,7 +25,7 @@ Initialization script for LocalStack that creates test S3 buckets:
 - `uploads` - Empty bucket for upload testing
 
 Used by:
-- `docker-compose.yml` via volume mount
+- `docker-compose.local-dev.yml` via volume mount
 - LocalStack container startup
 
 ## Related Documentation

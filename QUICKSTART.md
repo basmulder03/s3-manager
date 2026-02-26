@@ -251,11 +251,10 @@ bun run lint --fix
 
 ## Next Steps
 
-See `MIGRATION.md` for:
+See docs for:
 - Detailed architecture explanation
-- Comparison with Flask version
-- Phase 2-7 implementation plan
-- Design decisions and rationale
+- Testing and CI workflows
+- Deployment guidance
 
 Stage 6 currently focuses on CI/CD readiness with `.github/workflows/typescript-ci.yml`.
 Branch protection recommendations are documented in `docs/development/ci.md`.
@@ -263,11 +262,11 @@ Branch protection recommendations are documented in `docs/development/ci.md`.
 ## Quick Wins
 
 Current TypeScript version:
-- ✅ 100% type coverage (vs 15% in Python)
-- ✅ Config validated at startup (vs runtime failures)
-- ✅ Hot reload in <50ms (vs manual refresh)
-- ✅ Modular code (vs 900-line files)
-- ✅ Auto-synced API types (vs manual maintenance)
+- ✅ Strong type safety across server and web
+- ✅ Config validated at startup
+- ✅ Fast local hot reload
+- ✅ Modular code structure
+- ✅ Auto-synced API types
 
 ## Links
 

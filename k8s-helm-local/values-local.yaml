@@ -38,7 +38,7 @@ config:
   # Enable local development mode
   localDevMode: true
   
-  # Flask secret key
+  # Application secret key
   secretKey: "dev-secret-key-change-in-production"
   
   # Azure AD Configuration (not used in local dev mode)

@@ -3,7 +3,7 @@
 This guide covers deploying S3 Manager with ingress controllers in Kubernetes. We support two approaches:
 
 1. **Envoy Gateway** (Recommended) - Modern, Kubernetes-native Gateway API with built-in OIDC support
-2. **NGINX Ingress** (Legacy) - Traditional Ingress controller requiring external oauth2-proxy
+2. **NGINX Ingress** (Alternative) - Traditional Ingress controller requiring external oauth2-proxy
 
 ## Table of Contents
 
@@ -14,7 +14,7 @@ This guide covers deploying S3 Manager with ingress controllers in Kubernetes. W
   - [Deployment with Keycloak](#deployment-with-keycloak)
   - [Deployment with Azure AD](#deployment-with-azure-ad)
   - [Deployment with Google OAuth](#deployment-with-google-oauth)
-- [NGINX Ingress Setup (Legacy)](#nginx-ingress-setup-legacy)
+- [NGINX Ingress Setup (Alternative)](#nginx-ingress-setup-alternative)
   - [Installation](#nginx-ingress-installation)
   - [Deployment with oauth2-proxy](#deployment-with-oauth2-proxy)
 - [Troubleshooting](#troubleshooting)
@@ -80,7 +80,7 @@ Internet → NGINX Ingress (TLS)
 - Requires separate oauth2-proxy deployment
 - Configuration via annotations (less declarative)
 - More complex setup
-- Legacy approach being phased out
+- Requires additional components and setup steps
 
 ---
 
@@ -270,9 +270,9 @@ helm install s3-manager ./helm/s3-manager \
 
 ---
 
-## NGINX Ingress Setup (Legacy)
+## NGINX Ingress Setup (Alternative)
 
-> **Note:** NGINX Ingress is considered legacy. We strongly recommend using Envoy Gateway for new deployments.
+> **Note:** NGINX Ingress is supported. Envoy Gateway is the recommended default for new deployments.
 
 ### NGINX Ingress Installation
 
