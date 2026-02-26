@@ -17,6 +17,15 @@ const trueBooleanString = z
   .default('true')
   .transform((val) => val.toLowerCase() === 'true');
 
+const optionalEnv = (value: string | undefined): string | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
 const configSchema = z.object({
   // Server Configuration
   port: z.coerce.number().int().positive().default(3000),
@@ -178,22 +187,22 @@ export const loadConfig = (): Config => {
     const config = configSchema.parse({
       // Server
       port: process.env.PORT || process.env.APP_PORT,
-      nodeEnv: process.env.NODE_ENV,
+      nodeEnv: optionalEnv(process.env.NODE_ENV),
       secretKey: process.env.SECRET_KEY,
 
       // Local Dev Mode
       localDevMode: process.env.LOCAL_DEV_MODE,
 
       // OIDC Provider
-      oidcProvider: process.env.OIDC_PROVIDER,
+      oidcProvider: optionalEnv(process.env.OIDC_PROVIDER),
 
       // Keycloak
       keycloak: {
-        serverUrl: process.env.KEYCLOAK_SERVER_URL,
-        realm: process.env.KEYCLOAK_REALM,
-        clientId: process.env.KEYCLOAK_CLIENT_ID,
-        clientSecret: process.env.KEYCLOAK_CLIENT_SECRET,
-        scopes: process.env.KEYCLOAK_SCOPES,
+        serverUrl: optionalEnv(process.env.KEYCLOAK_SERVER_URL),
+        realm: optionalEnv(process.env.KEYCLOAK_REALM),
+        clientId: optionalEnv(process.env.KEYCLOAK_CLIENT_ID),
+        clientSecret: optionalEnv(process.env.KEYCLOAK_CLIENT_SECRET),
+        scopes: optionalEnv(process.env.KEYCLOAK_SCOPES),
       },
 
       // Azure AD
@@ -209,19 +218,19 @@ export const loadConfig = (): Config => {
 
       // Google
       google: {
-        clientId: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        scopes: process.env.GOOGLE_SCOPES,
+        clientId: optionalEnv(process.env.GOOGLE_CLIENT_ID),
+        clientSecret: optionalEnv(process.env.GOOGLE_CLIENT_SECRET),
+        scopes: optionalEnv(process.env.GOOGLE_SCOPES),
       },
 
       // OIDC
-      oidcRedirectPath: process.env.OIDC_REDIRECT_PATH,
+      oidcRedirectPath: optionalEnv(process.env.OIDC_REDIRECT_PATH),
 
       // Auth
       auth: {
         required: process.env.AUTH_REQUIRED,
-        issuer: process.env.AUTH_ISSUER,
-        audience: process.env.AUTH_AUDIENCE,
+        issuer: optionalEnv(process.env.AUTH_ISSUER),
+        audience: optionalEnv(process.env.AUTH_AUDIENCE),
         rolesClaim: process.env.AUTH_ROLES_CLAIM,
         clockToleranceSeconds: process.env.AUTH_CLOCK_TOLERANCE_SECONDS,
         accessTokenCookieMaxAgeSeconds: process.env.AUTH_ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS,
@@ -232,18 +241,18 @@ export const loadConfig = (): Config => {
       // PIM
       pim: {
         enabled: process.env.PIM_ENABLED,
-        roleAssignmentApi: process.env.PIM_ROLE_ASSIGNMENT_API,
+        roleAssignmentApi: optionalEnv(process.env.PIM_ROLE_ASSIGNMENT_API),
       },
 
       // Role Permissions (use default from schema)
-      defaultRole: process.env.DEFAULT_ROLE,
+      defaultRole: optionalEnv(process.env.DEFAULT_ROLE),
 
       // S3
       s3: {
         endpoint: process.env.S3_ENDPOINT,
         accessKey: process.env.S3_ACCESS_KEY,
         secretKey: process.env.S3_SECRET_KEY,
-        region: process.env.S3_REGION,
+        region: optionalEnv(process.env.S3_REGION),
         useSsl: process.env.S3_USE_SSL,
         verifySsl: process.env.S3_VERIFY_SSL,
       },
@@ -253,21 +262,21 @@ export const loadConfig = (): Config => {
 
       // Web
       web: {
-        origin: process.env.WEB_ORIGIN,
+        origin: optionalEnv(process.env.WEB_ORIGIN),
       },
 
       // Telemetry
       telemetry: {
         enabled: process.env.OTEL_ENABLED,
-        serviceName: process.env.OTEL_SERVICE_NAME,
-        serviceVersion: process.env.OTEL_SERVICE_VERSION,
-        logLevel: process.env.OTEL_LOG_LEVEL,
-        logFormat: process.env.OTEL_LOG_FORMAT,
-        exporterType: process.env.OTEL_EXPORTER_TYPE,
+        serviceName: optionalEnv(process.env.OTEL_SERVICE_NAME),
+        serviceVersion: optionalEnv(process.env.OTEL_SERVICE_VERSION),
+        logLevel: optionalEnv(process.env.OTEL_LOG_LEVEL),
+        logFormat: optionalEnv(process.env.OTEL_LOG_FORMAT),
+        exporterType: optionalEnv(process.env.OTEL_EXPORTER_TYPE),
         otlp: {
-          logsEndpoint: process.env.OTLP_LOGS_ENDPOINT,
-          tracesEndpoint: process.env.OTLP_TRACES_ENDPOINT,
-          metricsEndpoint: process.env.OTLP_METRICS_ENDPOINT,
+          logsEndpoint: optionalEnv(process.env.OTLP_LOGS_ENDPOINT),
+          tracesEndpoint: optionalEnv(process.env.OTLP_TRACES_ENDPOINT),
+          metricsEndpoint: optionalEnv(process.env.OTLP_METRICS_ENDPOINT),
         },
         traceSampleRate: process.env.OTEL_TRACE_SAMPLE_RATE,
         batchSize: process.env.OTEL_BATCH_SIZE,
@@ -307,7 +316,10 @@ export const loadConfig = (): Config => {
       error.errors.forEach((err) => {
         console.error(`  - ${err.path.join('.')}: ${err.message}`);
       });
-      throw new Error('Invalid configuration');
+      const details = error.errors
+        .map((err) => `${err.path.join('.')}: ${err.message}`)
+        .join('; ');
+      throw new Error(`Invalid configuration: ${details}`);
     }
     throw error;
   }

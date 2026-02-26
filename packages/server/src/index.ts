@@ -3,8 +3,8 @@ import { resolve } from 'path';
 
 // Load environment variables FIRST, before any other imports
 const rootDir = resolve(import.meta.dir, '../../..');  // src -> server -> packages -> root
-loadDotenv({ path: resolve(rootDir, '.env.local') });
-loadDotenv({ path: resolve(rootDir, '.env') });
+loadDotenv({ path: resolve(rootDir, '.env'), override: true });
+loadDotenv({ path: resolve(rootDir, '.env.local'), override: true });
 
 import { config } from '@/config';
 import { createApp } from '@/app';
