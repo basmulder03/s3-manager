@@ -7,7 +7,7 @@ import { Button } from '@web/components/ui/Button';
 import { Input } from '@web/components/ui/Input';
 import { trpc, trpcProxyClient } from '@web/trpc/client';
 import { useUiStore } from '@web/state/ui';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import type { BrowseItem } from '@server/services/s3/types';
 
@@ -47,6 +47,9 @@ export const App = () => {
   } | null>(null);
   const [deleteModal, setDeleteModal] = useState<{ items: BrowseItem[] } | null>(null);
   const [modalError, setModalError] = useState<string>('');
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const moveInputRef = useRef<HTMLInputElement | null>(null);
+  const activeModalRef = useRef<HTMLDivElement | null>(null);
   const location = useLocation();
 
   const healthInfo = trpc.health.info.useQuery();
@@ -85,6 +88,69 @@ export const App = () => {
       window.removeEventListener('click', close);
     };
   }, []);
+
+  useEffect(() => {
+    if (renameModal) {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }
+  }, [renameModal]);
+
+  useEffect(() => {
+    if (moveModal) {
+      moveInputRef.current?.focus();
+      moveInputRef.current?.select();
+    }
+  }, [moveModal]);
+
+  useEffect(() => {
+    if (!isModalOpen) {
+      return;
+    }
+
+    const onFocusTrap = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') {
+        return;
+      }
+
+      const container = activeModalRef.current;
+      if (!container) {
+        return;
+      }
+
+      const focusable = Array.from(
+        container.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+        )
+      );
+
+      if (focusable.length === 0) {
+        return;
+      }
+
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      const active = document.activeElement as HTMLElement | null;
+
+      if (event.shiftKey) {
+        if (!active || active === first || !container.contains(active)) {
+          event.preventDefault();
+          last.focus();
+        }
+        return;
+      }
+
+      if (!active || active === last || !container.contains(active)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onFocusTrap);
+    return () => {
+      window.removeEventListener('keydown', onFocusTrap);
+    };
+  }, [isModalOpen]);
 
   const itemsByPath = useMemo(() => {
     const map = new Map<string, BrowseItem>();
@@ -690,13 +756,21 @@ export const App = () => {
       </Routes>
 
       {renameModal ? (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Rename item dialog">
-          <div className="modal-card">
-            <h3>Rename Item</h3>
-            <p>Current name: {renameModal.currentName}</p>
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rename-modal-title"
+          aria-describedby="rename-modal-description"
+          aria-label="Rename item dialog"
+        >
+          <div className="modal-card" ref={activeModalRef}>
+            <h3 id="rename-modal-title">Rename Item</h3>
+            <p id="rename-modal-description">Current name: {renameModal.currentName}</p>
             <label>
               New name
               <Input
+                ref={renameInputRef}
                 value={renameModal.nextName}
                 onChange={(event) => {
                   setRenameModal((previous) => {
@@ -711,6 +785,12 @@ export const App = () => {
                   });
                   setModalError('');
                 }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void submitRename();
+                  }
+                }}
                 placeholder="Enter new name"
               />
             </label>
@@ -724,13 +804,21 @@ export const App = () => {
       ) : null}
 
       {moveModal ? (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Move item dialog">
-          <div className="modal-card">
-            <h3>Move Item</h3>
-            <p>Source: {moveModal.sourcePath}</p>
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="move-modal-title"
+          aria-describedby="move-modal-description"
+          aria-label="Move item dialog"
+        >
+          <div className="modal-card" ref={activeModalRef}>
+            <h3 id="move-modal-title">Move Item</h3>
+            <p id="move-modal-description">Source: {moveModal.sourcePath}</p>
             <label>
               Destination path
               <Input
+                ref={moveInputRef}
                 value={moveModal.destinationPath}
                 onChange={(event) => {
                   setMoveModal((previous) => {
@@ -745,6 +833,12 @@ export const App = () => {
                   });
                   setModalError('');
                 }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void submitMove();
+                  }
+                }}
                 placeholder="my-bucket/folder"
               />
             </label>
@@ -758,10 +852,17 @@ export const App = () => {
       ) : null}
 
       {deleteModal ? (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Delete items dialog">
-          <div className="modal-card">
-            <h3>Confirm Delete</h3>
-            <p>
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-modal-title"
+          aria-describedby="delete-modal-description"
+          aria-label="Delete items dialog"
+        >
+          <div className="modal-card" ref={activeModalRef}>
+            <h3 id="delete-modal-title">Confirm Delete</h3>
+            <p id="delete-modal-description">
               {deleteModal.items.length === 1
                 ? `Delete ${deleteModal.items[0]?.name ?? 'selected item'}?`
                 : `Delete ${deleteModal.items.length} selected item(s)?`}

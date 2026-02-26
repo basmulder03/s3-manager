@@ -117,7 +117,7 @@ describe('Stage 5 browser parity interactions', () => {
 
     fireEvent.keyDown(window, { key: 'Delete' });
 
-    const dialog = await screen.findByRole('dialog', { name: 'Delete items dialog' });
+    const dialog = await screen.findByRole('dialog', { name: 'Confirm Delete' });
     expect(await screen.findByText('Confirm Delete')).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
