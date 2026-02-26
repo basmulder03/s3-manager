@@ -31,10 +31,25 @@ vi.mock('@web/trpc/client', () => ({
           refetch: vi.fn(),
         }),
       },
+      createFolder: {
+        useMutation: () => ({ mutateAsync: vi.fn() }),
+      },
+      deleteObject: {
+        useMutation: () => ({ mutateAsync: vi.fn() }),
+      },
+      deleteFolder: {
+        useMutation: () => ({ mutateAsync: vi.fn() }),
+      },
     },
   },
   API_ORIGIN: 'http://localhost:3000',
-  trpcProxyClient: {},
+  trpcProxyClient: {
+    s3: {
+      getObjectMetadata: {
+        query: vi.fn(),
+      },
+    },
+  },
 }));
 
 describe('App routes', () => {

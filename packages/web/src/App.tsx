@@ -5,8 +5,9 @@ import { AuthActions } from '@web/components/AuthActions';
 import { UploadPanel } from '@web/components/UploadPanel';
 import { Button } from '@web/components/ui/Button';
 import { Input } from '@web/components/ui/Input';
-import { trpc } from '@web/trpc/client';
+import { trpc, trpcProxyClient } from '@web/trpc/client';
 import { useUiStore } from '@web/state/ui';
+import { useState } from 'react';
 
 const formatDate = (value: string | null): string => {
   if (!value) {
@@ -24,11 +25,16 @@ const formatDate = (value: string | null): string => {
 export const App = () => {
   const selectedPath = useUiStore((state) => state.selectedPath);
   const setSelectedPath = useUiStore((state) => state.setSelectedPath);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [browserMessage, setBrowserMessage] = useState('');
 
   const healthInfo = trpc.health.info.useQuery();
   const authStatus = trpc.auth.status.useQuery();
   const authMe = trpc.auth.me.useQuery(undefined, { retry: false });
   const browse = trpc.s3.browse.useQuery({ virtualPath: selectedPath });
+  const createFolder = trpc.s3.createFolder.useMutation();
+  const deleteObject = trpc.s3.deleteObject.useMutation();
+  const deleteFolder = trpc.s3.deleteFolder.useMutation();
 
   const authenticated = authMe.isSuccess;
 
@@ -39,6 +45,79 @@ export const App = () => {
 
   const refreshBrowse = () => {
     void browse.refetch();
+  };
+
+  const splitObjectPath = (path: string): { bucketName: string; objectKey: string } => {
+    const [bucketName, ...parts] = path.split('/');
+    return {
+      bucketName: bucketName ?? '',
+      objectKey: parts.join('/'),
+    };
+  };
+
+  const createFolderInCurrentPath = async () => {
+    if (!selectedPath) {
+      setBrowserMessage('Navigate to a bucket path before creating folders.');
+      return;
+    }
+
+    if (!newFolderName.trim()) {
+      setBrowserMessage('Folder name is required.');
+      return;
+    }
+
+    try {
+      await createFolder.mutateAsync({
+        path: selectedPath,
+        folderName: newFolderName.trim(),
+      });
+      setNewFolderName('');
+      setBrowserMessage('Folder created successfully.');
+      refreshBrowse();
+    } catch {
+      setBrowserMessage('Failed to create folder.');
+    }
+  };
+
+  const downloadFile = async (path: string) => {
+    try {
+      const { bucketName, objectKey } = splitObjectPath(path);
+      const metadata = await trpcProxyClient.s3.getObjectMetadata.query({
+        bucketName,
+        objectKey,
+      });
+
+      window.open(metadata.downloadUrl, '_blank', 'noopener,noreferrer');
+      setBrowserMessage('Download link opened.');
+    } catch {
+      setBrowserMessage('Failed to generate download URL.');
+    }
+  };
+
+  const removeItem = async (path: string, type: 'file' | 'directory') => {
+    const confirmed = window.confirm(
+      type === 'directory'
+        ? 'Delete this folder and all nested contents?'
+        : 'Delete this file?'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      if (type === 'directory') {
+        await deleteFolder.mutateAsync({ path });
+      } else {
+        const { bucketName, objectKey } = splitObjectPath(path);
+        await deleteObject.mutateAsync({ bucketName, objectKey });
+      }
+
+      setBrowserMessage(type === 'directory' ? 'Folder deleted.' : 'File deleted.');
+      refreshBrowse();
+    } catch {
+      setBrowserMessage(type === 'directory' ? 'Failed to delete folder.' : 'Failed to delete file.');
+    }
   };
 
   return (
@@ -105,10 +184,20 @@ export const App = () => {
                 <Button variant="muted" onClick={() => setSelectedPath('')}>
                   Root
                 </Button>
+                <Input
+                  className="folder-input"
+                  value={newFolderName}
+                  onChange={(event) => setNewFolderName(event.target.value)}
+                  placeholder="New folder name"
+                />
+                <Button onClick={() => void createFolderInCurrentPath()}>
+                  Create Folder
+                </Button>
               </div>
 
               {browse.isLoading ? <p className="state">Loading objects...</p> : null}
               {browse.isError ? <p className="state error">Failed to load S3 path data.</p> : null}
+              {browserMessage ? <p className="state">{browserMessage}</p> : null}
 
               {browse.data ? (
                 <>
@@ -122,13 +211,25 @@ export const App = () => {
                   <ul className="items">
                     {browse.data.items.map((item) => (
                       <li key={`${item.type}:${item.path}`}>
-                        <Button onClick={() => item.type === 'directory' && setSelectedPath(item.path)}>
-                          <span className="tag">{item.type}</span>
-                          <strong>{item.name}</strong>
-                          <span>{item.path}</span>
-                          <span>{item.size === null ? '-' : `${item.size} bytes`}</span>
-                          <span>{formatDate(item.lastModified)}</span>
-                        </Button>
+                        <div className="item-row">
+                          <Button onClick={() => item.type === 'directory' && setSelectedPath(item.path)}>
+                            <span className="tag">{item.type}</span>
+                            <strong>{item.name}</strong>
+                            <span>{item.path}</span>
+                            <span>{item.size === null ? '-' : `${item.size} bytes`}</span>
+                            <span>{formatDate(item.lastModified)}</span>
+                          </Button>
+                          <div className="item-actions">
+                            {item.type === 'file' ? (
+                              <Button variant="muted" onClick={() => void downloadFile(item.path)}>
+                                Download
+                              </Button>
+                            ) : null}
+                            <Button variant="muted" onClick={() => void removeItem(item.path, item.type)}>
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
                       </li>
                     ))}
                   </ul>

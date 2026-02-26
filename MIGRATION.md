@@ -183,6 +183,14 @@ bun run lint
 - [x] Component library (baseline primitives + shared panels)
 - [x] State management (Zustand)
 
+### Phase 5: Feature Parity (Week 5)
+- [x] Auth UX in web app (login/logout/refresh)
+- [x] S3 browse + breadcrumb navigation
+- [x] Upload flow (direct + multipart cookbook)
+- [x] Browser actions: create folder, download, delete file/folder
+- [ ] Legacy edge-case parity sweep (remaining rename/multi-select/context menu behavior)
+- [ ] E2E parity matrix against legacy flows
+
 ---
 
 ## 💡 Key Design Decisions

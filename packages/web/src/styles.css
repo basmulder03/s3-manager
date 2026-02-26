@@ -179,6 +179,10 @@ code,
   min-width: 220px;
 }
 
+.folder-input {
+  max-width: 220px;
+}
+
 select,
 .ui-input,
 input[type='file'] {
@@ -272,7 +276,7 @@ label {
   gap: 0.45rem;
 }
 
-.items li button {
+.items li .item-row > .ui-button {
   width: 100%;
   text-align: left;
   display: grid;
@@ -280,6 +284,18 @@ label {
   gap: 0.6rem;
   align-items: center;
   background: rgba(0, 0, 0, 0.22);
+}
+
+.item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+}
+
+.item-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
 }
 
 .items strong {
@@ -307,9 +323,17 @@ label {
     grid-template-columns: 1fr;
   }
 
-  .items li button {
+  .items li .item-row > .ui-button {
     grid-template-columns: 62px 1fr;
     grid-auto-rows: auto;
+  }
+
+  .item-row {
+    grid-template-columns: 1fr;
+  }
+
+  .item-actions {
+    justify-content: flex-start;
   }
 
   .upload-grid {

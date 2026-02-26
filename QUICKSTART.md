@@ -24,10 +24,11 @@ http://localhost:5173
 
 The frontend talks to `VITE_API_URL` (defaults to `http://localhost:3000/trpc`).
 
-Stage 4 baseline now includes:
+Stage 4 + initial Stage 5 frontend includes:
 - Auth controls in UI (login, logout, refresh session)
 - S3 browser navigation with breadcrumbs
 - File upload panel using typed upload cookbook (direct vs multipart)
+- Browser operations: create folder, download file, delete file/folder
 - Frontend routes: `/overview`, `/browser`, `/upload`
 
 ## Test Endpoints
