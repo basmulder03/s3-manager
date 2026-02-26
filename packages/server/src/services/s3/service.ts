@@ -1,5 +1,6 @@
 import {
   AbortMultipartUploadCommand,
+  CopyObjectCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   DeleteObjectCommand,
@@ -40,6 +41,8 @@ import type {
   ObjectMetadataResult,
   PresignedUploadInput,
   PresignedUploadResult,
+  RenameItemInput,
+  RenameItemResult,
   S3BucketSummary,
   S3ObjectSummary,
 } from '@/services/s3/types';
@@ -66,6 +69,37 @@ const mapError = (error: unknown, fallbackMessage: string): S3ServiceError => {
 
 const metricActor = (actor: string | undefined): string => {
   return actor && actor.trim().length > 0 ? actor.trim() : 'anonymous';
+};
+
+const toCopySource = (bucketName: string, objectKey: string): string => {
+  return `/${bucketName}/${encodeURIComponent(objectKey).replace(/%2F/g, '/')}`;
+};
+
+const ensureRenameTarget = (sourceKey: string, newName?: string, destinationPrefix?: string): string => {
+  if (destinationPrefix && destinationPrefix.length > 0) {
+    const cleanSource = sourceKey.endsWith('/') ? sourceKey.slice(0, -1) : sourceKey;
+    const sourceName = cleanSource.split('/').pop();
+    if (!sourceName || sourceName.length === 0) {
+      throw new S3ServiceError('Unable to resolve source name for move operation', 'INVALID_PATH');
+    }
+
+    return sourceKey.endsWith('/') ? `${destinationPrefix}${sourceName}/` : `${destinationPrefix}${sourceName}`;
+  }
+
+  if (!newName || newName.trim().length === 0) {
+    throw new S3ServiceError('Either newName or destinationPath is required', 'INVALID_PATH');
+  }
+
+  const normalizedName = newName.trim();
+  if (normalizedName.includes('/')) {
+    throw new S3ServiceError('newName cannot contain path separators', 'INVALID_PATH');
+  }
+
+  const cleanSource = sourceKey.endsWith('/') ? sourceKey.slice(0, -1) : sourceKey;
+  const parentParts = cleanSource.split('/').slice(0, -1);
+  const parentPrefix = parentParts.length > 0 ? `${parentParts.join('/')}/` : '';
+
+  return sourceKey.endsWith('/') ? `${parentPrefix}${normalizedName}/` : `${parentPrefix}${normalizedName}`;
 };
 
 const normalizeMetadataValue = (value: string): string => value.trim();
@@ -588,6 +622,172 @@ export class S3Service {
         Date.now() - startedAt
       );
       throw mapError(error, 'Failed to delete folder');
+    }
+  }
+
+  async renameItem(input: RenameItemInput, actor?: string): Promise<RenameItemResult> {
+    const startedAt = Date.now();
+    const safeActor = metricActor(actor);
+
+    try {
+      const normalizedSourcePath = normalizeVirtualPath(input.sourcePath);
+      const [sourceBucket, ...sourceParts] = normalizedSourcePath.split('/');
+      if (!sourceBucket || sourceBucket.length === 0 || sourceParts.length === 0) {
+        throw new S3ServiceError('sourcePath must include bucket and key', 'INVALID_PATH');
+      }
+
+      const sourceKeyRaw = sourceParts.join('/');
+      const sourcePrefix = input.sourcePath.trim().endsWith('/')
+        ? `${sourceKeyRaw.replace(/\/+$/, '')}/`
+        : sourceKeyRaw;
+
+      if (sourcePrefix.length === 0) {
+        throw new S3ServiceError('Renaming bucket roots is not supported', 'INVALID_PATH');
+      }
+
+      const destinationBase = (() => {
+        if (!input.destinationPath) {
+          return null;
+        }
+
+        const normalizedDestinationPath = normalizeVirtualPath(input.destinationPath);
+        const [destinationBucket, ...destinationParts] = normalizedDestinationPath.split('/');
+        if (!destinationBucket || destinationBucket.length === 0) {
+          throw new S3ServiceError('destinationPath must include bucket name', 'INVALID_PATH');
+        }
+
+        const destinationPrefixRaw = destinationParts.join('/');
+        const destinationPrefix = destinationPrefixRaw.length > 0
+          ? `${destinationPrefixRaw.replace(/\/+$/, '')}/`
+          : '';
+
+        return {
+          bucketName: destinationBucket,
+          prefix: destinationPrefix,
+        };
+      })();
+
+      if (destinationBase && destinationBase.bucketName !== sourceBucket) {
+        throw new S3ServiceError('Cross-bucket move is not supported', 'INVALID_PATH');
+      }
+
+      const targetKey = ensureRenameTarget(sourcePrefix, input.newName, destinationBase?.prefix);
+      if (targetKey === sourcePrefix) {
+        throw new S3ServiceError('Source and destination are identical', 'INVALID_PATH');
+      }
+
+      const client = this.clientProvider();
+
+      if (sourcePrefix.endsWith('/')) {
+        let continuationToken: string | undefined;
+        const sourceKeys: string[] = [];
+
+        do {
+          const response = await client.send(
+            new ListObjectsV2Command({
+              Bucket: sourceBucket,
+              Prefix: sourcePrefix,
+              ContinuationToken: continuationToken,
+            })
+          );
+
+          for (const item of response.Contents ?? []) {
+            if (item.Key) {
+              sourceKeys.push(item.Key);
+            }
+          }
+
+          continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+        } while (continuationToken);
+
+        if (sourceKeys.length === 0) {
+          throw new S3ServiceError('Source folder is empty or not found', 'NoSuchKey');
+        }
+
+        for (const sourceKey of sourceKeys) {
+          const suffix = sourceKey.slice(sourcePrefix.length);
+          const destinationKey = `${targetKey}${suffix}`;
+
+          await client.send(
+            new CopyObjectCommand({
+              Bucket: sourceBucket,
+              CopySource: toCopySource(sourceBucket, sourceKey),
+              Key: destinationKey,
+            })
+          );
+        }
+
+        for (let i = 0; i < sourceKeys.length; i += 1000) {
+          const batch = sourceKeys.slice(i, i + 1000).map((Key) => ({ Key }));
+          await client.send(
+            new DeleteObjectsCommand({
+              Bucket: sourceBucket,
+              Delete: { Objects: batch },
+            })
+          );
+        }
+
+        recordS3FileAccess(
+          {
+            operation: 'write',
+            actor: safeActor,
+            bucket: sourceBucket,
+            objectKey: sourcePrefix,
+            result: 'success',
+          },
+          Date.now() - startedAt
+        );
+
+        return {
+          sourcePath: input.sourcePath,
+          destinationPath: `${sourceBucket}/${targetKey.replace(/\/$/, '')}`,
+          movedObjects: sourceKeys.length,
+        };
+      }
+
+      await client.send(
+        new CopyObjectCommand({
+          Bucket: sourceBucket,
+          CopySource: toCopySource(sourceBucket, sourcePrefix),
+          Key: targetKey,
+        })
+      );
+
+      await client.send(
+        new DeleteObjectCommand({
+          Bucket: sourceBucket,
+          Key: sourcePrefix,
+        })
+      );
+
+      recordS3FileAccess(
+        {
+          operation: 'write',
+          actor: safeActor,
+          bucket: sourceBucket,
+          objectKey: sourcePrefix,
+          result: 'success',
+        },
+        Date.now() - startedAt
+      );
+
+      return {
+        sourcePath: input.sourcePath,
+        destinationPath: `${sourceBucket}/${targetKey}`,
+        movedObjects: 1,
+      };
+    } catch (error) {
+      recordS3FileAccess(
+        {
+          operation: 'write',
+          actor: safeActor,
+          bucket: '*',
+          objectKey: input.sourcePath,
+          result: 'failure',
+        },
+        Date.now() - startedAt
+      );
+      throw mapError(error, 'Failed to rename/move item');
     }
   }
 

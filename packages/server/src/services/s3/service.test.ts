@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import { DeleteObjectsCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import {
+  CopyObjectCommand,
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  ListObjectsV2Command,
+} from '@aws-sdk/client-s3';
 import { S3Service } from './service';
 
 type CommandInput = { input: Record<string, unknown> };
@@ -36,6 +41,24 @@ class MockS3Client {
   }
 }
 
+class RenameMockS3Client {
+  readonly calls: unknown[] = [];
+
+  async send(command: unknown): Promise<unknown> {
+    this.calls.push(command);
+
+    if (command instanceof CopyObjectCommand) {
+      return {};
+    }
+
+    if (command instanceof DeleteObjectCommand) {
+      return {};
+    }
+
+    throw new Error('Unexpected command sent to rename mock client');
+  }
+}
+
 describe('S3Service deleteFolder', () => {
   it('deletes in batches of 1000', async () => {
     const client = new MockS3Client();
@@ -53,5 +76,29 @@ describe('S3Service deleteFolder', () => {
 
     expect(firstBatch.Objects).toHaveLength(1000);
     expect(secondBatch.Objects).toHaveLength(120);
+  });
+});
+
+describe('S3Service renameItem', () => {
+  it('renames a single file via copy + delete', async () => {
+    const client = new RenameMockS3Client();
+    const service = new S3Service(() => client as never);
+
+    const result = await service.renameItem(
+      {
+        sourcePath: 'my-bucket/folder/report.txt',
+        newName: 'renamed.txt',
+      },
+      'tester@example.com'
+    );
+
+    expect(result.destinationPath).toBe('my-bucket/folder/renamed.txt');
+    expect(result.movedObjects).toBe(1);
+
+    const copyCalls = client.calls.filter((call) => call instanceof CopyObjectCommand);
+    const deleteCalls = client.calls.filter((call) => call instanceof DeleteObjectCommand);
+
+    expect(copyCalls).toHaveLength(1);
+    expect(deleteCalls).toHaveLength(1);
   });
 });

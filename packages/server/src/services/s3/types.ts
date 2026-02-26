@@ -141,3 +141,15 @@ export interface DeleteFolderInput {
 export interface DeleteFolderResult {
   deletedCount: number;
 }
+
+export interface RenameItemInput {
+  sourcePath: string;
+  newName?: string;
+  destinationPath?: string;
+}
+
+export interface RenameItemResult {
+  sourcePath: string;
+  destinationPath: string;
+  movedObjects: number;
+}

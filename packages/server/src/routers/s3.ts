@@ -224,6 +224,26 @@ export const s3Router = router({
       }
     }),
 
+  renameItem: writeProcedure
+    .input(
+      z
+        .object({
+          sourcePath: z.string().min(1),
+          newName: z.string().min(1).optional(),
+          destinationPath: z.string().min(1).optional(),
+        })
+        .refine((value) => value.newName || value.destinationPath, {
+          message: 'Either newName or destinationPath is required',
+        })
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return s3Service.renameItem(input, actorFromContext(ctx));
+      } catch (error) {
+        throw mapS3ErrorToTrpc(error);
+      }
+    }),
+
   deleteObject: deleteProcedure
     .input(
       z.object({

@@ -33,6 +33,7 @@ export const App = () => {
   const authMe = trpc.auth.me.useQuery(undefined, { retry: false });
   const browse = trpc.s3.browse.useQuery({ virtualPath: selectedPath });
   const createFolder = trpc.s3.createFolder.useMutation();
+  const renameItem = trpc.s3.renameItem.useMutation();
   const deleteObject = trpc.s3.deleteObject.useMutation();
   const deleteFolder = trpc.s3.deleteFolder.useMutation();
 
@@ -117,6 +118,42 @@ export const App = () => {
       refreshBrowse();
     } catch {
       setBrowserMessage(type === 'directory' ? 'Failed to delete folder.' : 'Failed to delete file.');
+    }
+  };
+
+  const renamePathItem = async (path: string, currentName: string) => {
+    const nextName = window.prompt('Enter new name', currentName);
+    if (!nextName || nextName.trim() === '' || nextName.trim() === currentName) {
+      return;
+    }
+
+    try {
+      await renameItem.mutateAsync({
+        sourcePath: path,
+        newName: nextName.trim(),
+      });
+      setBrowserMessage('Item renamed successfully.');
+      refreshBrowse();
+    } catch {
+      setBrowserMessage('Failed to rename item.');
+    }
+  };
+
+  const movePathItem = async (path: string) => {
+    const destinationPath = window.prompt('Move to destination path (bucket/folder)', selectedPath || '');
+    if (!destinationPath || destinationPath.trim() === '') {
+      return;
+    }
+
+    try {
+      await renameItem.mutateAsync({
+        sourcePath: path,
+        destinationPath: destinationPath.trim(),
+      });
+      setBrowserMessage('Item moved successfully.');
+      refreshBrowse();
+    } catch {
+      setBrowserMessage('Failed to move item.');
     }
   };
 
@@ -220,6 +257,12 @@ export const App = () => {
                             <span>{formatDate(item.lastModified)}</span>
                           </Button>
                           <div className="item-actions">
+                            <Button variant="muted" onClick={() => void renamePathItem(item.path, item.name)}>
+                              Rename
+                            </Button>
+                            <Button variant="muted" onClick={() => void movePathItem(item.path)}>
+                              Move
+                            </Button>
                             {item.type === 'file' ? (
                               <Button variant="muted" onClick={() => void downloadFile(item.path)}>
                                 Download
