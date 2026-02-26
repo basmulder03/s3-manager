@@ -1,4 +1,4 @@
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Panel } from '@web/components/Panel';
 import { KeyValue } from '@web/components/KeyValue';
 import { AuthActions } from '@web/components/AuthActions';
@@ -8,6 +8,7 @@ import { Input } from '@web/components/ui/Input';
 import { trpc, trpcProxyClient } from '@web/trpc/client';
 import { useUiStore } from '@web/state/ui';
 import { useEffect, useMemo, useState } from 'react';
+import type { MouseEvent } from 'react';
 import type { BrowseItem } from '@server/services/s3/types';
 
 const formatDate = (value: string | null): string => {
@@ -29,6 +30,13 @@ export const App = () => {
   const [newFolderName, setNewFolderName] = useState('');
   const [browserMessage, setBrowserMessage] = useState('');
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    item: BrowseItem;
+  } | null>(null);
+  const location = useLocation();
 
   const healthInfo = trpc.health.info.useQuery();
   const authStatus = trpc.auth.status.useQuery();
@@ -52,7 +60,19 @@ export const App = () => {
 
   useEffect(() => {
     setSelectedItems(new Set());
+    setLastSelectedIndex(null);
   }, [selectedPath, browse.data?.path]);
+
+  useEffect(() => {
+    const close = () => {
+      setContextMenu(null);
+    };
+
+    window.addEventListener('click', close);
+    return () => {
+      window.removeEventListener('click', close);
+    };
+  }, []);
 
   const itemsByPath = useMemo(() => {
     const map = new Map<string, BrowseItem>();
@@ -87,6 +107,74 @@ export const App = () => {
 
   const clearSelection = () => {
     setSelectedItems(new Set());
+    setLastSelectedIndex(null);
+  };
+
+  const selectRange = (endIndex: number) => {
+    if (!browse.data?.items || lastSelectedIndex === null) {
+      return;
+    }
+
+    const start = Math.min(lastSelectedIndex, endIndex);
+    const end = Math.max(lastSelectedIndex, endIndex);
+
+    setSelectedItems((previous) => {
+      const next = new Set(previous);
+      for (let index = start; index <= end; index += 1) {
+        const item = browse.data?.items[index];
+        if (item) {
+          next.add(item.path);
+        }
+      }
+      return next;
+    });
+  };
+
+  const selectOnly = (path: string) => {
+    setSelectedItems(new Set([path]));
+  };
+
+  const handleRowClick = (item: BrowseItem, index: number, event: MouseEvent<HTMLButtonElement>) => {
+    if (event.shiftKey) {
+      event.preventDefault();
+      selectRange(index);
+      return;
+    }
+
+    if (event.metaKey || event.ctrlKey) {
+      event.preventDefault();
+      setSelectedItems((previous) => {
+        const next = new Set(previous);
+        if (next.has(item.path)) {
+          next.delete(item.path);
+        } else {
+          next.add(item.path);
+        }
+        return next;
+      });
+      setLastSelectedIndex(index);
+      return;
+    }
+
+    if (item.type === 'directory') {
+      setSelectedPath(item.path);
+      return;
+    }
+
+    selectOnly(item.path);
+    setLastSelectedIndex(index);
+  };
+
+  const openContextMenu = (item: BrowseItem, event: MouseEvent) => {
+    event.preventDefault();
+    if (!selectedItems.has(item.path)) {
+      selectOnly(item.path);
+    }
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      item,
+    });
   };
 
   const splitObjectPath = (path: string): { bucketName: string; objectKey: string } => {
@@ -212,6 +300,42 @@ export const App = () => {
 
     setBrowserMessage(`Started download for ${files.length} file(s).`);
   };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (location.pathname !== '/browser') {
+        return;
+      }
+
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        const all = new Set((browse.data?.items ?? []).map((item) => item.path));
+        setSelectedItems(all);
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        clearSelection();
+        setContextMenu(null);
+        return;
+      }
+
+      if (event.key === 'Delete' && selectedRecords.length > 0) {
+        event.preventDefault();
+        void bulkDelete();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [browse.data?.items, location.pathname, selectedRecords.length]);
 
   const renamePathItem = async (path: string, currentName: string) => {
     const nextName = window.prompt('Enter new name', currentName);
@@ -343,8 +467,8 @@ export const App = () => {
               {browse.isError ? <p className="state error">Failed to load S3 path data.</p> : null}
               {browserMessage ? <p className="state">{browserMessage}</p> : null}
 
-              {browse.data ? (
-                <>
+                {browse.data ? (
+                  <>
                   <div className="breadcrumbs">
                     {browse.data.breadcrumbs.map((crumb) => (
                       <Button key={crumb.path || 'home'} onClick={() => setSelectedPath(crumb.path)}>
@@ -352,23 +476,24 @@ export const App = () => {
                       </Button>
                     ))}
                   </div>
-                  <ul className="items">
-                    {browse.data.items.map((item) => (
-                      <li key={`${item.type}:${item.path}`}>
-                        <div className="item-row">
-                          <label className="row-checkbox">
-                            <input
-                              type="checkbox"
-                              checked={selectedItems.has(item.path)}
-                              onChange={(event) => {
-                                toggleSelection(item.path, event.target.checked);
-                              }}
-                            />
-                          </label>
-                          <Button onClick={() => item.type === 'directory' && setSelectedPath(item.path)}>
-                            <span className="tag">{item.type}</span>
-                            <strong>{item.name}</strong>
-                            <span>{item.path}</span>
+                    <ul className="items">
+                      {browse.data.items.map((item, index) => (
+                        <li key={`${item.type}:${item.path}`}>
+                          <div className="item-row" onContextMenu={(event) => openContextMenu(item, event)}>
+                            <label className="row-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={selectedItems.has(item.path)}
+                                onChange={(event) => {
+                                  toggleSelection(item.path, event.target.checked);
+                                  setLastSelectedIndex(index);
+                                }}
+                              />
+                            </label>
+                            <Button onClick={(event) => handleRowClick(item, index, event)}>
+                              <span className="tag">{item.type}</span>
+                              <strong>{item.name}</strong>
+                              <span>{item.path}</span>
                             <span>{item.size === null ? '-' : `${item.size} bytes`}</span>
                             <span>{formatDate(item.lastModified)}</span>
                           </Button>
@@ -391,9 +516,32 @@ export const App = () => {
                         </div>
                       </li>
                     ))}
-                  </ul>
-                </>
-              ) : null}
+                    </ul>
+
+                    {contextMenu ? (
+                      <div
+                        className="context-menu"
+                        style={{ left: contextMenu.x, top: contextMenu.y }}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <Button variant="muted" onClick={() => void renamePathItem(contextMenu.item.path, contextMenu.item.name)}>
+                          Rename
+                        </Button>
+                        <Button variant="muted" onClick={() => void movePathItem(contextMenu.item.path)}>
+                          Move
+                        </Button>
+                        {contextMenu.item.type === 'file' ? (
+                          <Button variant="muted" onClick={() => void downloadFile(contextMenu.item.path)}>
+                            Download
+                          </Button>
+                        ) : null}
+                        <Button variant="muted" onClick={() => void removeItem(contextMenu.item.path, contextMenu.item.type)}>
+                          Delete
+                        </Button>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
             </Panel>
           )}
         />
