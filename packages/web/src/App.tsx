@@ -464,29 +464,37 @@ export const App = () => {
           path="/browser"
           element={(
             <Panel title="S3 Browser" subtitle="From `trpc.s3.browse`">
-              <div className="browser-controls">
-                <Input
-                  className="path-input"
-                  value={selectedPath}
-                  onChange={(event) => setSelectedPath(event.target.value)}
-                  placeholder="Path example: my-bucket/folder"
-                />
-                <Button onClick={() => browse.refetch()}>
-                  Refresh
-                </Button>
-                <Button variant="muted" onClick={() => setSelectedPath('')}>
-                  Root
-                </Button>
-                <Input
-                  className="folder-input"
-                  value={newFolderName}
-                  onChange={(event) => setNewFolderName(event.target.value)}
-                  placeholder="New folder name"
-                />
-                <Button onClick={() => void createFolderInCurrentPath()}>
-                  Create Folder
-                </Button>
+              <div className="browser-toolbar">
+                <div className="browser-controls">
+                  <Input
+                    className="path-input"
+                    value={selectedPath}
+                    onChange={(event) => setSelectedPath(event.target.value)}
+                    placeholder="Path example: my-bucket/folder"
+                  />
+                  <Button variant="muted" onClick={() => browse.refetch()}>
+                    Refresh
+                  </Button>
+                  <Button variant="muted" onClick={() => setSelectedPath('')}>
+                    Root
+                  </Button>
+                </div>
+                <div className="browser-controls">
+                  <Input
+                    className="folder-input"
+                    value={newFolderName}
+                    onChange={(event) => setNewFolderName(event.target.value)}
+                    placeholder="New folder name"
+                  />
+                  <Button onClick={() => void createFolderInCurrentPath()}>
+                    Create Folder
+                  </Button>
+                </div>
               </div>
+
+              <p className="hotkeys-hint">
+                Shortcuts: Ctrl/Cmd+A select all, Delete remove, Ctrl/Cmd+D download, F2 rename, Ctrl/Cmd+Shift+M move.
+              </p>
 
               {selectedItems.size > 0 ? (
                 <div className="selection-bar">
@@ -499,7 +507,7 @@ export const App = () => {
                   >
                     Download Selected
                   </Button>
-                  <Button variant="muted" onClick={() => void bulkDelete()}>
+                  <Button variant="danger" onClick={() => void bulkDelete()}>
                     Delete Selected
                   </Button>
                   <Button variant="muted" onClick={clearSelection}>
@@ -512,33 +520,43 @@ export const App = () => {
               {browse.isError ? <p className="state error">Failed to load S3 path data.</p> : null}
               {browserMessage ? <p className="state">{browserMessage}</p> : null}
 
-                {browse.data ? (
-                  <>
+              {browse.data ? (
+                <>
                   <div className="breadcrumbs">
                     {browse.data.breadcrumbs.map((crumb) => (
-                      <Button key={crumb.path || 'home'} onClick={() => setSelectedPath(crumb.path)}>
+                      <Button key={crumb.path || 'home'} variant="muted" onClick={() => setSelectedPath(crumb.path)}>
                         {crumb.name}
                       </Button>
                     ))}
                   </div>
-                    <ul className="items">
-                      {browse.data.items.map((item, index) => (
-                        <li key={`${item.type}:${item.path}`}>
-                          <div className="item-row" onContextMenu={(event) => openContextMenu(item, event)}>
-                            <label className="row-checkbox">
-                              <input
-                                type="checkbox"
-                                checked={selectedItems.has(item.path)}
-                                onChange={(event) => {
-                                  toggleSelection(item.path, event.target.checked);
-                                  setLastSelectedIndex(index);
-                                }}
-                              />
-                            </label>
-                            <Button onClick={(event) => handleRowClick(item, index, event)}>
-                              <span className="tag">{item.type}</span>
-                              <strong>{item.name}</strong>
-                              <span>{item.path}</span>
+
+                  <div className="items-head" aria-hidden>
+                    <span>Type</span>
+                    <span>Name</span>
+                    <span>Path</span>
+                    <span>Size</span>
+                    <span>Modified</span>
+                    <span>Actions</span>
+                  </div>
+
+                  <ul className="items">
+                    {browse.data.items.map((item, index) => (
+                      <li key={`${item.type}:${item.path}`} className={selectedItems.has(item.path) ? 'is-selected' : ''}>
+                        <div className="item-row" onContextMenu={(event) => openContextMenu(item, event)}>
+                          <label className="row-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={selectedItems.has(item.path)}
+                              onChange={(event) => {
+                                toggleSelection(item.path, event.target.checked);
+                                setLastSelectedIndex(index);
+                              }}
+                            />
+                          </label>
+                          <Button className="item-main" onClick={(event) => handleRowClick(item, index, event)}>
+                            <span className="tag">{item.type}</span>
+                            <strong>{item.name}</strong>
+                            <span className="item-path">{item.path}</span>
                             <span>{item.size === null ? '-' : `${item.size} bytes`}</span>
                             <span>{formatDate(item.lastModified)}</span>
                           </Button>
@@ -554,48 +572,48 @@ export const App = () => {
                                 Download
                               </Button>
                             ) : null}
-                            <Button variant="muted" onClick={() => void removeItem(item.path, item.type)}>
+                            <Button variant="danger" onClick={() => void removeItem(item.path, item.type)}>
                               Delete
                             </Button>
                           </div>
                         </div>
                       </li>
                     ))}
-                    </ul>
+                  </ul>
 
-                    {contextMenu ? (
-                      <div
-                        className="context-menu"
-                        style={{ left: contextMenu.x, top: contextMenu.y }}
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <p className="context-group-title">Quick Actions</p>
-                        {contextMenu.item.type === 'directory' ? (
-                          <Button variant="muted" onClick={() => setSelectedPath(contextMenu.item.path)}>
-                            Open
-                          </Button>
-                        ) : (
-                          <Button variant="muted" onClick={() => void downloadFile(contextMenu.item.path)}>
-                            Download
-                          </Button>
-                        )}
+                  {contextMenu ? (
+                    <div
+                      className="context-menu"
+                      style={{ left: contextMenu.x, top: contextMenu.y }}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <p className="context-group-title">Quick Actions</p>
+                      {contextMenu.item.type === 'directory' ? (
+                        <Button variant="muted" onClick={() => setSelectedPath(contextMenu.item.path)}>
+                          Open
+                        </Button>
+                      ) : (
+                        <Button variant="muted" onClick={() => void downloadFile(contextMenu.item.path)}>
+                          Download
+                        </Button>
+                      )}
 
-                        <p className="context-group-title">Edit</p>
-                        <Button variant="muted" onClick={() => void renamePathItem(contextMenu.item.path, contextMenu.item.name)}>
-                          Rename
-                        </Button>
-                        <Button variant="muted" onClick={() => void movePathItem(contextMenu.item.path)}>
-                          Move
-                        </Button>
+                      <p className="context-group-title">Edit</p>
+                      <Button variant="muted" onClick={() => void renamePathItem(contextMenu.item.path, contextMenu.item.name)}>
+                        Rename
+                      </Button>
+                      <Button variant="muted" onClick={() => void movePathItem(contextMenu.item.path)}>
+                        Move
+                      </Button>
 
-                        <p className="context-group-title">Danger</p>
-                        <Button variant="muted" onClick={() => void removeItem(contextMenu.item.path, contextMenu.item.type)}>
-                          Delete
-                        </Button>
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
+                      <p className="context-group-title">Danger</p>
+                      <Button variant="danger" onClick={() => void removeItem(contextMenu.item.path, contextMenu.item.type)}>
+                        Delete
+                      </Button>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
             </Panel>
           )}
         />
