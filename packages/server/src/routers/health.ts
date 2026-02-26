@@ -1,6 +1,7 @@
 import { router, publicProcedure } from '@/trpc';
 import { config } from '@/config';
 import { getTelemetryStatus } from '@/telemetry';
+import { z } from 'zod';
 
 /**
  * Health check router
@@ -10,17 +11,39 @@ export const healthRouter = router({
   /**
    * Liveness probe - checks if server is running
    */
-  liveness: publicProcedure.query(() => {
+  liveness: publicProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/health/liveness',
+        tags: ['health'],
+        summary: 'Liveness probe',
+      },
+    })
+    .input(z.object({}))
+    .output(z.any())
+    .query(() => {
     return {
       status: 'ok',
       timestamp: new Date().toISOString(),
     };
-  }),
+    }),
 
   /**
    * Readiness probe - checks if server is ready to handle requests
    */
-  readiness: publicProcedure.query(() => {
+  readiness: publicProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/health/readiness',
+        tags: ['health'],
+        summary: 'Readiness probe',
+      },
+    })
+    .input(z.object({}))
+    .output(z.any())
+    .query(() => {
     const telemetry = getTelemetryStatus();
 
     // In the future, check S3 connectivity, database, etc.
@@ -39,17 +62,28 @@ export const healthRouter = router({
         },
       },
     };
-  }),
+    }),
 
   /**
    * Get server info (for debugging)
    */
-  info: publicProcedure.query(() => {
+  info: publicProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/health/info',
+        tags: ['health'],
+        summary: 'Server info',
+      },
+    })
+    .input(z.object({}))
+    .output(z.any())
+    .query(() => {
     return {
       app: config.app.name,
       version: config.app.version,
       env: config.nodeEnv,
       oidcProvider: config.oidcProvider,
     };
-  }),
+    }),
 });

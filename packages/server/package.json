@@ -10,7 +10,8 @@
     "build": "bun build src/index.ts --outdir dist --target node --sourcemap=external",
     "start": "bun dist/index.js",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "docs:api:check": "bun -e \"import { getOpenApiDocument } from './src/openapi/document'; const doc = getOpenApiDocument('http://localhost:3000'); const pathCount = Object.keys((doc.paths ?? {})).length; if (pathCount === 0) throw new Error('OpenAPI document has no paths'); console.log('OpenAPI paths:', pathCount);\""
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.679.0",
@@ -31,6 +32,7 @@
     "hono": "^4.0.0",
     "jose": "^6.1.3",
     "pino": "^10.3.1",
+    "trpc-openapi": "^1.2.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {

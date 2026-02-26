@@ -6,6 +6,7 @@ import { createContext } from '@/trpc';
 import { config } from '@/config';
 import { getLogger, getTelemetryStatus, telemetryMiddleware } from '@/telemetry';
 import { registerAuthHttpRoutes } from '@/http/auth';
+import { getOpenApiDocument, getScalarHtml } from '@/openapi/document';
 
 /**
  * Create and configure Hono application
@@ -66,6 +67,16 @@ export const createApp = () => {
         },
       },
     });
+  });
+
+  app.get('/openapi.json', (c) => {
+    const baseUrl = new URL(c.req.url).origin;
+    return c.json(getOpenApiDocument(baseUrl));
+  });
+
+  app.get('/docs', (c) => {
+    const baseUrl = new URL(c.req.url).origin;
+    return c.html(getScalarHtml(baseUrl));
   });
 
   registerAuthHttpRoutes(app);

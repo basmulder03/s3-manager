@@ -43,6 +43,12 @@ curl http://localhost:3000/health/ready
 # Server info
 curl http://localhost:3000/trpc/health.info
 
+# OpenAPI JSON (auto-generated)
+curl http://localhost:3000/openapi.json
+
+# API reference UI (Scalar)
+# Open in browser: http://localhost:3000/docs
+
 # Auth status (Stage 3)
 curl http://localhost:3000/trpc/auth.status
 

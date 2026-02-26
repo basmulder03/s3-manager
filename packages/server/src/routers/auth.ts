@@ -5,7 +5,18 @@ import { providerName, resolveAudience, resolveIssuer } from '@/auth/provider';
 import { introspectToken } from '@/auth/oidc';
 
 export const authRouter = router({
-  status: publicProcedure.query(({ ctx }) => {
+  status: publicProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/auth/status',
+        tags: ['auth'],
+        summary: 'Authentication status',
+      },
+    })
+    .input(z.object({}))
+    .output(z.any())
+    .query(({ ctx }) => {
     return {
       authenticated: ctx.user !== null,
       authRequired: config.auth.required,
@@ -14,9 +25,21 @@ export const authRouter = router({
       issuer: resolveIssuer() ?? null,
       audience: resolveAudience() ?? null,
     };
-  }),
+    }),
 
-  me: protectedProcedure.query(({ ctx }) => {
+  me: protectedProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/auth/me',
+        tags: ['auth'],
+        summary: 'Current authenticated user',
+        protect: true,
+      },
+    })
+    .input(z.object({}))
+    .output(z.any())
+    .query(({ ctx }) => {
     const user = ctx.user!;
 
     return {
@@ -27,9 +50,21 @@ export const authRouter = router({
       permissions: user.permissions,
       provider: user.provider,
     };
-  }),
+    }),
 
-  introspect: protectedProcedure.query(async ({ ctx }) => {
+  introspect: protectedProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/auth/introspect',
+        tags: ['auth'],
+        summary: 'Token introspection details',
+        protect: true,
+      },
+    })
+    .input(z.object({}))
+    .output(z.any())
+    .query(async ({ ctx }) => {
     const user = ctx.user!;
 
     const introspection = await introspectToken({
@@ -50,14 +85,23 @@ export const authRouter = router({
       provider: user.provider,
       details: introspection,
     };
-  }),
+    }),
 
   authorizeHeaderExample: publicProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/auth/authorize-header-example',
+        tags: ['auth'],
+        summary: 'Authorization header example',
+      },
+    })
     .input(
       z.object({
         tokenPreview: z.string().min(10).max(64),
       })
     )
+    .output(z.any())
     .query(({ input }) => {
       return {
         authorizationHeader: `Bearer ${input.tokenPreview}...`,

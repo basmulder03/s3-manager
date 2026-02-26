@@ -42,7 +42,19 @@ export const mapS3ErrorToTrpc = (error: unknown): TRPCError => {
 const actorFromContext = (ctx: { actor: string }): string => ctx.actor;
 
 export const s3Router = router({
-  listBuckets: viewProcedure.query(async ({ ctx }) => {
+  listBuckets: viewProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/s3/buckets',
+        tags: ['s3'],
+        summary: 'List buckets',
+        protect: true,
+      },
+    })
+    .input(z.object({}))
+    .output(z.any())
+    .query(async ({ ctx }) => {
     try {
       return {
         buckets: await s3Service.listBuckets(actorFromContext(ctx)),
@@ -50,14 +62,24 @@ export const s3Router = router({
     } catch (error) {
       throw mapS3ErrorToTrpc(error);
     }
-  }),
+    }),
 
   browse: viewProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/s3/browse',
+        tags: ['s3'],
+        summary: 'Browse virtual S3 path',
+        protect: true,
+      },
+    })
     .input(
       z.object({
         virtualPath: z.string().default(''),
       })
     )
+    .output(z.any())
     .query(async ({ input, ctx }) => {
       try {
         return s3Service.browse(input.virtualPath, actorFromContext(ctx));
@@ -67,6 +89,15 @@ export const s3Router = router({
     }),
 
   listObjects: viewProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/s3/objects',
+        tags: ['s3'],
+        summary: 'List objects in bucket',
+        protect: true,
+      },
+    })
     .input(
       z.object({
         bucketName: z.string().min(1),
@@ -75,6 +106,7 @@ export const s3Router = router({
         continuationToken: z.string().optional(),
       })
     )
+    .output(z.any())
     .query(async ({ input, ctx }) => {
       try {
         return s3Service.listObjects(input, actorFromContext(ctx));
@@ -84,6 +116,15 @@ export const s3Router = router({
     }),
 
   getObjectMetadata: viewProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/s3/object/metadata',
+        tags: ['s3'],
+        summary: 'Get object metadata and download URL',
+        protect: true,
+      },
+    })
     .input(
       z.object({
         bucketName: z.string().min(1),
@@ -91,6 +132,7 @@ export const s3Router = router({
         expiresInSeconds: z.number().int().positive().max(86400).optional(),
       })
     )
+    .output(z.any())
     .query(async ({ input, ctx }) => {
       try {
         return s3Service.getObjectMetadata(input, actorFromContext(ctx));
@@ -100,11 +142,21 @@ export const s3Router = router({
     }),
 
   getProperties: viewProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/s3/object/properties',
+        tags: ['s3'],
+        summary: 'Get object properties',
+        protect: true,
+      },
+    })
     .input(
       z.object({
         path: z.string().min(1),
       })
     )
+    .output(z.any())
     .query(async ({ input, ctx }) => {
       try {
         return s3Service.getObjectProperties(input, actorFromContext(ctx));
@@ -123,6 +175,7 @@ export const s3Router = router({
         metadata: z.record(z.string(), z.string()).optional(),
       })
     )
+    .output(z.any())
     .mutation(async ({ input, ctx }) => {
       try {
         return s3Service.createPresignedUpload(input, actorFromContext(ctx));
@@ -140,6 +193,7 @@ export const s3Router = router({
         metadata: z.record(z.string(), z.string()).optional(),
       })
     )
+    .output(z.any())
     .mutation(async ({ input, ctx }) => {
       try {
         return s3Service.initiateMultipartUpload(input, actorFromContext(ctx));
@@ -149,6 +203,15 @@ export const s3Router = router({
     }),
 
   createMultipartPartUploadUrl: writeProcedure
+    .meta({
+      openapi: {
+        method: 'POST',
+        path: '/s3/upload/multipart/part-url',
+        tags: ['s3'],
+        summary: 'Create multipart part upload URL',
+        protect: true,
+      },
+    })
     .input(
       z.object({
         bucketName: z.string().min(1),
@@ -158,6 +221,7 @@ export const s3Router = router({
         expiresInSeconds: z.number().int().positive().max(86400).optional(),
       })
     )
+    .output(z.any())
     .mutation(async ({ input, ctx }) => {
       try {
         return s3Service.createMultipartPartUploadUrl(input, actorFromContext(ctx));
@@ -180,6 +244,7 @@ export const s3Router = router({
         ),
       })
     )
+    .output(z.any())
     .mutation(async ({ input, ctx }) => {
       try {
         return s3Service.completeMultipartUpload(input, actorFromContext(ctx));
@@ -189,6 +254,15 @@ export const s3Router = router({
     }),
 
   abortMultipartUpload: writeProcedure
+    .meta({
+      openapi: {
+        method: 'POST',
+        path: '/s3/upload/multipart/abort',
+        tags: ['s3'],
+        summary: 'Abort multipart upload',
+        protect: true,
+      },
+    })
     .input(
       z.object({
         bucketName: z.string().min(1),
@@ -196,6 +270,7 @@ export const s3Router = router({
         uploadId: z.string().min(1),
       })
     )
+    .output(z.any())
     .mutation(async ({ input, ctx }) => {
       try {
         await s3Service.abortMultipartUpload(input, actorFromContext(ctx));
@@ -208,6 +283,15 @@ export const s3Router = router({
     }),
 
   uploadCookbook: viewProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/s3/upload/cookbook',
+        tags: ['s3'],
+        summary: 'Get upload strategy cookbook',
+        protect: true,
+      },
+    })
     .input(
       z
         .object({
@@ -219,17 +303,28 @@ export const s3Router = router({
         })
         .default({})
     )
+    .output(z.any())
     .query(({ input }) => {
       return buildUploadCookbook(input);
     }),
 
   createFolder: writeProcedure
+    .meta({
+      openapi: {
+        method: 'POST',
+        path: '/s3/folder/create',
+        tags: ['s3'],
+        summary: 'Create folder marker',
+        protect: true,
+      },
+    })
     .input(
       z.object({
         path: z.string().min(1),
         folderName: z.string().min(1),
       })
     )
+    .output(z.any())
     .mutation(async ({ input, ctx }) => {
       try {
         return s3Service.createFolder(input, actorFromContext(ctx));
@@ -239,6 +334,15 @@ export const s3Router = router({
     }),
 
   renameItem: writeProcedure
+    .meta({
+      openapi: {
+        method: 'POST',
+        path: '/s3/item/rename',
+        tags: ['s3'],
+        summary: 'Rename or move item',
+        protect: true,
+      },
+    })
     .input(
       z
         .object({
@@ -250,6 +354,7 @@ export const s3Router = router({
           message: 'Either newName or destinationPath is required',
         })
     )
+    .output(z.any())
     .mutation(async ({ input, ctx }) => {
       try {
         return s3Service.renameItem(input, actorFromContext(ctx));
@@ -259,12 +364,22 @@ export const s3Router = router({
     }),
 
   deleteObject: deleteProcedure
+    .meta({
+      openapi: {
+        method: 'DELETE',
+        path: '/s3/object',
+        tags: ['s3'],
+        summary: 'Delete object',
+        protect: true,
+      },
+    })
     .input(
       z.object({
         bucketName: z.string().min(1),
         objectKey: z.string().min(1),
       })
     )
+    .output(z.any())
     .mutation(async ({ input, ctx }) => {
       try {
         await s3Service.deleteObject(input, actorFromContext(ctx));
@@ -277,11 +392,21 @@ export const s3Router = router({
     }),
 
   deleteFolder: deleteProcedure
+    .meta({
+      openapi: {
+        method: 'DELETE',
+        path: '/s3/folder',
+        tags: ['s3'],
+        summary: 'Delete folder recursively',
+        protect: true,
+      },
+    })
     .input(
       z.object({
         path: z.string().min(1),
       })
     )
+    .output(z.any())
     .mutation(async ({ input, ctx }) => {
       try {
         return s3Service.deleteFolder(input, actorFromContext(ctx));
@@ -296,6 +421,7 @@ export const s3Router = router({
         paths: z.array(z.string().min(1)).min(1),
       })
     )
+    .output(z.any())
     .mutation(async ({ input, ctx }) => {
       try {
         return s3Service.deleteMultiple(input, actorFromContext(ctx));

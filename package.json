@@ -17,6 +17,7 @@
     "test:server": "bun run --filter server test",
     "test:web": "bun run --filter web test",
     "test:e2e:web": "bun run --filter web test:e2e",
+    "docs:api:check": "bun run --filter server docs:api:check",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"packages/**/*.{ts,tsx,json}\"",
     "typecheck": "bun run --filter server typecheck && bun run --filter web typecheck"
