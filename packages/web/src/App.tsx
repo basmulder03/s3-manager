@@ -7,7 +7,8 @@ import { Button } from '@web/components/ui/Button';
 import { Input } from '@web/components/ui/Input';
 import { trpc, trpcProxyClient } from '@web/trpc/client';
 import { useUiStore } from '@web/state/ui';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { BrowseItem } from '@server/services/s3/types';
 
 const formatDate = (value: string | null): string => {
   if (!value) {
@@ -27,6 +28,7 @@ export const App = () => {
   const setSelectedPath = useUiStore((state) => state.setSelectedPath);
   const [newFolderName, setNewFolderName] = useState('');
   const [browserMessage, setBrowserMessage] = useState('');
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
 
   const healthInfo = trpc.health.info.useQuery();
   const authStatus = trpc.auth.status.useQuery();
@@ -46,6 +48,45 @@ export const App = () => {
 
   const refreshBrowse = () => {
     void browse.refetch();
+  };
+
+  useEffect(() => {
+    setSelectedItems(new Set());
+  }, [selectedPath, browse.data?.path]);
+
+  const itemsByPath = useMemo(() => {
+    const map = new Map<string, BrowseItem>();
+    for (const item of browse.data?.items ?? []) {
+      map.set(item.path, item);
+    }
+    return map;
+  }, [browse.data?.items]);
+
+  const selectedRecords = useMemo(() => {
+    const records: BrowseItem[] = [];
+    for (const path of selectedItems) {
+      const record = itemsByPath.get(path);
+      if (record) {
+        records.push(record);
+      }
+    }
+    return records;
+  }, [itemsByPath, selectedItems]);
+
+  const toggleSelection = (path: string, checked: boolean) => {
+    setSelectedItems((previous) => {
+      const next = new Set(previous);
+      if (checked) {
+        next.add(path);
+      } else {
+        next.delete(path);
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedItems(new Set());
   };
 
   const splitObjectPath = (path: string): { bucketName: string; objectKey: string } => {
@@ -80,7 +121,7 @@ export const App = () => {
     }
   };
 
-  const downloadFile = async (path: string) => {
+  const downloadFile = async (path: string, silent = false) => {
     try {
       const { bucketName, objectKey } = splitObjectPath(path);
       const metadata = await trpcProxyClient.s3.getObjectMetadata.query({
@@ -89,21 +130,27 @@ export const App = () => {
       });
 
       window.open(metadata.downloadUrl, '_blank', 'noopener,noreferrer');
-      setBrowserMessage('Download link opened.');
+      if (!silent) {
+        setBrowserMessage('Download link opened.');
+      }
     } catch {
-      setBrowserMessage('Failed to generate download URL.');
+      if (!silent) {
+        setBrowserMessage('Failed to generate download URL.');
+      }
     }
   };
 
-  const removeItem = async (path: string, type: 'file' | 'directory') => {
-    const confirmed = window.confirm(
-      type === 'directory'
-        ? 'Delete this folder and all nested contents?'
-        : 'Delete this file?'
-    );
+  const removeItem = async (path: string, type: 'file' | 'directory', requireConfirm = true): Promise<boolean> => {
+    if (requireConfirm) {
+      const confirmed = window.confirm(
+        type === 'directory'
+          ? 'Delete this folder and all nested contents?'
+          : 'Delete this file?'
+      );
 
-    if (!confirmed) {
-      return;
+      if (!confirmed) {
+        return false;
+      }
     }
 
     try {
@@ -116,9 +163,54 @@ export const App = () => {
 
       setBrowserMessage(type === 'directory' ? 'Folder deleted.' : 'File deleted.');
       refreshBrowse();
+      return true;
     } catch {
       setBrowserMessage(type === 'directory' ? 'Failed to delete folder.' : 'Failed to delete file.');
+      return false;
     }
+  };
+
+  const bulkDelete = async () => {
+    if (selectedRecords.length === 0) {
+      setBrowserMessage('No items selected.');
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete ${selectedRecords.length} selected item(s)?`);
+    if (!confirmed) {
+      return;
+    }
+
+    let success = 0;
+    for (const item of selectedRecords) {
+      const ok = await removeItem(item.path, item.type, false);
+      if (ok) {
+        success += 1;
+      }
+    }
+
+    clearSelection();
+    setBrowserMessage(`Deleted ${success} of ${selectedRecords.length} selected item(s).`);
+    refreshBrowse();
+  };
+
+  const bulkDownload = async () => {
+    if (selectedRecords.length === 0) {
+      setBrowserMessage('No items selected.');
+      return;
+    }
+
+    const files = selectedRecords.filter((item) => item.type === 'file');
+    if (files.length === 0) {
+      setBrowserMessage('No files selected. Folders cannot be downloaded.');
+      return;
+    }
+
+    for (const file of files) {
+      await downloadFile(file.path, true);
+    }
+
+    setBrowserMessage(`Started download for ${files.length} file(s).`);
   };
 
   const renamePathItem = async (path: string, currentName: string) => {
@@ -232,6 +324,21 @@ export const App = () => {
                 </Button>
               </div>
 
+              {selectedItems.size > 0 ? (
+                <div className="selection-bar">
+                  <span>{selectedItems.size} selected</span>
+                  <Button variant="muted" onClick={() => void bulkDownload()}>
+                    Download Selected
+                  </Button>
+                  <Button variant="muted" onClick={() => void bulkDelete()}>
+                    Delete Selected
+                  </Button>
+                  <Button variant="muted" onClick={clearSelection}>
+                    Clear
+                  </Button>
+                </div>
+              ) : null}
+
               {browse.isLoading ? <p className="state">Loading objects...</p> : null}
               {browse.isError ? <p className="state error">Failed to load S3 path data.</p> : null}
               {browserMessage ? <p className="state">{browserMessage}</p> : null}
@@ -249,6 +356,15 @@ export const App = () => {
                     {browse.data.items.map((item) => (
                       <li key={`${item.type}:${item.path}`}>
                         <div className="item-row">
+                          <label className="row-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={selectedItems.has(item.path)}
+                              onChange={(event) => {
+                                toggleSelection(item.path, event.target.checked);
+                              }}
+                            />
+                          </label>
                           <Button onClick={() => item.type === 'directory' && setSelectedPath(item.path)}>
                             <span className="tag">{item.type}</span>
                             <strong>{item.name}</strong>
