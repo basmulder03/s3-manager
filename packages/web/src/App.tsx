@@ -93,6 +93,14 @@ export const App = () => {
     return records;
   }, [itemsByPath, selectedItems]);
 
+  const selectedFiles = useMemo(() => {
+    return selectedRecords.filter((item) => item.type === 'file');
+  }, [selectedRecords]);
+
+  const selectedSingleItem = useMemo(() => {
+    return selectedRecords.length === 1 ? selectedRecords[0] : null;
+  }, [selectedRecords]);
+
   const toggleSelection = (path: string, checked: boolean) => {
     setSelectedItems((previous) => {
       const next = new Set(previous);
@@ -170,9 +178,17 @@ export const App = () => {
     if (!selectedItems.has(item.path)) {
       selectOnly(item.path);
     }
+
+    const menuWidth = 220;
+    const menuHeight = 230;
+    const margin = 10;
+
+    const x = Math.min(event.clientX, window.innerWidth - menuWidth - margin);
+    const y = Math.min(event.clientY, window.innerHeight - menuHeight - margin);
+
     setContextMenu({
-      x: event.clientX,
-      y: event.clientY,
+      x: Math.max(margin, x),
+      y: Math.max(margin, y),
       item,
     });
   };
@@ -328,6 +344,24 @@ export const App = () => {
       if (event.key === 'Delete' && selectedRecords.length > 0) {
         event.preventDefault();
         void bulkDelete();
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd' && selectedFiles.length > 0) {
+        event.preventDefault();
+        void bulkDownload();
+        return;
+      }
+
+      if (event.key === 'F2' && selectedSingleItem) {
+        event.preventDefault();
+        void renamePathItem(selectedSingleItem.path, selectedSingleItem.name);
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'm' && selectedSingleItem) {
+        event.preventDefault();
+        void movePathItem(selectedSingleItem.path);
       }
     };
 
@@ -335,7 +369,13 @@ export const App = () => {
     return () => {
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [browse.data?.items, location.pathname, selectedRecords.length]);
+  }, [
+    browse.data?.items,
+    location.pathname,
+    selectedFiles.length,
+    selectedRecords.length,
+    selectedSingleItem,
+  ]);
 
   const renamePathItem = async (path: string, currentName: string) => {
     const nextName = window.prompt('Enter new name', currentName);
@@ -451,7 +491,12 @@ export const App = () => {
               {selectedItems.size > 0 ? (
                 <div className="selection-bar">
                   <span>{selectedItems.size} selected</span>
-                  <Button variant="muted" onClick={() => void bulkDownload()}>
+                  <Button
+                    variant="muted"
+                    onClick={() => void bulkDownload()}
+                    disabled={selectedFiles.length === 0}
+                    title={selectedFiles.length === 0 ? 'Select at least one file' : 'Download selected files'}
+                  >
                     Download Selected
                   </Button>
                   <Button variant="muted" onClick={() => void bulkDelete()}>
@@ -524,17 +569,26 @@ export const App = () => {
                         style={{ left: contextMenu.x, top: contextMenu.y }}
                         onClick={(event) => event.stopPropagation()}
                       >
+                        <p className="context-group-title">Quick Actions</p>
+                        {contextMenu.item.type === 'directory' ? (
+                          <Button variant="muted" onClick={() => setSelectedPath(contextMenu.item.path)}>
+                            Open
+                          </Button>
+                        ) : (
+                          <Button variant="muted" onClick={() => void downloadFile(contextMenu.item.path)}>
+                            Download
+                          </Button>
+                        )}
+
+                        <p className="context-group-title">Edit</p>
                         <Button variant="muted" onClick={() => void renamePathItem(contextMenu.item.path, contextMenu.item.name)}>
                           Rename
                         </Button>
                         <Button variant="muted" onClick={() => void movePathItem(contextMenu.item.path)}>
                           Move
                         </Button>
-                        {contextMenu.item.type === 'file' ? (
-                          <Button variant="muted" onClick={() => void downloadFile(contextMenu.item.path)}>
-                            Download
-                          </Button>
-                        ) : null}
+
+                        <p className="context-group-title">Danger</p>
                         <Button variant="muted" onClick={() => void removeItem(contextMenu.item.path, contextMenu.item.type)}>
                           Delete
                         </Button>

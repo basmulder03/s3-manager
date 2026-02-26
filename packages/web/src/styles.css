@@ -215,6 +215,12 @@ label {
   background: rgba(120, 224, 210, 0.18);
 }
 
+.ui-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .ui-button-muted {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(159, 184, 177, 0.3);
@@ -341,6 +347,14 @@ label {
 .context-menu .ui-button {
   width: 100%;
   text-align: left;
+}
+
+.context-group-title {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .items strong {
