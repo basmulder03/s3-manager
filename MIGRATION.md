@@ -195,8 +195,12 @@ bun run lint
 ### Phase 6: CI/CD & Release Readiness (Week 6)
 - [x] Add TypeScript-native CI workflow (typecheck, unit tests, build)
 - [x] Add Playwright smoke E2E CI job with LocalStack service
-- [ ] Add branch protection requirements using TypeScript CI checks
+- [x] Document branch protection requirements using TypeScript CI checks
 - [ ] Retire legacy Python-only CI jobs after cutover confirmation
+
+Current rollout mode:
+- TypeScript CI is manual-only (`workflow_dispatch`) while adoption is in progress.
+- Build and E2E jobs run only when explicitly selected during manual dispatch.
 
 ---
 

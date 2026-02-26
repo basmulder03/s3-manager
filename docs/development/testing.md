@@ -340,6 +340,10 @@ The repository now includes `.github/workflows/typescript-ci.yml` with three job
 
 Playwright CI uses managed dev servers via `E2E_MANAGED_SERVERS=true`, so `server` and `web` are started automatically from the Playwright config during the E2E job.
 
+Current rollout mode: manual-only (`workflow_dispatch`). Build and E2E jobs are optional toggles when launching the workflow.
+
+See `docs/development/ci.md` for recommended branch protection checks and legacy workflow transition notes.
+
 ### GitHub Actions
 
 The workflow in `.github/workflows/test.yml` is configured for **manual triggering**:

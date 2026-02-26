@@ -258,6 +258,7 @@ See `MIGRATION.md` for:
 - Design decisions and rationale
 
 Stage 6 currently focuses on CI/CD readiness with `.github/workflows/typescript-ci.yml`.
+Branch protection recommendations are documented in `docs/development/ci.md`.
 
 ## Quick Wins
 
