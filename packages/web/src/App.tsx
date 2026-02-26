@@ -36,6 +36,17 @@ export const App = () => {
     y: number;
     item: BrowseItem;
   } | null>(null);
+  const [renameModal, setRenameModal] = useState<{
+    sourcePath: string;
+    currentName: string;
+    nextName: string;
+  } | null>(null);
+  const [moveModal, setMoveModal] = useState<{
+    sourcePath: string;
+    destinationPath: string;
+  } | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{ items: BrowseItem[] } | null>(null);
+  const [modalError, setModalError] = useState<string>('');
   const location = useLocation();
 
   const healthInfo = trpc.health.info.useQuery();
@@ -48,6 +59,7 @@ export const App = () => {
   const deleteFolder = trpc.s3.deleteFolder.useMutation();
 
   const authenticated = authMe.isSuccess;
+  const isModalOpen = renameModal !== null || moveModal !== null || deleteModal !== null;
 
   const refreshAuthState = () => {
     void authStatus.refetch();
@@ -116,6 +128,13 @@ export const App = () => {
   const clearSelection = () => {
     setSelectedItems(new Set());
     setLastSelectedIndex(null);
+  };
+
+  const closeModals = () => {
+    setRenameModal(null);
+    setMoveModal(null);
+    setDeleteModal(null);
+    setModalError('');
   };
 
   const selectRange = (endIndex: number) => {
@@ -244,19 +263,7 @@ export const App = () => {
     }
   };
 
-  const removeItem = async (path: string, type: 'file' | 'directory', requireConfirm = true): Promise<boolean> => {
-    if (requireConfirm) {
-      const confirmed = window.confirm(
-        type === 'directory'
-          ? 'Delete this folder and all nested contents?'
-          : 'Delete this file?'
-      );
-
-      if (!confirmed) {
-        return false;
-      }
-    }
-
+  const removeItem = async (path: string, type: 'file' | 'directory'): Promise<boolean> => {
     try {
       if (type === 'directory') {
         await deleteFolder.mutateAsync({ path });
@@ -264,12 +271,8 @@ export const App = () => {
         const { bucketName, objectKey } = splitObjectPath(path);
         await deleteObject.mutateAsync({ bucketName, objectKey });
       }
-
-      setBrowserMessage(type === 'directory' ? 'Folder deleted.' : 'File deleted.');
-      refreshBrowse();
       return true;
     } catch {
-      setBrowserMessage(type === 'directory' ? 'Failed to delete folder.' : 'Failed to delete file.');
       return false;
     }
   };
@@ -280,22 +283,7 @@ export const App = () => {
       return;
     }
 
-    const confirmed = window.confirm(`Delete ${selectedRecords.length} selected item(s)?`);
-    if (!confirmed) {
-      return;
-    }
-
-    let success = 0;
-    for (const item of selectedRecords) {
-      const ok = await removeItem(item.path, item.type, false);
-      if (ok) {
-        success += 1;
-      }
-    }
-
-    clearSelection();
-    setBrowserMessage(`Deleted ${success} of ${selectedRecords.length} selected item(s).`);
-    refreshBrowse();
+    deletePathItems(selectedRecords);
   };
 
   const bulkDownload = async () => {
@@ -320,6 +308,14 @@ export const App = () => {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (location.pathname !== '/browser') {
+        return;
+      }
+
+      if (isModalOpen) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeModals();
+        }
         return;
       }
 
@@ -371,46 +367,109 @@ export const App = () => {
     };
   }, [
     browse.data?.items,
+    isModalOpen,
     location.pathname,
     selectedFiles.length,
     selectedRecords.length,
     selectedSingleItem,
   ]);
 
-  const renamePathItem = async (path: string, currentName: string) => {
-    const nextName = window.prompt('Enter new name', currentName);
-    if (!nextName || nextName.trim() === '' || nextName.trim() === currentName) {
+  const renamePathItem = (path: string, currentName: string) => {
+    setRenameModal({
+      sourcePath: path,
+      currentName,
+      nextName: currentName,
+    });
+    setContextMenu(null);
+    setModalError('');
+  };
+
+  const movePathItem = (path: string) => {
+    setMoveModal({
+      sourcePath: path,
+      destinationPath: selectedPath || '',
+    });
+    setContextMenu(null);
+    setModalError('');
+  };
+
+  const deletePathItems = (items: BrowseItem[]) => {
+    setDeleteModal({ items });
+    setContextMenu(null);
+    setModalError('');
+  };
+
+  const submitRename = async () => {
+    if (!renameModal) {
+      return;
+    }
+
+    const nextName = renameModal.nextName.trim();
+    if (nextName.length === 0) {
+      setModalError('Name is required.');
+      return;
+    }
+
+    if (nextName === renameModal.currentName) {
+      closeModals();
       return;
     }
 
     try {
       await renameItem.mutateAsync({
-        sourcePath: path,
-        newName: nextName.trim(),
+        sourcePath: renameModal.sourcePath,
+        newName: nextName,
       });
+      closeModals();
       setBrowserMessage('Item renamed successfully.');
       refreshBrowse();
     } catch {
-      setBrowserMessage('Failed to rename item.');
+      setModalError('Failed to rename item.');
     }
   };
 
-  const movePathItem = async (path: string) => {
-    const destinationPath = window.prompt('Move to destination path (bucket/folder)', selectedPath || '');
-    if (!destinationPath || destinationPath.trim() === '') {
+  const submitMove = async () => {
+    if (!moveModal) {
+      return;
+    }
+
+    const destinationPath = moveModal.destinationPath.trim();
+    if (destinationPath.length === 0) {
+      setModalError('Destination path is required.');
       return;
     }
 
     try {
       await renameItem.mutateAsync({
-        sourcePath: path,
-        destinationPath: destinationPath.trim(),
+        sourcePath: moveModal.sourcePath,
+        destinationPath,
       });
+      closeModals();
       setBrowserMessage('Item moved successfully.');
       refreshBrowse();
     } catch {
-      setBrowserMessage('Failed to move item.');
+      setModalError('Failed to move item.');
     }
+  };
+
+  const submitDelete = async () => {
+    if (!deleteModal) {
+      return;
+    }
+
+    let success = 0;
+    for (const item of deleteModal.items) {
+      const ok = await removeItem(item.path, item.type);
+      if (ok) {
+        success += 1;
+      }
+    }
+
+    const total = deleteModal.items.length;
+    closeModals();
+    clearSelection();
+    setBrowserMessage(`Deleted ${success} of ${total} selected item(s).`);
+    refreshBrowse();
   };
 
   return (
@@ -572,7 +631,7 @@ export const App = () => {
                                 Download
                               </Button>
                             ) : null}
-                            <Button variant="danger" onClick={() => void removeItem(item.path, item.type)}>
+                            <Button variant="danger" onClick={() => deletePathItems([item])}>
                               Delete
                             </Button>
                           </div>
@@ -607,7 +666,7 @@ export const App = () => {
                       </Button>
 
                       <p className="context-group-title">Danger</p>
-                      <Button variant="danger" onClick={() => void removeItem(contextMenu.item.path, contextMenu.item.type)}>
+                      <Button variant="danger" onClick={() => deletePathItems([contextMenu.item])}>
                         Delete
                       </Button>
                     </div>
@@ -629,6 +688,93 @@ export const App = () => {
 
         <Route path="*" element={<Navigate to="/overview" replace />} />
       </Routes>
+
+      {renameModal ? (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Rename item dialog">
+          <div className="modal-card">
+            <h3>Rename Item</h3>
+            <p>Current name: {renameModal.currentName}</p>
+            <label>
+              New name
+              <Input
+                value={renameModal.nextName}
+                onChange={(event) => {
+                  setRenameModal((previous) => {
+                    if (!previous) {
+                      return previous;
+                    }
+
+                    return {
+                      ...previous,
+                      nextName: event.target.value,
+                    };
+                  });
+                  setModalError('');
+                }}
+                placeholder="Enter new name"
+              />
+            </label>
+            {modalError ? <p className="state error">{modalError}</p> : null}
+            <div className="modal-actions">
+              <Button variant="muted" onClick={closeModals}>Cancel</Button>
+              <Button onClick={() => void submitRename()}>Save</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {moveModal ? (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Move item dialog">
+          <div className="modal-card">
+            <h3>Move Item</h3>
+            <p>Source: {moveModal.sourcePath}</p>
+            <label>
+              Destination path
+              <Input
+                value={moveModal.destinationPath}
+                onChange={(event) => {
+                  setMoveModal((previous) => {
+                    if (!previous) {
+                      return previous;
+                    }
+
+                    return {
+                      ...previous,
+                      destinationPath: event.target.value,
+                    };
+                  });
+                  setModalError('');
+                }}
+                placeholder="my-bucket/folder"
+              />
+            </label>
+            {modalError ? <p className="state error">{modalError}</p> : null}
+            <div className="modal-actions">
+              <Button variant="muted" onClick={closeModals}>Cancel</Button>
+              <Button onClick={() => void submitMove()}>Move</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteModal ? (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Delete items dialog">
+          <div className="modal-card">
+            <h3>Confirm Delete</h3>
+            <p>
+              {deleteModal.items.length === 1
+                ? `Delete ${deleteModal.items[0]?.name ?? 'selected item'}?`
+                : `Delete ${deleteModal.items.length} selected item(s)?`}
+            </p>
+            <p className="state warn">This action cannot be undone.</p>
+            {modalError ? <p className="state error">{modalError}</p> : null}
+            <div className="modal-actions">
+              <Button variant="muted" onClick={closeModals}>Cancel</Button>
+              <Button variant="danger" onClick={() => void submitDelete()}>Delete</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 };

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { App } from '@web/App';
 
@@ -106,9 +106,6 @@ describe('Stage 5 browser parity interactions', () => {
   });
 
   it('supports ctrl/cmd+a selection and Delete shortcut bulk delete', async () => {
-    const confirmMock = vi.fn(() => true);
-    vi.stubGlobal('confirm', confirmMock);
-
     render(
       <MemoryRouter initialEntries={['/browser']}>
         <App />
@@ -120,8 +117,11 @@ describe('Stage 5 browser parity interactions', () => {
 
     fireEvent.keyDown(window, { key: 'Delete' });
 
+    const dialog = await screen.findByRole('dialog', { name: 'Delete items dialog' });
+    expect(await screen.findByText('Confirm Delete')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
     await waitFor(() => {
-      expect(confirmMock).toHaveBeenCalled();
       expect(deleteObjectMutate).toHaveBeenCalledTimes(1);
       expect(deleteFolderMutate).toHaveBeenCalledTimes(1);
     });
