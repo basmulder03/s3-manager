@@ -17,6 +17,9 @@ Comprehensive testing guide for the S3 Manager application covering backend API 
 
 The S3 Manager test suite includes:
 
+- TypeScript frontend component tests (Vitest + Testing Library under `packages/web/src/**/*.test.tsx`)
+- TypeScript backend unit/integration tests (Bun test under `packages/server/src/**/*.test.ts`)
+
 - **Backend API Tests** - Unit and integration tests for Flask endpoints
 - **E2E UI Tests** - Browser-based tests using Playwright
 - **Test Fixtures** - Shared fixtures for S3, Flask app, and browser setup
