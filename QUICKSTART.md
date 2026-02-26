@@ -123,6 +123,9 @@ bun run build
 # Frontend tests
 bun run test:web
 
+# Frontend E2E smoke tests
+bun run test:e2e:web
+
 # Run production build
 bun run start
 
@@ -253,6 +256,8 @@ See `MIGRATION.md` for:
 - Comparison with Flask version
 - Phase 2-7 implementation plan
 - Design decisions and rationale
+
+Stage 6 currently focuses on CI/CD readiness with `.github/workflows/typescript-ci.yml`.
 
 ## Quick Wins
 

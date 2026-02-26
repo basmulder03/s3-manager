@@ -330,6 +330,16 @@ def test_with_fixtures(
 
 ## CI/CD Integration
 
+### TypeScript CI Workflow (Stage 6)
+
+The repository now includes `.github/workflows/typescript-ci.yml` with three jobs:
+
+- `quality`: `typecheck` + server/web unit tests
+- `build`: production build for server + web
+- `e2e-smoke`: Playwright smoke tests using LocalStack service
+
+Playwright CI uses managed dev servers via `E2E_MANAGED_SERVERS=true`, so `server` and `web` are started automatically from the Playwright config during the E2E job.
+
 ### GitHub Actions
 
 The workflow in `.github/workflows/test.yml` is configured for **manual triggering**:

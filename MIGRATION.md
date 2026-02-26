@@ -192,6 +192,12 @@ bun run lint
 - [x] E2E parity matrix and rollout plan documented
 - [x] Initial Playwright smoke suite for parity-critical browser flows
 
+### Phase 6: CI/CD & Release Readiness (Week 6)
+- [x] Add TypeScript-native CI workflow (typecheck, unit tests, build)
+- [x] Add Playwright smoke E2E CI job with LocalStack service
+- [ ] Add branch protection requirements using TypeScript CI checks
+- [ ] Retire legacy Python-only CI jobs after cutover confirmation
+
 ---
 
 ## 💡 Key Design Decisions
