@@ -59,6 +59,28 @@ export interface ObjectMetadataResult {
   downloadUrl: string;
 }
 
+export interface ObjectPropertiesInput {
+  path: string;
+}
+
+export interface ObjectPropertiesResult {
+  name: string;
+  key: string;
+  size: number;
+  contentType: string;
+  lastModified: string | null;
+  etag: string | null;
+  storageClass: string;
+  metadata: Record<string, string>;
+  versionId?: string;
+  cacheControl?: string;
+  contentDisposition?: string;
+  contentEncoding?: string;
+  contentLanguage?: string;
+  expires?: string;
+  serverSideEncryption?: string;
+}
+
 export interface PresignedUploadInput {
   bucketName: string;
   objectKey: string;
@@ -140,6 +162,21 @@ export interface DeleteFolderInput {
 
 export interface DeleteFolderResult {
   deletedCount: number;
+}
+
+export interface DeleteMultipleInput {
+  paths: string[];
+}
+
+export interface DeleteMultipleError {
+  path: string;
+  error: string;
+}
+
+export interface DeleteMultipleResult {
+  message: string;
+  deletedCount: number;
+  errors?: DeleteMultipleError[];
 }
 
 export interface RenameItemInput {

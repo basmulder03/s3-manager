@@ -449,6 +449,51 @@ label {
   justify-content: flex-end;
 }
 
+.properties-grid {
+  display: grid;
+  gap: 0.45rem;
+  max-height: 46vh;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.properties-metadata {
+  display: grid;
+  gap: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  padding: 0.55rem 0.65rem;
+}
+
+.properties-metadata p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.metadata-table {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.metadata-row {
+  display: grid;
+  gap: 0.25rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--line);
+}
+
+.metadata-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.metadata-row span {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
 .items strong {
   overflow: hidden;
   text-overflow: ellipsis;

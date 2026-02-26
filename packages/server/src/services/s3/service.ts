@@ -32,6 +32,8 @@ import type {
   CreateFolderInput,
   DeleteFolderInput,
   DeleteFolderResult,
+  DeleteMultipleInput,
+  DeleteMultipleResult,
   DeleteObjectInput,
   InitiateMultipartUploadInput,
   InitiateMultipartUploadResult,
@@ -39,6 +41,8 @@ import type {
   ListObjectsResult,
   ObjectMetadataInput,
   ObjectMetadataResult,
+  ObjectPropertiesInput,
+  ObjectPropertiesResult,
   PresignedUploadInput,
   PresignedUploadResult,
   RenameItemInput,
@@ -127,6 +131,25 @@ const buildUploadMetadata = (actor: string, provided?: Record<string, string>): 
   }
 
   return metadata;
+};
+
+const parsePathToBucketAndKey = (path: string): { bucketName: string; objectKey: string } => {
+  const normalizedPath = normalizeVirtualPath(path);
+  const [bucketName, ...parts] = normalizedPath.split('/');
+
+  if (!bucketName || bucketName.length === 0) {
+    throw new S3ServiceError('Path must include bucket name', 'INVALID_PATH');
+  }
+
+  const objectKey = parts.join('/');
+  if (!objectKey || objectKey.length === 0) {
+    throw new S3ServiceError('Path must include object key', 'INVALID_PATH');
+  }
+
+  return {
+    bucketName,
+    objectKey,
+  };
 };
 
 export class S3Service {
@@ -289,6 +312,65 @@ export class S3Service {
     }
   }
 
+  async getObjectProperties(input: ObjectPropertiesInput, actor?: string): Promise<ObjectPropertiesResult> {
+    const startedAt = Date.now();
+    const safeActor = metricActor(actor);
+
+    try {
+      const { bucketName, objectKey } = parsePathToBucketAndKey(input.path);
+      const client = this.clientProvider();
+      const headResponse = await client.send(
+        new HeadObjectCommand({
+          Bucket: bucketName,
+          Key: objectKey,
+        })
+      );
+
+      recordS3FileAccess(
+        {
+          operation: 'read',
+          actor: safeActor,
+          bucket: bucketName,
+          objectKey,
+          result: 'success',
+        },
+        Date.now() - startedAt
+      );
+
+      return {
+        name: objectKey.split('/').pop() ?? objectKey,
+        key: objectKey,
+        size: headResponse.ContentLength ?? 0,
+        contentType: headResponse.ContentType ?? 'application/octet-stream',
+        lastModified: toIso(headResponse.LastModified),
+        etag: headResponse.ETag ? headResponse.ETag.replace(/^"|"$/g, '') : null,
+        storageClass: headResponse.StorageClass ?? 'STANDARD',
+        metadata: headResponse.Metadata ?? {},
+        ...(headResponse.VersionId ? { versionId: headResponse.VersionId } : {}),
+        ...(headResponse.CacheControl ? { cacheControl: headResponse.CacheControl } : {}),
+        ...(headResponse.ContentDisposition ? { contentDisposition: headResponse.ContentDisposition } : {}),
+        ...(headResponse.ContentEncoding ? { contentEncoding: headResponse.ContentEncoding } : {}),
+        ...(headResponse.ContentLanguage ? { contentLanguage: headResponse.ContentLanguage } : {}),
+        ...(headResponse.Expires ? { expires: headResponse.Expires.toISOString() } : {}),
+        ...(headResponse.ServerSideEncryption
+          ? { serverSideEncryption: headResponse.ServerSideEncryption }
+          : {}),
+      };
+    } catch (error) {
+      recordS3FileAccess(
+        {
+          operation: 'read',
+          actor: safeActor,
+          bucket: '*',
+          objectKey: input.path,
+          result: 'failure',
+        },
+        Date.now() - startedAt
+      );
+      throw mapError(error, `Failed to fetch object properties for '${input.path}'`);
+    }
+  }
+
   async createPresignedUpload(input: PresignedUploadInput, actor?: string): Promise<PresignedUploadResult> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
@@ -383,6 +465,50 @@ export class S3Service {
       );
       throw mapError(error, `Failed to delete object '${input.objectKey}'`);
     }
+  }
+
+  async deleteMultiple(input: DeleteMultipleInput, actor?: string): Promise<DeleteMultipleResult> {
+    if (input.paths.length === 0) {
+      throw new S3ServiceError('No paths provided', 'INVALID_PATH');
+    }
+
+    const errors: Array<{ path: string; error: string }> = [];
+    let deletedCount = 0;
+
+    for (const path of input.paths) {
+      try {
+        const { bucketName, objectKey } = parsePathToBucketAndKey(path);
+        const normalizedPath = normalizeVirtualPath(path);
+        const folderPrefix = objectKey.endsWith('/') ? objectKey : `${objectKey}/`;
+        const client = this.clientProvider();
+
+        const folderProbe = await client.send(
+          new ListObjectsV2Command({
+            Bucket: bucketName,
+            Prefix: folderPrefix,
+            MaxKeys: 1,
+          })
+        );
+
+        const hasFolderContents = (folderProbe.Contents ?? []).length > 0;
+        if (hasFolderContents) {
+          const folderResult = await this.deleteFolder({ path: normalizedPath }, actor);
+          deletedCount += folderResult.deletedCount;
+        } else {
+          await this.deleteObject({ bucketName, objectKey }, actor);
+          deletedCount += 1;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown delete error';
+        errors.push({ path, error: message });
+      }
+    }
+
+    return {
+      message: `Deleted ${deletedCount} item(s)`,
+      deletedCount,
+      ...(errors.length > 0 ? { errors } : {}),
+    };
   }
 
   async browse(virtualPath = '', actor?: string): Promise<BrowseResult> {

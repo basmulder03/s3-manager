@@ -46,6 +46,21 @@ export const App = () => {
     destinationPath: string;
   } | null>(null);
   const [deleteModal, setDeleteModal] = useState<{ items: BrowseItem[] } | null>(null);
+  const [propertiesModal, setPropertiesModal] = useState<{
+    path: string;
+    loading: boolean;
+    error: string;
+    details: null | {
+      name: string;
+      key: string;
+      size: number;
+      contentType: string;
+      lastModified: string | null;
+      etag: string | null;
+      storageClass: string;
+      metadata: Record<string, string>;
+    };
+  } | null>(null);
   const [modalError, setModalError] = useState<string>('');
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const moveInputRef = useRef<HTMLInputElement | null>(null);
@@ -60,9 +75,10 @@ export const App = () => {
   const renameItem = trpc.s3.renameItem.useMutation();
   const deleteObject = trpc.s3.deleteObject.useMutation();
   const deleteFolder = trpc.s3.deleteFolder.useMutation();
+  const deleteMultipleItems = trpc.s3.deleteMultiple.useMutation();
 
   const authenticated = authMe.isSuccess;
-  const isModalOpen = renameModal !== null || moveModal !== null || deleteModal !== null;
+  const isModalOpen = renameModal !== null || moveModal !== null || deleteModal !== null || propertiesModal !== null;
 
   const refreshAuthState = () => {
     void authStatus.refetch();
@@ -200,6 +216,7 @@ export const App = () => {
     setRenameModal(null);
     setMoveModal(null);
     setDeleteModal(null);
+    setPropertiesModal(null);
     setModalError('');
   };
 
@@ -465,6 +482,33 @@ export const App = () => {
     setModalError('');
   };
 
+  const openProperties = async (path: string) => {
+    setContextMenu(null);
+    setPropertiesModal({
+      path,
+      loading: true,
+      error: '',
+      details: null,
+    });
+
+    try {
+      const details = await trpcProxyClient.s3.getProperties.query({ path });
+      setPropertiesModal({
+        path,
+        loading: false,
+        error: '',
+        details,
+      });
+    } catch {
+      setPropertiesModal({
+        path,
+        loading: false,
+        error: 'Failed to load file properties.',
+        details: null,
+      });
+    }
+  };
+
   const submitRename = async () => {
     if (!renameModal) {
       return;
@@ -523,15 +567,34 @@ export const App = () => {
       return;
     }
 
+    const targetItems = deleteModal.items;
+
+    if (targetItems.length > 1) {
+      try {
+        const result = await deleteMultipleItems.mutateAsync({
+          paths: targetItems.map((item) => item.path),
+        });
+
+        closeModals();
+        clearSelection();
+        setBrowserMessage(result.message);
+        refreshBrowse();
+        return;
+      } catch {
+        setModalError('Failed to delete selected items.');
+        return;
+      }
+    }
+
     let success = 0;
-    for (const item of deleteModal.items) {
+    for (const item of targetItems) {
       const ok = await removeItem(item.path, item.type);
       if (ok) {
         success += 1;
       }
     }
 
-    const total = deleteModal.items.length;
+    const total = targetItems.length;
     closeModals();
     clearSelection();
     setBrowserMessage(`Deleted ${success} of ${total} selected item(s).`);
@@ -697,6 +760,11 @@ export const App = () => {
                                 Download
                               </Button>
                             ) : null}
+                            {item.type === 'file' ? (
+                              <Button variant="muted" onClick={() => void openProperties(item.path)}>
+                                Properties
+                              </Button>
+                            ) : null}
                             <Button variant="danger" onClick={() => deletePathItems([item])}>
                               Delete
                             </Button>
@@ -718,9 +786,14 @@ export const App = () => {
                           Open
                         </Button>
                       ) : (
-                        <Button variant="muted" onClick={() => void downloadFile(contextMenu.item.path)}>
-                          Download
-                        </Button>
+                        <>
+                          <Button variant="muted" onClick={() => void downloadFile(contextMenu.item.path)}>
+                            Download
+                          </Button>
+                          <Button variant="muted" onClick={() => void openProperties(contextMenu.item.path)}>
+                            Properties
+                          </Button>
+                        </>
                       )}
 
                       <p className="context-group-title">Edit</p>
@@ -872,6 +945,54 @@ export const App = () => {
             <div className="modal-actions">
               <Button variant="muted" onClick={closeModals}>Cancel</Button>
               <Button variant="danger" onClick={() => void submitDelete()}>Delete</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {propertiesModal ? (
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="properties-modal-title"
+          aria-describedby="properties-modal-description"
+          aria-label="File properties dialog"
+        >
+          <div className="modal-card" ref={activeModalRef}>
+            <h3 id="properties-modal-title">File Properties</h3>
+            <p id="properties-modal-description">Path: {propertiesModal.path}</p>
+            {propertiesModal.loading ? <p className="state">Loading properties...</p> : null}
+            {propertiesModal.error ? <p className="state error">{propertiesModal.error}</p> : null}
+            {propertiesModal.details ? (
+              <div className="properties-grid">
+                <KeyValue label="Name" value={propertiesModal.details.name} />
+                <KeyValue label="Key" value={propertiesModal.details.key} />
+                <KeyValue label="Size" value={`${propertiesModal.details.size} bytes`} />
+                <KeyValue label="Content Type" value={propertiesModal.details.contentType} />
+                <KeyValue label="Storage Class" value={propertiesModal.details.storageClass} />
+                <KeyValue label="Last Modified" value={formatDate(propertiesModal.details.lastModified)} />
+                <KeyValue label="ETag" value={propertiesModal.details.etag ?? '-'} />
+
+                <div className="properties-metadata">
+                  <p>Metadata</p>
+                  {Object.keys(propertiesModal.details.metadata).length === 0 ? (
+                    <code>-</code>
+                  ) : (
+                    <div className="metadata-table">
+                      {Object.entries(propertiesModal.details.metadata).map(([key, value]) => (
+                        <div key={key} className="metadata-row">
+                          <span>{key}</span>
+                          <code>{value}</code>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+            <div className="modal-actions">
+              <Button variant="muted" onClick={closeModals}>Close</Button>
             </div>
           </div>
         </div>

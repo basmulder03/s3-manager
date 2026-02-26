@@ -261,4 +261,37 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
       return c.json({ error: 'Failed to refresh token' }, 401);
     }
   });
+
+  app.post('/auth/pim/elevate', async (c) => {
+    const user = await resolveAuthUser(c.req.raw);
+    if (!user) {
+      return c.json({ error: 'Authentication required' }, 401);
+    }
+
+    if (!config.pim.enabled) {
+      return c.json({ error: 'PIM is not enabled' }, 400);
+    }
+
+    if (config.oidcProvider !== 'azure' && config.oidcProvider !== 'azuread') {
+      return c.json({ error: 'PIM is only available with Azure AD' }, 400);
+    }
+
+    let requestedRole = '';
+    try {
+      const body = await c.req.json<{ role?: string }>();
+      requestedRole = body.role?.trim() ?? '';
+    } catch {
+      return c.json({ error: 'Invalid request body' }, 400);
+    }
+
+    if (requestedRole.length === 0) {
+      return c.json({ error: 'Role is required' }, 400);
+    }
+
+    return c.json({
+      message: 'PIM elevation request submitted',
+      role: requestedRole,
+      status: 'pending',
+    });
+  });
 };

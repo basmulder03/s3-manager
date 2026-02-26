@@ -3,6 +3,7 @@ import {
   CopyObjectCommand,
   DeleteObjectCommand,
   DeleteObjectsCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 import { S3Service } from './service';
@@ -87,6 +88,59 @@ class RenameFolderMockS3Client {
   }
 }
 
+class PropertiesMockS3Client {
+  async send(command: unknown): Promise<unknown> {
+    if (command instanceof HeadObjectCommand) {
+      return {
+        ContentLength: 42,
+        ContentType: 'text/plain',
+        LastModified: new Date('2026-01-01T10:00:00.000Z'),
+        ETag: '"abc123"',
+        StorageClass: 'STANDARD',
+        Metadata: { owner: 'alice' },
+        CacheControl: 'no-cache',
+      };
+    }
+
+    throw new Error('Unexpected command sent to properties mock client');
+  }
+}
+
+class DeleteMultipleMockS3Client {
+  async send(command: unknown): Promise<unknown> {
+    if (command instanceof ListObjectsV2Command) {
+      const input = (command as CommandInput).input;
+      const prefix = input.Prefix as string | undefined;
+
+      if (prefix === 'folder/') {
+        return {
+          Contents: [{ Key: 'folder/a.txt' }, { Key: 'folder/b.txt' }],
+          IsTruncated: false,
+        };
+      }
+
+      return {
+        Contents: [],
+        IsTruncated: false,
+      };
+    }
+
+    if (command instanceof DeleteObjectsCommand) {
+      return {};
+    }
+
+    if (command instanceof DeleteObjectCommand) {
+      const input = (command as CommandInput).input;
+      if (input.Key === 'broken.txt') {
+        throw new Error('forced delete failure');
+      }
+      return {};
+    }
+
+    throw new Error('Unexpected command sent to delete-multiple mock client');
+  }
+}
+
 describe('S3Service deleteFolder', () => {
   it('deletes in batches of 1000', async () => {
     const client = new MockS3Client();
@@ -166,5 +220,40 @@ describe('S3Service renameItem', () => {
         'tester@example.com'
       )
     ).rejects.toMatchObject({ code: 'INVALID_PATH' });
+  });
+});
+
+describe('S3Service getObjectProperties', () => {
+  it('returns rich object properties metadata', async () => {
+    const service = new S3Service(() => new PropertiesMockS3Client() as never);
+
+    const result = await service.getObjectProperties({ path: 'my-bucket/folder/report.txt' }, 'tester@example.com');
+
+    expect(result.name).toBe('report.txt');
+    expect(result.key).toBe('folder/report.txt');
+    expect(result.size).toBe(42);
+    expect(result.contentType).toBe('text/plain');
+    expect(result.etag).toBe('abc123');
+    expect(result.metadata.owner).toBe('alice');
+    expect(result.cacheControl).toBe('no-cache');
+  });
+});
+
+describe('S3Service deleteMultiple', () => {
+  it('deletes files and folders and reports per-path failures', async () => {
+    const service = new S3Service(() => new DeleteMultipleMockS3Client() as never);
+
+    const result = await service.deleteMultiple(
+      {
+        paths: ['my-bucket/folder', 'my-bucket/file.txt', 'my-bucket/broken.txt', 'my-bucket'],
+      },
+      'tester@example.com'
+    );
+
+    expect(result.deletedCount).toBe(3);
+    expect(result.message).toBe('Deleted 3 item(s)');
+    expect(result.errors?.length).toBe(2);
+    expect(result.errors?.some((entry) => entry.path === 'my-bucket/broken.txt')).toBeTrue();
+    expect(result.errors?.some((entry) => entry.path === 'my-bucket')).toBeTrue();
   });
 });

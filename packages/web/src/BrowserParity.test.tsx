@@ -7,6 +7,7 @@ const createFolderMutate = vi.fn(async () => ({ path: 'my-bucket/new-folder/' })
 const renameMutate = vi.fn(async () => ({ destinationPath: 'my-bucket/new-name', movedObjects: 1 }));
 const deleteObjectMutate = vi.fn(async () => ({ success: true }));
 const deleteFolderMutate = vi.fn(async () => ({ deletedCount: 1 }));
+const deleteMultipleMutate = vi.fn(async () => ({ message: 'Deleted 2 item(s)', deletedCount: 2 }));
 const browseRefetch = vi.fn();
 
 vi.mock('@web/components/UploadPanel', () => ({
@@ -72,6 +73,9 @@ vi.mock('@web/trpc/client', () => ({
       deleteFolder: {
         useMutation: () => ({ mutateAsync: deleteFolderMutate }),
       },
+      deleteMultiple: {
+        useMutation: () => ({ mutateAsync: deleteMultipleMutate }),
+      },
     },
   },
   API_ORIGIN: 'http://localhost:3000',
@@ -87,6 +91,18 @@ vi.mock('@web/trpc/client', () => ({
           downloadUrl: 'http://localhost:4566/download/mock',
         })),
       },
+      getProperties: {
+        query: vi.fn(async () => ({
+          name: 'report.txt',
+          key: 'folder/report.txt',
+          size: 42,
+          contentType: 'text/plain',
+          lastModified: '2026-01-01T10:00:00.000Z',
+          etag: 'abc123',
+          storageClass: 'STANDARD',
+          metadata: {},
+        })),
+      },
     },
   },
 }));
@@ -97,6 +113,7 @@ describe('Stage 5 browser parity interactions', () => {
     renameMutate.mockClear();
     deleteObjectMutate.mockClear();
     deleteFolderMutate.mockClear();
+    deleteMultipleMutate.mockClear();
     browseRefetch.mockClear();
   });
 
@@ -122,8 +139,7 @@ describe('Stage 5 browser parity interactions', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => {
-      expect(deleteObjectMutate).toHaveBeenCalledTimes(1);
-      expect(deleteFolderMutate).toHaveBeenCalledTimes(1);
+      expect(deleteMultipleMutate).toHaveBeenCalledTimes(1);
     });
   });
 

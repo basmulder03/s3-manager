@@ -43,12 +43,18 @@ vi.mock('@web/trpc/client', () => ({
       deleteFolder: {
         useMutation: () => ({ mutateAsync: vi.fn() }),
       },
+      deleteMultiple: {
+        useMutation: () => ({ mutateAsync: vi.fn() }),
+      },
     },
   },
   API_ORIGIN: 'http://localhost:3000',
   trpcProxyClient: {
     s3: {
       getObjectMetadata: {
+        query: vi.fn(),
+      },
+      getProperties: {
         query: vi.fn(),
       },
     },

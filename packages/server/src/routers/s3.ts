@@ -99,6 +99,20 @@ export const s3Router = router({
       }
     }),
 
+  getProperties: viewProcedure
+    .input(
+      z.object({
+        path: z.string().min(1),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      try {
+        return s3Service.getObjectProperties(input, actorFromContext(ctx));
+      } catch (error) {
+        throw mapS3ErrorToTrpc(error);
+      }
+    }),
+
   createPresignedUpload: writeProcedure
     .input(
       z.object({
@@ -271,6 +285,20 @@ export const s3Router = router({
     .mutation(async ({ input, ctx }) => {
       try {
         return s3Service.deleteFolder(input, actorFromContext(ctx));
+      } catch (error) {
+        throw mapS3ErrorToTrpc(error);
+      }
+    }),
+
+  deleteMultiple: deleteProcedure
+    .input(
+      z.object({
+        paths: z.array(z.string().min(1)).min(1),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return s3Service.deleteMultiple(input, actorFromContext(ctx));
       } catch (error) {
         throw mapS3ErrorToTrpc(error);
       }
