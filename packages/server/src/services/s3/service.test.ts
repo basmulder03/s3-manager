@@ -59,6 +59,34 @@ class RenameMockS3Client {
   }
 }
 
+class RenameFolderMockS3Client {
+  readonly calls: unknown[] = [];
+
+  async send(command: unknown): Promise<unknown> {
+    this.calls.push(command);
+
+    if (command instanceof ListObjectsV2Command) {
+      return {
+        Contents: [
+          { Key: 'folder/sub/file-a.txt' },
+          { Key: 'folder/sub/file-b.txt' },
+        ],
+        IsTruncated: false,
+      };
+    }
+
+    if (command instanceof CopyObjectCommand) {
+      return {};
+    }
+
+    if (command instanceof DeleteObjectsCommand) {
+      return {};
+    }
+
+    throw new Error('Unexpected command sent to rename-folder mock client');
+  }
+}
+
 describe('S3Service deleteFolder', () => {
   it('deletes in batches of 1000', async () => {
     const client = new MockS3Client();
@@ -100,5 +128,43 @@ describe('S3Service renameItem', () => {
 
     expect(copyCalls).toHaveLength(1);
     expect(deleteCalls).toHaveLength(1);
+  });
+
+  it('moves a folder via copy + batch delete', async () => {
+    const client = new RenameFolderMockS3Client();
+    const service = new S3Service(() => client as never);
+
+    const result = await service.renameItem(
+      {
+        sourcePath: 'my-bucket/folder/sub/',
+        destinationPath: 'my-bucket/archive',
+      },
+      'tester@example.com'
+    );
+
+    expect(result.destinationPath).toBe('my-bucket/archive/sub');
+    expect(result.movedObjects).toBe(2);
+
+    const listCalls = client.calls.filter((call) => call instanceof ListObjectsV2Command);
+    const copyCalls = client.calls.filter((call) => call instanceof CopyObjectCommand);
+    const deleteBatchCalls = client.calls.filter((call) => call instanceof DeleteObjectsCommand);
+
+    expect(listCalls).toHaveLength(1);
+    expect(copyCalls).toHaveLength(2);
+    expect(deleteBatchCalls).toHaveLength(1);
+  });
+
+  it('rejects cross-bucket move', async () => {
+    const service = new S3Service(() => ({ send: async () => ({}) }) as never);
+
+    await expect(
+      service.renameItem(
+        {
+          sourcePath: 'my-bucket/folder/report.txt',
+          destinationPath: 'other-bucket/archive',
+        },
+        'tester@example.com'
+      )
+    ).rejects.toMatchObject({ code: 'INVALID_PATH' });
   });
 });

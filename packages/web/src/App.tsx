@@ -417,10 +417,10 @@ export const App = () => {
     <main className="app-shell">
       <div className="hero-glow" />
       <header className="hero">
-        <p className="hero-kicker">S3 MANAGER STAGE 4</p>
-        <h1>Frontend baseline with typed tRPC data flow</h1>
+        <p className="hero-kicker">S3 MANAGER STAGE 5</p>
+        <h1>Feature-parity browser with typed tRPC workflows</h1>
         <p>
-          React + TypeScript + Vite + Zustand with auth controls, S3 browsing, and cookbook-based uploads.
+          React + TypeScript + Vite + Zustand with auth controls, S3 browsing, bulk actions, and keyboard/context shortcuts.
         </p>
         <nav className="tabs">
           <NavLink to="/overview">Overview</NavLink>

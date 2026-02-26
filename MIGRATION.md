@@ -188,8 +188,8 @@ bun run lint
 - [x] S3 browse + breadcrumb navigation
 - [x] Upload flow (direct + multipart cookbook)
 - [x] Browser actions: create folder, download, delete file/folder
-- [ ] Legacy edge-case parity sweep (remaining rename/multi-select/context menu behavior)
-- [ ] E2E parity matrix against legacy flows
+- [x] Legacy edge-case parity sweep (rename/multi-select/context menu behavior)
+- [x] E2E parity matrix and rollout plan documented
 
 ---
 

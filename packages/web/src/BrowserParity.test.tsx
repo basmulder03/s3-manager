@@ -134,7 +134,7 @@ describe('Stage 5 browser parity interactions', () => {
       </MemoryRouter>
     );
 
-    const fileCell = screen.getAllByText('report.txt')[0];
+    const fileCell = screen.getAllByText('report.txt')[0]!;
     fireEvent.contextMenu(fileCell);
 
     expect(await screen.findByText('Quick Actions')).toBeInTheDocument();

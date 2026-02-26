@@ -44,3 +44,15 @@ bun run build
 - `packages/web/src/BrowserParity.test.tsx`
   - Select-all + Delete keyboard flow
   - Right-click context menu grouping and actions
+
+## Latest Verification Snapshot (2026-02-26)
+
+All commands below were executed from the repository root and completed successfully.
+
+| Command | Result |
+| --- | --- |
+| `bun run --filter web typecheck` | Pass |
+| `bun run --filter web test` | Pass (4 files, 8 tests) |
+| `bun run --filter server typecheck` | Pass |
+| `bun run --filter server test` | Pass (6 files, 18 tests) |
+| `bun run build` | Pass (server + web) |
