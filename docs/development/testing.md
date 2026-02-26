@@ -19,6 +19,20 @@ The S3 Manager test suite includes:
 
 - TypeScript frontend component tests (Vitest + Testing Library under `packages/web/src/**/*.test.tsx`)
 - TypeScript backend unit/integration tests (Bun test under `packages/server/src/**/*.test.ts`)
+- TypeScript frontend smoke E2E tests (Playwright under `packages/web/e2e/**/*.spec.ts`)
+
+### Stage 5 Smoke E2E (Playwright)
+
+```bash
+bun run --filter web test:e2e:install
+bun run --filter web test:e2e
+```
+
+Default local dependencies for the smoke suite:
+
+- API: `http://127.0.0.1:3000`
+- Web: `http://127.0.0.1:5173`
+- LocalStack S3: `http://127.0.0.1:4566`
 
 - **Backend API Tests** - Unit and integration tests for Flask endpoints
 - **E2E UI Tests** - Browser-based tests using Playwright

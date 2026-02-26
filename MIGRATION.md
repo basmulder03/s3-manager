@@ -190,6 +190,7 @@ bun run lint
 - [x] Browser actions: create folder, download, delete file/folder
 - [x] Legacy edge-case parity sweep (rename/multi-select/context menu behavior)
 - [x] E2E parity matrix and rollout plan documented
+- [x] Initial Playwright smoke suite for parity-critical browser flows
 
 ---
 

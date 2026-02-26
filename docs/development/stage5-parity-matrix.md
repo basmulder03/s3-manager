@@ -44,6 +44,10 @@ bun run build
 - `packages/web/src/BrowserParity.test.tsx`
   - Select-all + Delete keyboard flow
   - Right-click context menu grouping and actions
+- `packages/web/e2e/stage5-smoke.spec.ts`
+  - Browse + create folder
+  - Rename + move + context menu
+  - Select-all + keyboard bulk delete
 
 ## Latest Verification Snapshot (2026-02-26)
 
@@ -53,6 +57,7 @@ All commands below were executed from the repository root and completed successf
 | --- | --- |
 | `bun run --filter web typecheck` | Pass |
 | `bun run --filter web test` | Pass (4 files, 8 tests) |
+| `bun run --filter web test:e2e --list` | Pass (3 smoke tests discovered) |
 | `bun run --filter server typecheck` | Pass |
 | `bun run --filter server test` | Pass (6 files, 18 tests) |
-| `bun run build` | Pass (server + web) |
+| `bun run --filter web build` | Pass |

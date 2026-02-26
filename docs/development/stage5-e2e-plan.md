@@ -11,6 +11,8 @@ This plan defines the minimum end-to-end coverage required to lock in Stage 5 pa
 ## Test Harness
 
 - Runner: Playwright (`@playwright/test`) in `packages/web`.
+- Config: `packages/web/playwright.config.ts`.
+- Initial smoke suite: `packages/web/e2e/stage5-smoke.spec.ts`.
 - Environment:
   - LocalStack S3 at `http://localhost:4566`
   - Server at `http://localhost:3000`
@@ -57,10 +59,10 @@ This plan defines the minimum end-to-end coverage required to lock in Stage 5 pa
 
 ## CI Rollout
 
-1. Add `test:e2e` script in `packages/web/package.json`.
+1. `test:e2e` and `test:e2e:install` scripts are in `packages/web/package.json`.
 2. Run E2E suite in a dedicated GitHub Actions job after unit/typecheck.
 3. Upload Playwright traces/screenshots for failures.
-4. Keep initial suite to smoke scope (6 scenarios above), then expand by bug history.
+4. Keep initial suite to smoke scope, then expand by bug history.
 
 ## Exit Criteria
 
