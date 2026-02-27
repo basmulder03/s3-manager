@@ -14,6 +14,7 @@ import { useBrowserSelectionState } from '@web/hooks/useBrowserSelectionState';
 import { useBrowserShortcutsEffect } from '@web/hooks/useBrowserShortcutsEffect';
 import { useModalFocusTrapEffect } from '@web/hooks/useModalFocusTrapEffect';
 import { useSnackbarQueue } from '@web/hooks/useSnackbarQueue';
+import { formatBytes } from '@web/utils/formatBytes';
 
 export type { DeleteModalState, MoveModalState, PropertiesModalState, RenameModalState };
 
@@ -225,10 +226,12 @@ export const useBrowserController = ({
     const failureReasons = new Map<string, number>();
     const failureExamples = new Map<string, string[]>();
     const totalCount = uploadFiles.length;
+    const totalBytes = uploadFiles.reduce((sum, file) => sum + file.size, 0);
+    let uploadedBytes = 0;
     uploadCancellationRequestedRef.current = false;
     let progressSnackbarId = 0;
     progressSnackbarId = enqueueSnackbar({
-      message: `Uploading 0/${totalCount} item(s)...`,
+      message: `Uploading 0/${totalCount} item(s) (${formatBytes(0)} / ${formatBytes(totalBytes)})...`,
       tone: 'info',
       durationMs: 0,
       progress: 0,
@@ -284,6 +287,7 @@ export const useBrowserController = ({
         uploadAbortControllerRef.current = fileAbortController;
 
         try {
+          const uploadedBytesBeforeFile = uploadedBytes;
           await uploadObjectWithCookbook({
             client: uploadProcedures,
             bucketName,
@@ -299,8 +303,21 @@ export const useBrowserController = ({
                 ...input,
                 signal: fileAbortController.signal,
               }),
+            onProgress: (event) => {
+              const totalUploadedBytes = Math.min(
+                totalBytes,
+                uploadedBytesBeforeFile + event.uploadedBytes
+              );
+              const progress =
+                totalBytes > 0 ? Math.round((totalUploadedBytes / totalBytes) * 100) : 0;
+              updateSnackbar(progressSnackbarId, {
+                message: `Uploading ${uploadedCount + failedCount}/${totalCount} item(s) (${formatBytes(totalUploadedBytes)} / ${formatBytes(totalBytes)})...`,
+                progress,
+              });
+            },
           });
           uploadedCount += 1;
+          uploadedBytes += file.size;
         } catch (error) {
           if (uploadCancellationRequestedRef.current && isAbortError(error)) {
             cancelled = true;
@@ -322,9 +339,9 @@ export const useBrowserController = ({
         }
 
         const processedCount = uploadedCount + failedCount;
-        const progress = Math.round((processedCount / totalCount) * 100);
+        const progress = totalBytes > 0 ? Math.round((uploadedBytes / totalBytes) * 100) : 0;
         updateSnackbar(progressSnackbarId, {
-          message: `Uploading ${processedCount}/${totalCount} item(s)...`,
+          message: `Uploading ${processedCount}/${totalCount} item(s) (${formatBytes(uploadedBytes)} / ${formatBytes(totalBytes)})...`,
           progress,
         });
       }
@@ -335,7 +352,7 @@ export const useBrowserController = ({
 
       if (cancelled) {
         enqueueSnackbar({
-          message: `Upload cancelled after ${uploadedCount}/${totalCount} item(s).`,
+          message: `Upload cancelled after ${uploadedCount}/${totalCount} item(s) (${formatBytes(uploadedBytes)} / ${formatBytes(totalBytes)}).`,
           tone: uploadedCount > 0 ? 'info' : 'error',
         });
         return;
@@ -461,7 +478,7 @@ export const useBrowserController = ({
         ...updates,
       }));
       enqueueSnackbar({
-        message: `Calculated size for ${normalized}: ${totalSize} bytes.`,
+        message: `Calculated size for ${normalized}: ${formatBytes(totalSize)}.`,
         tone: 'info',
       });
     } catch {

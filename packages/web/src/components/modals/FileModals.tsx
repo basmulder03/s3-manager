@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import { Button, Input } from '@web/components/ui';
 import { KeyValue } from '@web/components';
+import { formatBytes } from '@web/utils/formatBytes';
 import type {
   DeleteModalState,
   MoveModalState,
@@ -40,6 +41,15 @@ export const FileModals = ({
   onSubmitDelete,
   formatDate,
 }: FileModalsProps) => {
+  const formatPropertySize = (size: number): string => {
+    const readable = formatBytes(size);
+    if (size < 1024) {
+      return readable;
+    }
+
+    return `${readable} (${size.toLocaleString()} bytes)`;
+  };
+
   return (
     <>
       {renameModal ? (
@@ -172,7 +182,7 @@ export const FileModals = ({
               <div className={styles.propertiesGrid}>
                 <KeyValue label="Name" value={propertiesModal.details.name} />
                 <KeyValue label="Key" value={propertiesModal.details.key} />
-                <KeyValue label="Size" value={`${propertiesModal.details.size} bytes`} />
+                <KeyValue label="Size" value={formatPropertySize(propertiesModal.details.size)} />
                 <KeyValue label="Content Type" value={propertiesModal.details.contentType} />
                 <KeyValue label="Storage Class" value={propertiesModal.details.storageClass} />
                 <KeyValue

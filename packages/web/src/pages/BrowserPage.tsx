@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Button, Input } from '@web/components/ui';
 import type { BrowseItem } from '@server/services/s3/types';
+import { formatBytes } from '@web/utils/formatBytes';
 import styles from '@web/App.module.css';
 
 interface BrowseData {
@@ -356,6 +357,23 @@ export const BrowserPage = ({
   const selectedRecordsCount = selectedItems.size;
   const hasBucketContext = selectedPath.trim().replace(/^\/+/, '').length > 0;
   const uploadDisabled = isUploading || !hasBucketContext;
+  const formatItemSize = (item: BrowseItem): string => {
+    if (item.type === 'directory') {
+      if (folderSizeLoadingPaths.has(item.path)) {
+        return 'Calculating...';
+      }
+
+      const folderSize = folderSizesByPath[item.path];
+      return typeof folderSize === 'number' ? formatBytes(folderSize) : '-';
+    }
+
+    if (item.size === null) {
+      return '-';
+    }
+
+    return formatBytes(item.size);
+  };
+
   const openFilter = () => {
     if (isFilterOpen) {
       filterInputRef.current?.focus();
@@ -682,19 +700,7 @@ export const BrowserPage = ({
                           <strong>{item.name}</strong>
                         </div>
                       </td>
-                      <td>
-                        {isParentNavigation
-                          ? ''
-                          : item.type === 'directory'
-                            ? folderSizeLoadingPaths.has(item.path)
-                              ? 'Calculating...'
-                              : typeof folderSizesByPath[item.path] === 'number'
-                                ? `${folderSizesByPath[item.path]} bytes`
-                                : '-'
-                            : item.size === null
-                              ? '-'
-                              : `${item.size} bytes`}
-                      </td>
+                      <td>{isParentNavigation ? '' : formatItemSize(item)}</td>
                       <td>{isParentNavigation ? '' : formatDate(item.lastModified)}</td>
                     </tr>
                   ))}
