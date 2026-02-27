@@ -4,27 +4,25 @@ import styles from '@web/components/AuthActions.module.css';
 
 interface AuthActionsProps {
   authenticated: boolean;
-  onAfterRefresh: () => void;
+  navigateTo?: (url: string) => void;
 }
 
-const login = (): void => {
-  const returnTo = window.location.pathname + window.location.search;
-  window.location.href = `${API_ORIGIN}/auth/login?returnTo=${encodeURIComponent(returnTo || '/')}`;
+const defaultNavigateTo = (url: string): void => {
+  window.location.assign(url);
 };
 
-const logout = (): void => {
-  const returnTo = window.location.pathname + window.location.search;
-  window.location.href = `${API_ORIGIN}/auth/logout?returnTo=${encodeURIComponent(returnTo || '/')}`;
-};
+export const AuthActions = ({
+  authenticated,
+  navigateTo = defaultNavigateTo,
+}: AuthActionsProps) => {
+  const login = (): void => {
+    const returnTo = window.location.pathname + window.location.search;
+    navigateTo(`${API_ORIGIN}/auth/login?returnTo=${encodeURIComponent(returnTo || '/')}`);
+  };
 
-export const AuthActions = ({ authenticated, onAfterRefresh }: AuthActionsProps) => {
-  const refreshSession = async (): Promise<void> => {
-    await fetch(`${API_ORIGIN}/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-
-    onAfterRefresh();
+  const logout = (): void => {
+    const returnTo = window.location.pathname + window.location.search;
+    navigateTo(`${API_ORIGIN}/auth/logout?returnTo=${encodeURIComponent(returnTo || '/')}`);
   };
 
   return (
@@ -33,7 +31,6 @@ export const AuthActions = ({ authenticated, onAfterRefresh }: AuthActionsProps)
 
       {authenticated ? (
         <>
-          <Button onClick={refreshSession}>Refresh Session</Button>
           <Button variant="muted" onClick={logout}>
             Logout
           </Button>

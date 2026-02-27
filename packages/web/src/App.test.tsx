@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { App } from '@web/App';
 
@@ -10,6 +10,8 @@ vi.mock('@web/components/UploadPanel', () => ({
 let mockAuthRequired = false;
 let mockAuthenticated = false;
 let mockPermissions: Array<'view' | 'write' | 'delete'> = [];
+const mockAuthStatusRefetch = vi.fn();
+const mockAuthMeRefetch = vi.fn();
 
 vi.mock('@web/trpc/client', () => ({
   trpc: {
@@ -22,7 +24,7 @@ vi.mock('@web/trpc/client', () => ({
       status: {
         useQuery: () => ({
           data: { authRequired: mockAuthRequired, provider: 'keycloak' },
-          refetch: vi.fn(),
+          refetch: mockAuthStatusRefetch,
         }),
       },
       me: {
@@ -37,7 +39,7 @@ vi.mock('@web/trpc/client', () => ({
                 permissions: mockPermissions,
               }
             : undefined,
-          refetch: vi.fn(),
+          refetch: mockAuthMeRefetch,
         }),
       },
     },
@@ -83,12 +85,16 @@ vi.mock('@web/trpc/client', () => ({
 describe('App routes', () => {
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   beforeEach(() => {
     mockAuthRequired = false;
     mockAuthenticated = false;
     mockPermissions = [];
+    mockAuthStatusRefetch.mockReset();
+    mockAuthMeRefetch.mockReset();
   });
 
   it('renders file browser by default route', () => {
@@ -125,5 +131,64 @@ describe('App routes', () => {
     expect(screen.getByText('Sign in to continue')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument();
     expect(screen.queryByTestId('breadcrumb-trail')).not.toBeInTheDocument();
+  });
+
+  it('refreshes the session automatically in the background while authenticated', async () => {
+    vi.useFakeTimers();
+    mockAuthenticated = true;
+    mockPermissions = ['view', 'write', 'delete'];
+    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3000/auth/refresh', {
+      method: 'POST',
+      credentials: 'include',
+    });
+    expect(mockAuthStatusRefetch).toHaveBeenCalled();
+    expect(mockAuthMeRefetch).toHaveBeenCalled();
+  });
+
+  it('does not run background refresh when user is signed out', async () => {
+    vi.useFakeTimers();
+    mockAuthRequired = true;
+    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('supports hidden manual fallback refresh via keyboard shortcut', async () => {
+    mockAuthenticated = true;
+    mockPermissions = ['view', 'write', 'delete'];
+    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    fireEvent.keyDown(window, { key: 'r', ctrlKey: true, shiftKey: true });
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -6,7 +6,6 @@ interface FinderHeaderProps {
   theme: 'light' | 'dark';
   setTheme: (theme: 'light' | 'dark') => void;
   authenticated: boolean;
-  onAfterRefresh: () => void;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
 }
@@ -15,7 +14,6 @@ export const FinderHeader = ({
   theme,
   setTheme,
   authenticated,
-  onAfterRefresh,
   sidebarOpen,
   onToggleSidebar,
 }: FinderHeaderProps) => {
@@ -42,7 +40,7 @@ export const FinderHeader = ({
           >
             {theme === 'dark' ? '☀' : '🌙'}
           </Button>
-          <AuthActions authenticated={authenticated} onAfterRefresh={onAfterRefresh} />
+          <AuthActions authenticated={authenticated} />
         </div>
       </div>
       <h1>File Manager</h1>

@@ -10,6 +10,7 @@ import {
 import { useBrowserSelectionState } from '@web/hooks/useBrowserSelectionState';
 import { useBrowserShortcutsEffect } from '@web/hooks/useBrowserShortcutsEffect';
 import { useModalFocusTrapEffect } from '@web/hooks/useModalFocusTrapEffect';
+import { useSnackbarQueue } from '@web/hooks/useSnackbarQueue';
 
 export type { DeleteModalState, MoveModalState, PropertiesModalState, RenameModalState };
 
@@ -49,7 +50,6 @@ export const useBrowserController = ({
   deleteMultipleAsync,
 }: UseBrowserControllerOptions) => {
   const [newFolderName, setNewFolderName] = useState('');
-  const [browserMessage, setBrowserMessage] = useState('');
   const [renameModal, setRenameModal] = useState<RenameModalState | null>(null);
   const [moveModal, setMoveModal] = useState<MoveModalState | null>(null);
   const [deleteModal, setDeleteModal] = useState<DeleteModalState | null>(null);
@@ -58,6 +58,7 @@ export const useBrowserController = ({
   const [folderSizesByPath, setFolderSizesByPath] = useState<Record<string, number>>({});
   const [folderSizeLoadingPaths, setFolderSizeLoadingPaths] = useState<Set<string>>(new Set());
   const activeModalRef = useRef<HTMLDivElement>(null);
+  const { snackbars, enqueueSnackbar, dismissSnackbar } = useSnackbarQueue();
 
   const browseItemsByPath = useMemo(() => {
     const byPath = new Map<string, BrowseItem>();
@@ -182,27 +183,30 @@ export const useBrowserController = ({
 
   const createFolderInCurrentPath = async () => {
     if (!canWrite) {
-      setBrowserMessage('You do not have write permission.');
+      enqueueSnackbar({ message: 'You do not have write permission.', tone: 'error' });
       return;
     }
 
     if (!selectedPath) {
-      setBrowserMessage('Navigate to a bucket path before creating folders.');
+      enqueueSnackbar({
+        message: 'Navigate to a bucket path before creating folders.',
+        tone: 'error',
+      });
       return;
     }
 
     if (!newFolderName.trim()) {
-      setBrowserMessage('Folder name is required.');
+      enqueueSnackbar({ message: 'Folder name is required.', tone: 'error' });
       return;
     }
 
     try {
       await createFolderAsync({ path: selectedPath, folderName: newFolderName.trim() });
       setNewFolderName('');
-      setBrowserMessage('Folder created successfully.');
+      enqueueSnackbar({ message: 'Folder created successfully.', tone: 'success' });
       refreshBrowse();
     } catch {
-      setBrowserMessage('Failed to create folder.');
+      enqueueSnackbar({ message: 'Failed to create folder.', tone: 'error' });
     }
   };
 
@@ -212,11 +216,11 @@ export const useBrowserController = ({
       const metadata = await trpcProxyClient.s3.getObjectMetadata.query({ bucketName, objectKey });
       window.open(metadata.downloadUrl, '_blank', 'noopener,noreferrer');
       if (!silent) {
-        setBrowserMessage('Download link opened.');
+        enqueueSnackbar({ message: 'Download link opened.', tone: 'success' });
       }
     } catch {
       if (!silent) {
-        setBrowserMessage('Failed to generate download URL.');
+        enqueueSnackbar({ message: 'Failed to generate download URL.', tone: 'error' });
       }
     }
   };
@@ -261,9 +265,12 @@ export const useBrowserController = ({
         ...previous,
         ...updates,
       }));
-      setBrowserMessage(`Calculated size for ${normalized}: ${totalSize} bytes.`);
+      enqueueSnackbar({
+        message: `Calculated size for ${normalized}: ${totalSize} bytes.`,
+        tone: 'info',
+      });
     } catch {
-      setBrowserMessage('Failed to calculate folder size.');
+      enqueueSnackbar({ message: 'Failed to calculate folder size.', tone: 'error' });
     } finally {
       setFolderSizeLoadingPaths((previous) => {
         const next = new Set(previous);
@@ -289,7 +296,7 @@ export const useBrowserController = ({
 
   const deletePathItems = (items: BrowseItem[]) => {
     if (!canDelete) {
-      setBrowserMessage('You do not have delete permission.');
+      enqueueSnackbar({ message: 'You do not have delete permission.', tone: 'error' });
       return;
     }
 
@@ -300,12 +307,12 @@ export const useBrowserController = ({
 
   const bulkDelete = async () => {
     if (!canDelete) {
-      setBrowserMessage('You do not have delete permission.');
+      enqueueSnackbar({ message: 'You do not have delete permission.', tone: 'error' });
       return;
     }
 
     if (selection.selectedRecords.length === 0) {
-      setBrowserMessage('No items selected.');
+      enqueueSnackbar({ message: 'No items selected.', tone: 'info' });
       return;
     }
 
@@ -314,13 +321,16 @@ export const useBrowserController = ({
 
   const bulkDownload = async () => {
     if (selection.selectedRecords.length === 0) {
-      setBrowserMessage('No items selected.');
+      enqueueSnackbar({ message: 'No items selected.', tone: 'info' });
       return;
     }
 
     const files = selection.selectedRecords.filter((item) => item.type === 'file');
     if (files.length === 0) {
-      setBrowserMessage('No files selected. Folders cannot be downloaded.');
+      enqueueSnackbar({
+        message: 'No files selected. Folders cannot be downloaded.',
+        tone: 'info',
+      });
       return;
     }
 
@@ -328,12 +338,12 @@ export const useBrowserController = ({
       await downloadFile(file.path, true);
     }
 
-    setBrowserMessage(`Started download for ${files.length} file(s).`);
+    enqueueSnackbar({ message: `Started download for ${files.length} file(s).`, tone: 'success' });
   };
 
   const renamePathItem = (path: string, currentName: string) => {
     if (!canWrite) {
-      setBrowserMessage('You do not have write permission.');
+      enqueueSnackbar({ message: 'You do not have write permission.', tone: 'error' });
       return;
     }
 
@@ -344,7 +354,7 @@ export const useBrowserController = ({
 
   const movePathItem = (path: string) => {
     if (!canWrite) {
-      setBrowserMessage('You do not have write permission.');
+      enqueueSnackbar({ message: 'You do not have write permission.', tone: 'error' });
       return;
     }
 
@@ -373,7 +383,7 @@ export const useBrowserController = ({
   const submitRename = async () => {
     if (!canWrite) {
       closeModals();
-      setBrowserMessage('You do not have write permission.');
+      enqueueSnackbar({ message: 'You do not have write permission.', tone: 'error' });
       return;
     }
     if (!renameModal) {
@@ -394,7 +404,7 @@ export const useBrowserController = ({
       const sourceItem = browseItemsByPath.get(renameModal.sourcePath);
       await renameItemAsync({ sourcePath: renameModal.sourcePath, newName: nextName });
       closeModals();
-      setBrowserMessage('Item renamed successfully.');
+      enqueueSnackbar({ message: 'Item renamed successfully.', tone: 'success' });
       closeContextMenu();
 
       if (sourceItem?.type === 'directory') {
@@ -410,7 +420,7 @@ export const useBrowserController = ({
   const submitMove = async () => {
     if (!canWrite) {
       closeModals();
-      setBrowserMessage('You do not have write permission.');
+      enqueueSnackbar({ message: 'You do not have write permission.', tone: 'error' });
       return;
     }
     if (!moveModal) {
@@ -427,7 +437,7 @@ export const useBrowserController = ({
       const sourceItem = browseItemsByPath.get(moveModal.sourcePath);
       await renameItemAsync({ sourcePath: moveModal.sourcePath, destinationPath });
       closeModals();
-      setBrowserMessage('Item moved successfully.');
+      enqueueSnackbar({ message: 'Item moved successfully.', tone: 'success' });
       closeContextMenu();
 
       if (sourceItem?.type === 'file' && typeof sourceItem.size === 'number') {
@@ -448,7 +458,7 @@ export const useBrowserController = ({
   const submitDelete = async () => {
     if (!canDelete) {
       closeModals();
-      setBrowserMessage('You do not have delete permission.');
+      enqueueSnackbar({ message: 'You do not have delete permission.', tone: 'error' });
       return;
     }
     if (!deleteModal) {
@@ -463,7 +473,7 @@ export const useBrowserController = ({
         selection.clearSelection();
         closeContextMenu();
         clearFolderSizeCaches();
-        setBrowserMessage(result.message);
+        enqueueSnackbar({ message: result.message, tone: 'success' });
         refreshBrowse();
         return;
       } catch {
@@ -490,7 +500,10 @@ export const useBrowserController = ({
     closeModals();
     selection.clearSelection();
     closeContextMenu();
-    setBrowserMessage(`Deleted ${success} of ${targetItems.length} selected item(s).`);
+    enqueueSnackbar({
+      message: `Deleted ${success} of ${targetItems.length} selected item(s).`,
+      tone: success === targetItems.length ? 'success' : 'info',
+    });
     refreshBrowse();
   };
 
@@ -516,7 +529,8 @@ export const useBrowserController = ({
   return {
     newFolderName,
     setNewFolderName,
-    browserMessage,
+    snackbars,
+    dismissSnackbar,
     selectedItems: selection.selectedItems,
     selectedFiles: selection.selectedFiles,
     folderSizesByPath,

@@ -26,7 +26,7 @@ The frontend talks to `VITE_API_URL` (defaults to `http://localhost:3000/trpc`).
 
 Frontend includes:
 
-- Auth controls in UI (login, logout, refresh session)
+- Auth controls in UI (login, logout, automatic session renewal with hidden manual fallback)
 - S3 browser navigation with breadcrumbs
 - File upload panel using typed upload cookbook (direct vs multipart)
 - Browser operations: create folder, download file, delete file/folder

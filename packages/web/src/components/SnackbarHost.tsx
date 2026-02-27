@@ -1,0 +1,42 @@
+import { Button } from '@web/components/ui';
+import type { SnackbarItem } from '@web/hooks';
+import styles from '@web/App.module.css';
+
+interface SnackbarHostProps {
+  snackbars: SnackbarItem[];
+  onDismiss: (id: number) => void;
+}
+
+export const SnackbarHost = ({ snackbars, onDismiss }: SnackbarHostProps) => {
+  if (snackbars.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={styles.snackbarHost} aria-live="polite" aria-atomic="true">
+      {snackbars.map((snackbar) => (
+        <div
+          key={snackbar.id}
+          className={`${styles.snackbar} ${
+            snackbar.tone === 'success'
+              ? styles.snackbarSuccess
+              : snackbar.tone === 'error'
+                ? styles.snackbarError
+                : styles.snackbarInfo
+          }`}
+          role="status"
+        >
+          <span>{snackbar.message}</span>
+          <Button
+            variant="muted"
+            className={styles.snackbarDismiss}
+            onClick={() => onDismiss(snackbar.id)}
+            aria-label="Dismiss status message"
+          >
+            ×
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+};

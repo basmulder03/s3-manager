@@ -28,7 +28,6 @@ const createProps = () => {
       selectedFiles: [],
       folderSizesByPath: {},
       folderSizeLoadingPaths: new Set<string>(),
-      browserMessage: '',
       contextMenu: null,
       onBulkDownload: vi.fn(async () => {}),
       onBulkDelete: vi.fn(async () => {}),

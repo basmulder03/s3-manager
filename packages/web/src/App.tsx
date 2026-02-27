@@ -1,8 +1,8 @@
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { trpc } from '@web/trpc/client';
+import { API_ORIGIN, trpc } from '@web/trpc/client';
 import { useUiStore } from '@web/state/ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FileModals, SignInGate } from '@web/components';
+import { FileModals, SignInGate, SnackbarHost } from '@web/components';
 import { useBrowserController } from '@web/hooks';
 import { FinderHeader, FinderSidebar } from '@web/layout';
 import { BrowserPage } from '@web/pages';
@@ -23,6 +23,8 @@ const formatDate = (value: string | null): string => {
 
 const normalizeVirtualPath = (value: string): string =>
   value.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+
+const SESSION_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 export const App = () => {
   const theme = useUiStore((state) => state.theme);
@@ -77,10 +79,25 @@ export const App = () => {
   const canDelete = permissions.includes('delete');
   const showSignInOnly = authRequired && !authenticated;
 
-  const refreshAuthState = () => {
+  const refreshAuthState = useCallback(() => {
     void authStatus.refetch();
     void authMe.refetch();
-  };
+  }, [authMe, authStatus]);
+
+  const refreshSession = useCallback(async (): Promise<boolean> => {
+    try {
+      const response = await fetch(`${API_ORIGIN}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      refreshAuthState();
+      return response.ok;
+    } catch {
+      refreshAuthState();
+      return false;
+    }
+  }, [refreshAuthState]);
 
   const refreshBrowse = () => {
     void browse.refetch();
@@ -89,6 +106,57 @@ export const App = () => {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    if (!authenticated) {
+      return;
+    }
+
+    let inFlight = false;
+    const intervalId = window.setInterval(() => {
+      if (inFlight) {
+        return;
+      }
+
+      inFlight = true;
+      void refreshSession()
+        .then((refreshed) => {
+          if (!refreshed) {
+            window.clearInterval(intervalId);
+          }
+        })
+        .finally(() => {
+          inFlight = false;
+        });
+    }, SESSION_REFRESH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [authenticated, refreshSession]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!authenticated) {
+        return;
+      }
+
+      const isManualRefreshShortcut =
+        event.shiftKey && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'r';
+
+      if (!isManualRefreshShortcut) {
+        return;
+      }
+
+      event.preventDefault();
+      void refreshSession();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [authenticated, refreshSession]);
 
   const browser = useBrowserController({
     selectedPath,
@@ -112,7 +180,7 @@ export const App = () => {
   });
 
   if (showSignInOnly) {
-    return <SignInGate onAfterRefresh={refreshAuthState} />;
+    return <SignInGate />;
   }
 
   return (
@@ -121,7 +189,6 @@ export const App = () => {
         theme={theme}
         setTheme={setTheme}
         authenticated={authenticated}
-        onAfterRefresh={refreshAuthState}
         sidebarOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen((previous) => !previous)}
       />
@@ -154,7 +221,6 @@ export const App = () => {
                     selectedFiles={browser.selectedFiles}
                     folderSizesByPath={browser.folderSizesByPath}
                     folderSizeLoadingPaths={browser.folderSizeLoadingPaths}
-                    browserMessage={browser.browserMessage}
                     contextMenu={browser.contextMenu}
                     onBulkDownload={browser.bulkDownload}
                     onBulkDelete={browser.bulkDelete}
@@ -196,6 +262,8 @@ export const App = () => {
         onSubmitDelete={browser.submitDelete}
         formatDate={formatDate}
       />
+
+      <SnackbarHost snackbars={browser.snackbars} onDismiss={browser.dismissSnackbar} />
     </main>
   );
 };

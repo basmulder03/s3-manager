@@ -24,7 +24,6 @@ interface BrowserPageProps {
   selectedFiles: BrowseItem[];
   folderSizesByPath: Record<string, number>;
   folderSizeLoadingPaths: Set<string>;
-  browserMessage: string;
   contextMenu: { x: number; y: number; item: BrowseItem } | null;
   onBulkDownload: () => Promise<void>;
   onBulkDelete: () => Promise<void>;
@@ -64,7 +63,6 @@ export const BrowserPage = ({
   selectedFiles,
   folderSizesByPath,
   folderSizeLoadingPaths,
-  browserMessage,
   contextMenu,
   onBulkDownload,
   onBulkDelete,
@@ -232,7 +230,7 @@ export const BrowserPage = ({
               ) : (
                 <>
                   <button className={styles.breadcrumbLink} onClick={() => setSelectedPath('')}>
-                    root
+                    /
                   </button>
                   {breadcrumbSegments.map((segment) => (
                     <span key={segment.path} className={styles.breadcrumbPart}>
@@ -292,7 +290,6 @@ export const BrowserPage = ({
       {browse.isError ? (
         <p className={`${styles.state} ${styles.stateError}`}>Failed to load S3 path data.</p>
       ) : null}
-      {browserMessage ? <p className={styles.state}>{browserMessage}</p> : null}
 
       {browse.data ? (
         <>

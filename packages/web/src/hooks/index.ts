@@ -5,9 +5,11 @@ export { useModalFocusTrapEffect } from './useModalFocusTrapEffect';
 export { useUploadController } from './useUploadController';
 export { useUploadExecutionState } from './useUploadExecutionState';
 export { useUploadTargetState } from './useUploadTargetState';
+export { useSnackbarQueue } from './useSnackbarQueue';
 export type {
   DeleteModalState,
   MoveModalState,
   PropertiesModalState,
   RenameModalState,
 } from './browserTypes';
+export type { SnackbarItem, SnackbarTone } from './useSnackbarQueue';

@@ -625,6 +625,64 @@
   color: var(--muted);
 }
 
+.snackbarHost {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 90;
+  display: grid;
+  gap: 0.5rem;
+  width: min(420px, calc(100vw - 2rem));
+}
+
+.snackbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 16px 34px rgba(10, 22, 38, 0.25);
+  padding: 0.58rem 0.7rem;
+  animation: snackbarIn 180ms ease-out;
+}
+
+.snackbarInfo {
+  border-left: 4px solid var(--brand);
+}
+
+.snackbarSuccess {
+  border-left: 4px solid #2d936c;
+}
+
+.snackbarError {
+  border-left: 4px solid var(--danger);
+}
+
+.snackbarDismiss {
+  width: 1.6rem;
+  height: 1.6rem;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+@keyframes snackbarIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 1060px) {
   .itemsTable thead th:nth-child(2),
   .itemsTable thead th:nth-child(3),
