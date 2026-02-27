@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import type { BrowseItem } from '@server/services/s3/types';
 import { BrowserPage } from '@web/pages/BrowserPage';
 
 const createProps = () => {
@@ -85,5 +86,96 @@ describe('BrowserPage breadcrumb editing', () => {
     fireEvent.keyDown(breadcrumbInput, { key: 'Enter' });
 
     expect(setSelectedPath).toHaveBeenCalledWith('my-bucket/next');
+  });
+});
+
+describe('BrowserPage sorting and filtering', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('uses numeric-aware string sorting for names', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'file10.txt',
+        type: 'file',
+        path: 'my-bucket/file10.txt',
+        size: 10,
+        lastModified: '2026-01-03T00:00:00.000Z',
+      },
+      {
+        name: 'file2.txt',
+        type: 'file',
+        path: 'my-bucket/file2.txt',
+        size: 2,
+        lastModified: '2026-01-02T00:00:00.000Z',
+      },
+      {
+        name: 'file1.txt',
+        type: 'file',
+        path: 'my-bucket/file1.txt',
+        size: 1,
+        lastModified: '2026-01-01T00:00:00.000Z',
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent('file1.txt');
+    expect(rows[1]).toHaveTextContent('file2.txt');
+    expect(rows[2]).toHaveTextContent('file10.txt');
+  });
+
+  it('filters visible files and folders by query', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'invoice-1.pdf',
+        type: 'file',
+        path: 'my-bucket/invoice-1.pdf',
+        size: 10,
+        lastModified: null,
+      },
+      {
+        name: 'invoice-2.pdf',
+        type: 'file',
+        path: 'my-bucket/invoice-2.pdf',
+        size: 20,
+        lastModified: null,
+      },
+      {
+        name: 'photos',
+        type: 'directory',
+        path: 'my-bucket/photos',
+        size: null,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open filter' }));
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Filter files and folders' }), {
+      target: { value: 'invoice-2' },
+    });
+
+    expect(screen.getByText('invoice-2.pdf')).toBeInTheDocument();
+    expect(screen.queryByText('invoice-1.pdf')).not.toBeInTheDocument();
+    expect(screen.queryByText('photos')).not.toBeInTheDocument();
   });
 });

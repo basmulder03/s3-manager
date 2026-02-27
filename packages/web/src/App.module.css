@@ -232,6 +232,66 @@
   align-items: center;
 }
 
+.browserFilterRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
+}
+
+.filterToggleConnected {
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-right: 0 !important;
+}
+
+.tableFilterWrap {
+  width: min(300px, 100%);
+  display: flex;
+  align-items: center;
+  gap: 0.18rem;
+  height: 2rem;
+  box-sizing: border-box;
+  padding: 0.16rem 0.26rem;
+  border: 1px solid color-mix(in srgb, var(--line) 84%, var(--brand));
+  border-left: 0;
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--surface-soft) 85%, transparent);
+}
+
+.tableFilterInput {
+  height: 100%;
+  border: 0 !important;
+  border-radius: 6px !important;
+  padding: 0 0.34rem !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.tableFilterInput:focus {
+  box-shadow: none !important;
+}
+
+.tableFilterClose {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.tableFilterClose:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface-alt) 75%, var(--surface));
+}
+
 .explorerChrome {
   display: grid;
   gap: 0.7rem;
@@ -353,6 +413,35 @@
   border-right: 0;
 }
 
+.sortHeaderButton {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.sortIndicator {
+  min-width: 1.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.18rem;
+  color: color-mix(in srgb, var(--brand) 68%, var(--muted));
+}
+
+.sortIndicatorIcon {
+  flex-shrink: 0;
+}
+
 .itemsTable thead th:nth-child(1) {
   width: 54%;
 }
@@ -456,7 +545,9 @@
 }
 
 .itemIcon {
-  font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .contextMenu {

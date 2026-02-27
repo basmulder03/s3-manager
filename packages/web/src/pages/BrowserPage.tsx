@@ -1,5 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
+import {
+  ChevronDown,
+  ChevronUp,
+  File,
+  Folder,
+  House,
+  RefreshCw,
+  Search,
+  Undo2,
+  X,
+} from 'lucide-react';
 import { Button, Input } from '@web/components/ui';
 import type { BrowseItem } from '@server/services/s3/types';
 import styles from '@web/App.module.css';
@@ -39,6 +50,19 @@ interface BrowserPageProps {
   onOpenProperties: (path: string) => Promise<void>;
   onDeletePathItems: (items: BrowseItem[]) => void;
 }
+
+type SortKey = 'name' | 'size' | 'modified' | 'type';
+type SortDirection = 'asc' | 'desc';
+
+interface SortRule {
+  key: SortKey;
+  direction: SortDirection;
+}
+
+const nameCollator = new Intl.Collator(undefined, {
+  sensitivity: 'base',
+  numeric: true,
+});
 
 const formatDate = (value: string | null): string => {
   if (!value) {
@@ -80,7 +104,14 @@ export const BrowserPage = ({
 }: BrowserPageProps) => {
   const [isBreadcrumbEditing, setIsBreadcrumbEditing] = useState(false);
   const [breadcrumbDraft, setBreadcrumbDraft] = useState(selectedPath ? `/${selectedPath}` : '/');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filterQuery, setFilterQuery] = useState('');
+  const [sortRules, setSortRules] = useState<SortRule[]>([
+    { key: 'type', direction: 'asc' },
+    { key: 'name', direction: 'asc' },
+  ]);
   const breadcrumbInputRef = useRef<HTMLInputElement>(null);
+  const filterInputRef = useRef<HTMLInputElement>(null);
 
   const commitBreadcrumbPath = (rawPath: string) => {
     const normalized = rawPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
@@ -120,6 +151,14 @@ export const BrowserPage = ({
     breadcrumbInputRef.current?.select();
   }, [isBreadcrumbEditing]);
 
+  useEffect(() => {
+    if (!isFilterOpen) {
+      return;
+    }
+
+    filterInputRef.current?.focus();
+  }, [isFilterOpen]);
+
   const breadcrumbSegments = useMemo(() => {
     const normalized = selectedPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
     if (!normalized) {
@@ -143,10 +182,75 @@ export const BrowserPage = ({
     return parts.slice(0, -1).join('/');
   }, [selectedPath]);
 
+  const compareItems = useCallback(
+    (left: BrowseItem, right: BrowseItem): number => {
+      for (const rule of sortRules) {
+        let result = 0;
+
+        if (rule.key === 'name') {
+          result = nameCollator.compare(left.name, right.name);
+        }
+
+        if (rule.key === 'type' && left.type !== right.type) {
+          result = left.type === 'directory' ? -1 : 1;
+        }
+
+        if (rule.key === 'size') {
+          const leftSize =
+            left.type === 'directory' ? (folderSizesByPath[left.path] ?? null) : left.size;
+          const rightSize =
+            right.type === 'directory' ? (folderSizesByPath[right.path] ?? null) : right.size;
+
+          if (leftSize === null && rightSize !== null) {
+            result = 1;
+          } else if (leftSize !== null && rightSize === null) {
+            result = -1;
+          } else if (leftSize !== null && rightSize !== null) {
+            result = leftSize - rightSize;
+          }
+        }
+
+        if (rule.key === 'modified') {
+          const leftTime = left.lastModified ? Date.parse(left.lastModified) : Number.NaN;
+          const rightTime = right.lastModified ? Date.parse(right.lastModified) : Number.NaN;
+          const hasLeft = Number.isFinite(leftTime);
+          const hasRight = Number.isFinite(rightTime);
+
+          if (!hasLeft && hasRight) {
+            result = 1;
+          } else if (hasLeft && !hasRight) {
+            result = -1;
+          } else if (hasLeft && hasRight) {
+            result = leftTime - rightTime;
+          }
+        }
+
+        if (result !== 0) {
+          return rule.direction === 'asc' ? result : -result;
+        }
+      }
+
+      return nameCollator.compare(left.path, right.path);
+    },
+    [folderSizesByPath, sortRules]
+  );
+
+  const normalizedFilter = filterQuery.trim().toLowerCase();
+
   const renderedItems = useMemo(() => {
     const items = browse.data?.items ?? [];
+    const filteredItems =
+      normalizedFilter.length === 0
+        ? items
+        : items.filter((item) => {
+            const haystack = `${item.name} ${item.path} ${item.type}`.toLowerCase();
+            return haystack.includes(normalizedFilter);
+          });
+
+    const sortedItems = [...filteredItems].sort(compareItems);
+
     if (!selectedPath) {
-      return items.map((item) => ({ item, isParentNavigation: false }));
+      return sortedItems.map((item) => ({ item, isParentNavigation: false }));
     }
 
     return [
@@ -160,11 +264,97 @@ export const BrowserPage = ({
         },
         isParentNavigation: true,
       },
-      ...items.map((item) => ({ item, isParentNavigation: false })),
+      ...sortedItems.map((item) => ({ item, isParentNavigation: false })),
     ];
-  }, [browse.data?.items, parentPath, selectedPath]);
+  }, [browse.data?.items, compareItems, normalizedFilter, parentPath, selectedPath]);
+
+  const setSortForColumn = (key: SortKey, additive: boolean) => {
+    setSortRules((previous) => {
+      const existing = previous.find((rule) => rule.key === key);
+      const nextDirection: SortDirection = existing?.direction === 'asc' ? 'desc' : 'asc';
+
+      if (!additive) {
+        const next: SortRule[] = [{ key, direction: nextDirection }];
+        if (key !== 'type') {
+          next.push({ key: 'type', direction: 'asc' });
+        }
+        if (key !== 'name') {
+          next.push({ key: 'name', direction: 'asc' });
+        }
+        return next;
+      }
+
+      if (existing) {
+        return previous.map((rule) =>
+          rule.key === key ? { ...rule, direction: nextDirection } : rule
+        );
+      }
+
+      return [...previous, { key, direction: 'asc' }];
+    });
+  };
+
+  const getSortIndicator = (key: SortKey): ReactNode => {
+    const index = sortRules.findIndex((rule) => rule.key === key);
+    if (index === -1) {
+      return null;
+    }
+    const direction = sortRules[index]?.direction;
+    return (
+      <>
+        {direction === 'asc' ? (
+          <ChevronUp size={13} className={styles.sortIndicatorIcon} />
+        ) : (
+          <ChevronDown size={13} className={styles.sortIndicatorIcon} />
+        )}
+        {sortRules.length > 1 ? <span>{index + 1}</span> : null}
+      </>
+    );
+  };
+
+  const getSortLabel = (key: SortKey): string => {
+    if (key === 'name') {
+      return 'Name';
+    }
+    if (key === 'size') {
+      return 'Size';
+    }
+    if (key === 'modified') {
+      return 'Modified';
+    }
+    return 'Type';
+  };
+
+  const getSortTooltip = (key: SortKey): string => {
+    const index = sortRules.findIndex((rule) => rule.key === key);
+    if (index === -1) {
+      return 'Click to sort. Shift+click to add this column as an extra compare level.';
+    }
+
+    const sequence = sortRules
+      .map((rule, ruleIndex) => {
+        const directionLabel = rule.direction === 'asc' ? 'ascending' : 'descending';
+        return `${ruleIndex + 1}. ${getSortLabel(rule.key)} (${directionLabel})`;
+      })
+      .join(' -> ');
+
+    return `Number ${index + 1} means compare priority. Current order: ${sequence}.`;
+  };
 
   const selectedRecordsCount = selectedItems.size;
+  const openFilter = () => {
+    if (isFilterOpen) {
+      filterInputRef.current?.focus();
+      return;
+    }
+
+    setIsFilterOpen(true);
+  };
+
+  const closeFilter = () => {
+    setFilterQuery('');
+    setIsFilterOpen(false);
+  };
 
   return (
     <>
@@ -179,7 +369,7 @@ export const BrowserPage = ({
               title="Back"
               disabled={!selectedPath}
             >
-              ←
+              <Undo2 size={16} aria-hidden />
             </Button>
             <Button
               variant="muted"
@@ -189,7 +379,7 @@ export const BrowserPage = ({
               title="Go to root"
               disabled={!selectedPath}
             >
-              ⌂
+              <House size={16} aria-hidden />
             </Button>
 
             <div
@@ -232,9 +422,9 @@ export const BrowserPage = ({
                   <button className={styles.breadcrumbLink} onClick={() => setSelectedPath('')}>
                     /
                   </button>
-                  {breadcrumbSegments.map((segment) => (
+                  {breadcrumbSegments.map((segment, index) => (
                     <span key={segment.path} className={styles.breadcrumbPart}>
-                      <span className={styles.breadcrumbDivider}>/</span>
+                      {index > 0 ? <span className={styles.breadcrumbDivider}>/</span> : null}
                       <button
                         className={styles.breadcrumbLink}
                         onClick={() => setSelectedPath(segment.path)}
@@ -245,6 +435,43 @@ export const BrowserPage = ({
                   ))}
                 </>
               )}
+            </div>
+
+            <div className={styles.browserFilterRow}>
+              <Button
+                variant="muted"
+                className={`${styles.iconButton} ${isFilterOpen ? styles.filterToggleConnected : ''}`}
+                onClick={openFilter}
+                aria-label="Open filter"
+                title="Open filter"
+              >
+                <Search size={16} aria-hidden />
+              </Button>
+              {isFilterOpen ? (
+                <div className={styles.tableFilterWrap}>
+                  <Input
+                    ref={filterInputRef}
+                    className={styles.tableFilterInput}
+                    value={filterQuery}
+                    onChange={(event) => setFilterQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') {
+                        closeFilter();
+                      }
+                    }}
+                    placeholder="Filter files and folders"
+                    aria-label="Filter files and folders"
+                  />
+                  <button
+                    className={styles.tableFilterClose}
+                    type="button"
+                    aria-label="Close filter"
+                    onClick={closeFilter}
+                  >
+                    <X size={14} aria-hidden />
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             {selectedRecordsCount > 0 ? (
@@ -280,7 +507,7 @@ export const BrowserPage = ({
               aria-label="Refresh current location"
               title="Refresh"
             >
-              ↻
+              <RefreshCw size={16} aria-hidden />
             </Button>
           </div>
         </div>
@@ -303,9 +530,45 @@ export const BrowserPage = ({
               <table className={styles.itemsTable}>
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>Size</th>
-                    <th>Modified</th>
+                    <th>
+                      <button
+                        className={styles.sortHeaderButton}
+                        type="button"
+                        onClick={(event) => setSortForColumn('name', event.shiftKey)}
+                        title={getSortTooltip('name')}
+                      >
+                        <span>Name</span>
+                        <span className={styles.sortIndicator} aria-hidden>
+                          {getSortIndicator('name')}
+                        </span>
+                      </button>
+                    </th>
+                    <th>
+                      <button
+                        className={styles.sortHeaderButton}
+                        type="button"
+                        onClick={(event) => setSortForColumn('size', event.shiftKey)}
+                        title={getSortTooltip('size')}
+                      >
+                        <span>Size</span>
+                        <span className={styles.sortIndicator} aria-hidden>
+                          {getSortIndicator('size')}
+                        </span>
+                      </button>
+                    </th>
+                    <th>
+                      <button
+                        className={styles.sortHeaderButton}
+                        type="button"
+                        onClick={(event) => setSortForColumn('modified', event.shiftKey)}
+                        title={getSortTooltip('modified')}
+                      >
+                        <span>Modified</span>
+                        <span className={styles.sortIndicator} aria-hidden>
+                          {getSortIndicator('modified')}
+                        </span>
+                      </button>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -342,7 +605,7 @@ export const BrowserPage = ({
                       <td className={styles.nameCell}>
                         <div className={styles.itemMainButton}>
                           <span className={styles.itemIcon} aria-hidden>
-                            {item.type === 'directory' ? '📁' : '📄'}
+                            {item.type === 'directory' ? <Folder size={16} /> : <File size={16} />}
                           </span>
                           <strong>{item.name}</strong>
                         </div>
