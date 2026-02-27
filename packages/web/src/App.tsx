@@ -1,7 +1,7 @@
-import { Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { trpc } from '@web/trpc/client';
 import { useUiStore } from '@web/state/ui';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { FileModals, SignInGate } from '@web/components';
 import { useBrowserController } from '@web/hooks';
 import { FinderHeader, FinderSidebar } from '@web/layout';
@@ -21,13 +21,43 @@ const formatDate = (value: string | null): string => {
   return date.toLocaleString();
 };
 
+const normalizeVirtualPath = (value: string): string =>
+  value.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+
 export const App = () => {
-  const selectedPath = useUiStore((state) => state.selectedPath);
-  const setSelectedPath = useUiStore((state) => state.setSelectedPath);
   const theme = useUiStore((state) => state.theme);
   const setTheme = useUiStore((state) => state.setTheme);
   const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  const selectedPath = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return normalizeVirtualPath(params.get('path') ?? '');
+  }, [location.search]);
+
+  const setSelectedPath = useCallback(
+    (nextPath: string) => {
+      const normalized = normalizeVirtualPath(nextPath);
+      const params = new URLSearchParams(location.search);
+
+      if (normalized) {
+        params.set('path', normalized);
+      } else {
+        params.delete('path');
+      }
+
+      const nextSearch = params.toString();
+      const nextUrl = nextSearch.length > 0 ? `/?${nextSearch}` : '/';
+      const currentUrl = `${location.pathname}${location.search}`;
+
+      if (nextUrl === currentUrl) {
+        return;
+      }
+
+      navigate(nextUrl);
+    },
+    [location.pathname, location.search, navigate]
+  );
 
   const authStatus = trpc.auth.status.useQuery({});
   const authMe = trpc.auth.me.useQuery({}, { retry: false });
@@ -58,37 +88,6 @@ export const App = () => {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
-
-  const urlPath = searchParams.get('path') ?? '';
-
-  useEffect(() => {
-    if (location.pathname !== '/') {
-      return;
-    }
-
-    if (urlPath !== selectedPath) {
-      setSelectedPath(urlPath);
-    }
-  }, [location.pathname, selectedPath, setSelectedPath, urlPath]);
-
-  useEffect(() => {
-    if (location.pathname !== '/') {
-      return;
-    }
-
-    if (selectedPath === urlPath) {
-      return;
-    }
-
-    const next = new URLSearchParams(searchParams);
-    if (selectedPath) {
-      next.set('path', selectedPath);
-    } else {
-      next.delete('path');
-    }
-
-    setSearchParams(next, { replace: true });
-  }, [location.pathname, searchParams, selectedPath, setSearchParams, urlPath]);
 
   const browser = useBrowserController({
     selectedPath,
