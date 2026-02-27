@@ -365,6 +365,12 @@ export const BrowserPage = ({
   const selectedRecordsCount = selectedItems.size;
   const hasBucketContext = selectedPath.trim().replace(/^\/+/, '').length > 0;
   const uploadDisabled = isUploading || !hasBucketContext;
+  const selectedBrowseItems = (browse.data?.items ?? []).filter((item) =>
+    selectedItems.has(item.path)
+  );
+  const hasDeletableSelection = selectedBrowseItems.some(
+    (item) => !(item.type === 'directory' && !item.path.includes('/'))
+  );
   const formatItemSize = (item: BrowseItem): string => {
     if (item.type === 'directory') {
       if (folderSizeLoadingPaths.has(item.path)) {
@@ -389,6 +395,9 @@ export const BrowserPage = ({
 
     return resolveFileCapability(contextMenu.item.path);
   }, [contextMenu]);
+
+  const canDeleteContextItem =
+    canDelete && !(contextMenu?.item.type === 'directory' && !contextMenu.item.path.includes('/'));
 
   const openFilter = () => {
     if (isFilterOpen) {
@@ -538,7 +547,16 @@ export const BrowserPage = ({
                   Download
                 </Button>
                 {canDelete ? (
-                  <Button variant="danger" onClick={() => void onBulkDelete()}>
+                  <Button
+                    variant="danger"
+                    onClick={() => void onBulkDelete()}
+                    disabled={!hasDeletableSelection}
+                    title={
+                      !hasDeletableSelection
+                        ? 'Bucket deletion is not supported'
+                        : 'Delete selected items'
+                    }
+                  >
                     Delete
                   </Button>
                 ) : null}
@@ -838,7 +856,9 @@ export const BrowserPage = ({
                 </>
               )}
 
-              {canWrite || canDelete ? <div className={styles.contextMenuSeparator} /> : null}
+              {canWrite || canDeleteContextItem ? (
+                <div className={styles.contextMenuSeparator} />
+              ) : null}
 
               {canWrite ? (
                 <button
@@ -865,7 +885,7 @@ export const BrowserPage = ({
                 </button>
               ) : null}
 
-              {canDelete ? (
+              {canDeleteContextItem ? (
                 <button
                   className={`${styles.contextMenuItem} ${styles.contextMenuItemDanger}`}
                   onClick={() => {

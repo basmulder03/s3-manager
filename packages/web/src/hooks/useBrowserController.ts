@@ -124,6 +124,14 @@ export const useBrowserController = ({
     };
   };
 
+  const isBucketRootPath = (path: string): boolean => {
+    return !path.includes('/');
+  };
+
+  const isBucketRootDirectory = (item: BrowseItem): boolean => {
+    return item.type === 'directory' && isBucketRootPath(item.path);
+  };
+
   const toMetadataDraftRows = (metadata: Record<string, string>) => {
     return Object.entries(metadata).map(([key, value], index) => ({
       id: `${index}-${key}`,
@@ -548,6 +556,10 @@ export const useBrowserController = ({
   };
 
   const removeItem = async (path: string, type: 'file' | 'directory'): Promise<boolean> => {
+    if (type === 'directory' && isBucketRootPath(path)) {
+      return false;
+    }
+
     try {
       if (type === 'directory') {
         await deleteFolderAsync({ path });
@@ -567,7 +579,19 @@ export const useBrowserController = ({
       return;
     }
 
-    setDeleteModal({ items });
+    const deletableItems = items.filter((item) => !isBucketRootDirectory(item));
+    if (deletableItems.length !== items.length) {
+      enqueueSnackbar({
+        message: 'Bucket deletion is not supported.',
+        tone: 'info',
+      });
+    }
+
+    if (deletableItems.length === 0) {
+      return;
+    }
+
+    setDeleteModal({ items: deletableItems });
     closeContextMenu();
     setModalError('');
   };
