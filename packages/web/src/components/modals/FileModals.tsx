@@ -1,4 +1,4 @@
-import { useMemo, useRef, type RefObject } from 'react';
+import { useMemo, useRef, type MouseEventHandler, type RefObject } from 'react';
 import { Button, Input } from '@web/components/ui';
 import { KeyValue } from '@web/components';
 import { formatBytes } from '@web/utils/formatBytes';
@@ -83,6 +83,12 @@ export const FileModals = ({
   formatDate,
 }: FileModalsProps) => {
   const filePreviewLineNumbersRef = useRef<HTMLPreElement>(null);
+  const handleOverlayClick: MouseEventHandler<HTMLDivElement> = (event) => {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  };
+
   const formatPropertySize = (size: number): string => {
     const readable = formatBytes(size);
     if (size < 1024) {
@@ -144,6 +150,7 @@ export const FileModals = ({
           aria-labelledby="rename-modal-title"
           aria-describedby="rename-modal-description"
           aria-label="Rename item dialog"
+          onClick={handleOverlayClick}
         >
           <div className={styles.modalCard} ref={activeModalRef}>
             <h3 id="rename-modal-title">Rename Item</h3>
@@ -183,6 +190,7 @@ export const FileModals = ({
           aria-labelledby="move-modal-title"
           aria-describedby="move-modal-description"
           aria-label="Move item dialog"
+          onClick={handleOverlayClick}
         >
           <div className={styles.modalCard} ref={activeModalRef}>
             <h3 id="move-modal-title">Move Item</h3>
@@ -222,6 +230,7 @@ export const FileModals = ({
           aria-labelledby="delete-modal-title"
           aria-describedby="delete-modal-description"
           aria-label="Delete items dialog"
+          onClick={handleOverlayClick}
         >
           <div className={styles.modalCard} ref={activeModalRef}>
             <h3 id="delete-modal-title">Confirm Delete</h3>
@@ -254,6 +263,7 @@ export const FileModals = ({
           aria-labelledby="properties-modal-title"
           aria-describedby="properties-modal-description"
           aria-label="File properties dialog"
+          onClick={handleOverlayClick}
         >
           <div className={styles.modalCard} ref={activeModalRef}>
             <h3 id="properties-modal-title">File Properties</h3>
@@ -504,6 +514,7 @@ export const FileModals = ({
           aria-labelledby="preview-modal-title"
           aria-describedby="preview-modal-description"
           aria-label="File preview dialog"
+          onClick={handleOverlayClick}
         >
           <div
             className={`${styles.modalCard} ${styles.filePreviewModalCard}`}
@@ -614,6 +625,11 @@ export const FileModals = ({
           aria-labelledby="discard-changes-modal-title"
           aria-describedby="discard-changes-modal-description"
           aria-label="Unsaved changes dialog"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              onCancelDiscardChanges();
+            }
+          }}
         >
           <div className={styles.modalCard} ref={activeModalRef}>
             <h3 id="discard-changes-modal-title">Discard unsaved changes?</h3>

@@ -618,6 +618,8 @@
   inset: 0;
   z-index: 80;
   background: rgba(15, 24, 34, 0.44);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: grid;
   place-items: center;
   padding: 1rem;
