@@ -1,6 +1,7 @@
 # OIDC Providers
 
 S3 Manager supports these OIDC providers in the TypeScript backend:
+
 - `keycloak`
 - `azure` / `azuread`
 - `google`
@@ -47,13 +48,15 @@ GOOGLE_SCOPES=openid profile email
 
 ## Local Development Mode
 
-To bypass OIDC in local development:
+For local development, keep OIDC enabled:
 
 ```env
-LOCAL_DEV_MODE=true
-AUTH_REQUIRED=false
-DEFAULT_ROLE=S3-Admin
+LOCAL_DEV_MODE=false
+AUTH_REQUIRED=true
+OIDC_PROVIDER=keycloak
 ```
+
+`LOCAL_DEV_MODE=true` is reserved for automated tests (`NODE_ENV=test`).
 
 ## Notes
 

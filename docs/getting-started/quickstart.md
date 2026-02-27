@@ -13,6 +13,7 @@ docker compose -f docker-compose.local-dev.yml up -d
 ```
 
 Infra endpoints:
+
 - LocalStack: `http://localhost:4566`
 - Keycloak: `http://localhost:8090`
 
@@ -30,9 +31,17 @@ Frontend:
 bun run dev:web
 ```
 
+Use these local Keycloak credentials to sign in:
+
+- Username: `admin`
+- Password: `admin123`
+
 App endpoints:
+
 - API: `http://localhost:3000`
 - Web: `http://localhost:5173`
+
+Local development runs with authentication required (`AUTH_REQUIRED=true`).
 
 ## 4) Verify
 

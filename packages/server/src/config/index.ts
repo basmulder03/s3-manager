@@ -3,7 +3,7 @@ import { z } from 'zod';
 /**
  * Configuration schema with Zod validation
  * Provides type-safe, validated configuration from environment variables
- * 
+ *
  * Note: dotenv should be loaded in index.ts before this module is imported
  */
 
@@ -90,13 +90,11 @@ const configSchema = z.object({
   }),
 
   // Role-Based Permissions
-  rolePermissions: z
-    .record(z.string(), z.array(z.enum(['view', 'write', 'delete'])))
-    .default({
-      'S3-Viewer': ['view'],
-      'S3-Editor': ['view', 'write'],
-      'S3-Admin': ['view', 'write', 'delete'],
-    }),
+  rolePermissions: z.record(z.string(), z.array(z.enum(['view', 'write', 'delete']))).default({
+    'S3-Viewer': ['view'],
+    'S3-Editor': ['view', 'write'],
+    'S3-Admin': ['view', 'write', 'delete'],
+  }),
 
   defaultRole: z.string().default('S3-Viewer'),
 
@@ -136,36 +134,38 @@ const configSchema = z.object({
     traceSampleRate: z.coerce.number().min(0).max(1).default(1),
     batchSize: z.coerce.number().int().positive().default(512),
     batchTimeoutMs: z.coerce.number().int().positive().default(30000),
-    redactPaths: z.array(z.string()).default([
-      'password',
-      '*.password',
-      'secret',
-      '*.secret',
-      'secretKey',
-      '*.secretKey',
-      'accessKey',
-      '*.accessKey',
-      'token',
-      '*.token',
-      'apiKey',
-      '*.apiKey',
-      'apikey',
-      'authorization',
-      '*.authorization',
-      'cookie',
-      '*.cookie',
-      'headers.authorization',
-      'headers.cookie',
-      'req.headers.authorization',
-      'req.headers.cookie',
-      'request.headers.authorization',
-      'request.headers.cookie',
-      's3.accessKey',
-      's3.secretKey',
-      'keycloak.clientSecret',
-      'azure.clientSecret',
-      'google.clientSecret',
-    ]),
+    redactPaths: z
+      .array(z.string())
+      .default([
+        'password',
+        '*.password',
+        'secret',
+        '*.secret',
+        'secretKey',
+        '*.secretKey',
+        'accessKey',
+        '*.accessKey',
+        'token',
+        '*.token',
+        'apiKey',
+        '*.apiKey',
+        'apikey',
+        'authorization',
+        '*.authorization',
+        'cookie',
+        '*.cookie',
+        'headers.authorization',
+        'headers.cookie',
+        'req.headers.authorization',
+        'req.headers.cookie',
+        'request.headers.authorization',
+        'request.headers.cookie',
+        's3.accessKey',
+        's3.secretKey',
+        'keycloak.clientSecret',
+        'azure.clientSecret',
+        'google.clientSecret',
+      ]),
   }),
 
   // Session Configuration
@@ -290,6 +290,16 @@ export const loadConfig = (): Config => {
       },
     });
 
+    // Additional non-test validation
+    if (config.nodeEnv !== 'test') {
+      if (config.localDevMode) {
+        throw new Error('LOCAL_DEV_MODE is only allowed when NODE_ENV=test');
+      }
+      if (!config.auth.required) {
+        throw new Error('AUTH_REQUIRED must be true when NODE_ENV is not test');
+      }
+    }
+
     // Additional production validation
     if (config.nodeEnv === 'production') {
       if (config.secretKey === 'dev-secret-key-change-in-production') {
@@ -316,9 +326,7 @@ export const loadConfig = (): Config => {
       error.errors.forEach((err) => {
         console.error(`  - ${err.path.join('.')}: ${err.message}`);
       });
-      const details = error.errors
-        .map((err) => `${err.path.join('.')}: ${err.message}`)
-        .join('; ');
+      const details = error.errors.map((err) => `${err.path.join('.')}: ${err.message}`).join('; ');
       throw new Error(`Invalid configuration: ${details}`);
     }
     throw error;

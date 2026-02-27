@@ -2,9 +2,11 @@ import { config as loadDotenv } from 'dotenv';
 import { resolve } from 'path';
 
 // Load environment variables FIRST, before any other imports
-const rootDir = resolve(import.meta.dir, '../../..');  // src -> server -> packages -> root
+const rootDir = resolve(import.meta.dir, '../../..'); // src -> server -> packages -> root
 loadDotenv({ path: resolve(rootDir, '.env'), override: true });
-loadDotenv({ path: resolve(rootDir, '.env.local'), override: true });
+if ((process.env.NODE_ENV ?? 'development') === 'development') {
+  loadDotenv({ path: resolve(rootDir, '.env.local'), override: true });
+}
 
 import { config } from '@/config';
 import { createApp } from '@/app';
@@ -24,7 +26,7 @@ startupLogger.info(
 );
 
 if (config.localDevMode) {
-  startupLogger.warn('LOCAL_DEV_MODE is enabled (mock authentication in use)');
+  startupLogger.warn('LOCAL_DEV_MODE is enabled (test-only authentication shortcut)');
 }
 
 const app = createApp();

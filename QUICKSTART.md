@@ -162,7 +162,7 @@ PORT=3000
 NODE_ENV=development
 WEB_ORIGIN=http://localhost:5173
 VITE_API_URL=http://localhost:3000/trpc
-LOCAL_DEV_MODE=true
+LOCAL_DEV_MODE=false
 OIDC_PROVIDER=keycloak
 S3_REGION=us-east-1
 
@@ -172,7 +172,7 @@ OTEL_LOG_FORMAT=pretty
 OTEL_EXPORTER_TYPE=console
 
 # Auth
-AUTH_REQUIRED=false
+AUTH_REQUIRED=true
 AUTH_ROLES_CLAIM=roles
 AUTH_ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS=3600
 AUTH_REFRESH_TOKEN_COOKIE_MAX_AGE_SECONDS=2592000
@@ -188,9 +188,9 @@ Production auth/cookie baseline:
 
 Permission behavior for tRPC routes:
 
-- `LOCAL_DEV_MODE=true`: permissions come from `DEFAULT_ROLE` + `rolePermissions`
-- `LOCAL_DEV_MODE=false`: bearer access token is verified against OIDC JWKS
-- fallback `x-user-permissions` header only applies when `AUTH_REQUIRED=false`
+- `AUTH_REQUIRED=true` is required for non-test runtime.
+- Bearer access tokens are verified against OIDC JWKS when present.
+- `LOCAL_DEV_MODE` is only allowed when `NODE_ENV=test`.
 
 Frontend upload helper:
 
