@@ -67,9 +67,9 @@ export const App = () => {
   const activeModalRef = useRef<HTMLDivElement | null>(null);
   const location = useLocation();
 
-  const healthInfo = trpc.health.info.useQuery();
-  const authStatus = trpc.auth.status.useQuery();
-  const authMe = trpc.auth.me.useQuery(undefined, { retry: false });
+  const healthInfo = trpc.health.info.useQuery({});
+  const authStatus = trpc.auth.status.useQuery({});
+  const authMe = trpc.auth.me.useQuery({}, { retry: false });
   const browse = trpc.s3.browse.useQuery({ virtualPath: selectedPath });
   const createFolder = trpc.s3.createFolder.useMutation();
   const renameItem = trpc.s3.renameItem.useMutation();
@@ -78,7 +78,8 @@ export const App = () => {
   const deleteMultipleItems = trpc.s3.deleteMultiple.useMutation();
 
   const authenticated = authMe.isSuccess;
-  const isModalOpen = renameModal !== null || moveModal !== null || deleteModal !== null || propertiesModal !== null;
+  const isModalOpen =
+    renameModal !== null || moveModal !== null || deleteModal !== null || propertiesModal !== null;
 
   const refreshAuthState = () => {
     void authStatus.refetch();
@@ -244,7 +245,11 @@ export const App = () => {
     setSelectedItems(new Set([path]));
   };
 
-  const handleRowClick = (item: BrowseItem, index: number, event: MouseEvent<HTMLButtonElement>) => {
+  const handleRowClick = (
+    item: BrowseItem,
+    index: number,
+    event: MouseEvent<HTMLButtonElement>
+  ) => {
     if (event.shiftKey) {
       event.preventDefault();
       selectRange(index);
@@ -426,7 +431,11 @@ export const App = () => {
         return;
       }
 
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd' && selectedFiles.length > 0) {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === 'd' &&
+        selectedFiles.length > 0
+      ) {
         event.preventDefault();
         void bulkDownload();
         return;
@@ -438,7 +447,12 @@ export const App = () => {
         return;
       }
 
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'm' && selectedSingleItem) {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === 'm' &&
+        selectedSingleItem
+      ) {
         event.preventDefault();
         void movePathItem(selectedSingleItem.path);
       }
@@ -605,10 +619,11 @@ export const App = () => {
     <main className="app-shell">
       <div className="hero-glow" />
       <header className="hero">
-        <p className="hero-kicker">S3 MANAGER STAGE 5</p>
+        <p className="hero-kicker">S3 MANAGER</p>
         <h1>Feature-parity browser with typed tRPC workflows</h1>
         <p>
-          React + TypeScript + Vite + Zustand with auth controls, S3 browsing, bulk actions, and keyboard/context shortcuts.
+          React + TypeScript + Vite + Zustand with auth controls, S3 browsing, bulk actions, and
+          keyboard/context shortcuts.
         </p>
         <nav className="tabs">
           <NavLink to="/overview">Overview</NavLink>
@@ -620,13 +635,19 @@ export const App = () => {
       <Routes>
         <Route
           path="/overview"
-          element={(
+          element={
             <section className="grid two">
-              <Panel title="Server Status" subtitle="From `trpc.health.info` and `trpc.auth.status`">
+              <Panel
+                title="Server Status"
+                subtitle="From `trpc.health.info` and `trpc.auth.status`"
+              >
                 <KeyValue label="App" value={healthInfo.data?.app ?? 'Loading...'} />
                 <KeyValue label="Version" value={healthInfo.data?.version ?? '-'} />
                 <KeyValue label="Environment" value={healthInfo.data?.env ?? '-'} />
-                <KeyValue label="Auth Required" value={String(authStatus.data?.authRequired ?? false)} />
+                <KeyValue
+                  label="Auth Required"
+                  value={String(authStatus.data?.authRequired ?? false)}
+                />
                 <KeyValue label="Provider" value={authStatus.data?.provider ?? '-'} />
               </Panel>
 
@@ -640,17 +661,20 @@ export const App = () => {
                     <KeyValue label="Name" value={authMe.data?.name ?? '-'} />
                     <KeyValue label="Email" value={authMe.data?.email ?? '-'} />
                     <KeyValue label="Roles" value={authMe.data?.roles?.join(', ') ?? '-'} />
-                    <KeyValue label="Permissions" value={authMe.data?.permissions?.join(', ') ?? '-'} />
+                    <KeyValue
+                      label="Permissions"
+                      value={authMe.data?.permissions?.join(', ') ?? '-'}
+                    />
                   </>
                 )}
               </Panel>
             </section>
-          )}
+          }
         />
 
         <Route
           path="/browser"
-          element={(
+          element={
             <Panel title="S3 Browser" subtitle="From `trpc.s3.browse`">
               <div className="browser-toolbar">
                 <div className="browser-controls">
@@ -674,14 +698,13 @@ export const App = () => {
                     onChange={(event) => setNewFolderName(event.target.value)}
                     placeholder="New folder name"
                   />
-                  <Button onClick={() => void createFolderInCurrentPath()}>
-                    Create Folder
-                  </Button>
+                  <Button onClick={() => void createFolderInCurrentPath()}>Create Folder</Button>
                 </div>
               </div>
 
               <p className="hotkeys-hint">
-                Shortcuts: Ctrl/Cmd+A select all, Delete remove, Ctrl/Cmd+D download, F2 rename, Ctrl/Cmd+Shift+M move.
+                Shortcuts: Ctrl/Cmd+A select all, Delete remove, Ctrl/Cmd+D download, F2 rename,
+                Ctrl/Cmd+Shift+M move.
               </p>
 
               {selectedItems.size > 0 ? (
@@ -691,7 +714,11 @@ export const App = () => {
                     variant="muted"
                     onClick={() => void bulkDownload()}
                     disabled={selectedFiles.length === 0}
-                    title={selectedFiles.length === 0 ? 'Select at least one file' : 'Download selected files'}
+                    title={
+                      selectedFiles.length === 0
+                        ? 'Select at least one file'
+                        : 'Download selected files'
+                    }
                   >
                     Download Selected
                   </Button>
@@ -712,7 +739,11 @@ export const App = () => {
                 <>
                   <div className="breadcrumbs">
                     {browse.data.breadcrumbs.map((crumb) => (
-                      <Button key={crumb.path || 'home'} variant="muted" onClick={() => setSelectedPath(crumb.path)}>
+                      <Button
+                        key={crumb.path || 'home'}
+                        variant="muted"
+                        onClick={() => setSelectedPath(crumb.path)}
+                      >
                         {crumb.name}
                       </Button>
                     ))}
@@ -729,8 +760,14 @@ export const App = () => {
 
                   <ul className="items">
                     {browse.data.items.map((item, index) => (
-                      <li key={`${item.type}:${item.path}`} className={selectedItems.has(item.path) ? 'is-selected' : ''}>
-                        <div className="item-row" onContextMenu={(event) => openContextMenu(item, event)}>
+                      <li
+                        key={`${item.type}:${item.path}`}
+                        className={selectedItems.has(item.path) ? 'is-selected' : ''}
+                      >
+                        <div
+                          className="item-row"
+                          onContextMenu={(event) => openContextMenu(item, event)}
+                        >
                           <label className="row-checkbox">
                             <input
                               type="checkbox"
@@ -741,7 +778,10 @@ export const App = () => {
                               }}
                             />
                           </label>
-                          <Button className="item-main" onClick={(event) => handleRowClick(item, index, event)}>
+                          <Button
+                            className="item-main"
+                            onClick={(event) => handleRowClick(item, index, event)}
+                          >
                             <span className="tag">{item.type}</span>
                             <strong>{item.name}</strong>
                             <span className="item-path">{item.path}</span>
@@ -749,7 +789,10 @@ export const App = () => {
                             <span>{formatDate(item.lastModified)}</span>
                           </Button>
                           <div className="item-actions">
-                            <Button variant="muted" onClick={() => void renamePathItem(item.path, item.name)}>
+                            <Button
+                              variant="muted"
+                              onClick={() => void renamePathItem(item.path, item.name)}
+                            >
                               Rename
                             </Button>
                             <Button variant="muted" onClick={() => void movePathItem(item.path)}>
@@ -761,7 +804,10 @@ export const App = () => {
                               </Button>
                             ) : null}
                             {item.type === 'file' ? (
-                              <Button variant="muted" onClick={() => void openProperties(item.path)}>
+                              <Button
+                                variant="muted"
+                                onClick={() => void openProperties(item.path)}
+                              >
                                 Properties
                               </Button>
                             ) : null}
@@ -782,25 +828,42 @@ export const App = () => {
                     >
                       <p className="context-group-title">Quick Actions</p>
                       {contextMenu.item.type === 'directory' ? (
-                        <Button variant="muted" onClick={() => setSelectedPath(contextMenu.item.path)}>
+                        <Button
+                          variant="muted"
+                          onClick={() => setSelectedPath(contextMenu.item.path)}
+                        >
                           Open
                         </Button>
                       ) : (
                         <>
-                          <Button variant="muted" onClick={() => void downloadFile(contextMenu.item.path)}>
+                          <Button
+                            variant="muted"
+                            onClick={() => void downloadFile(contextMenu.item.path)}
+                          >
                             Download
                           </Button>
-                          <Button variant="muted" onClick={() => void openProperties(contextMenu.item.path)}>
+                          <Button
+                            variant="muted"
+                            onClick={() => void openProperties(contextMenu.item.path)}
+                          >
                             Properties
                           </Button>
                         </>
                       )}
 
                       <p className="context-group-title">Edit</p>
-                      <Button variant="muted" onClick={() => void renamePathItem(contextMenu.item.path, contextMenu.item.name)}>
+                      <Button
+                        variant="muted"
+                        onClick={() =>
+                          void renamePathItem(contextMenu.item.path, contextMenu.item.name)
+                        }
+                      >
                         Rename
                       </Button>
-                      <Button variant="muted" onClick={() => void movePathItem(contextMenu.item.path)}>
+                      <Button
+                        variant="muted"
+                        onClick={() => void movePathItem(contextMenu.item.path)}
+                      >
                         Move
                       </Button>
 
@@ -813,16 +876,19 @@ export const App = () => {
                 </>
               ) : null}
             </Panel>
-          )}
+          }
         />
 
         <Route
           path="/upload"
-          element={(
-            <Panel title="Uploader" subtitle="Uses typed upload cookbook with direct/multipart fallback">
+          element={
+            <Panel
+              title="Uploader"
+              subtitle="Uses typed upload cookbook with direct/multipart fallback"
+            >
               <UploadPanel selectedPath={selectedPath} onUploadComplete={refreshBrowse} />
             </Panel>
-          )}
+          }
         />
 
         <Route path="*" element={<Navigate to="/overview" replace />} />
@@ -869,7 +935,9 @@ export const App = () => {
             </label>
             {modalError ? <p className="state error">{modalError}</p> : null}
             <div className="modal-actions">
-              <Button variant="muted" onClick={closeModals}>Cancel</Button>
+              <Button variant="muted" onClick={closeModals}>
+                Cancel
+              </Button>
               <Button onClick={() => void submitRename()}>Save</Button>
             </div>
           </div>
@@ -917,7 +985,9 @@ export const App = () => {
             </label>
             {modalError ? <p className="state error">{modalError}</p> : null}
             <div className="modal-actions">
-              <Button variant="muted" onClick={closeModals}>Cancel</Button>
+              <Button variant="muted" onClick={closeModals}>
+                Cancel
+              </Button>
               <Button onClick={() => void submitMove()}>Move</Button>
             </div>
           </div>
@@ -943,8 +1013,12 @@ export const App = () => {
             <p className="state warn">This action cannot be undone.</p>
             {modalError ? <p className="state error">{modalError}</p> : null}
             <div className="modal-actions">
-              <Button variant="muted" onClick={closeModals}>Cancel</Button>
-              <Button variant="danger" onClick={() => void submitDelete()}>Delete</Button>
+              <Button variant="muted" onClick={closeModals}>
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={() => void submitDelete()}>
+                Delete
+              </Button>
             </div>
           </div>
         </div>
@@ -971,7 +1045,10 @@ export const App = () => {
                 <KeyValue label="Size" value={`${propertiesModal.details.size} bytes`} />
                 <KeyValue label="Content Type" value={propertiesModal.details.contentType} />
                 <KeyValue label="Storage Class" value={propertiesModal.details.storageClass} />
-                <KeyValue label="Last Modified" value={formatDate(propertiesModal.details.lastModified)} />
+                <KeyValue
+                  label="Last Modified"
+                  value={formatDate(propertiesModal.details.lastModified)}
+                />
                 <KeyValue label="ETag" value={propertiesModal.details.etag ?? '-'} />
 
                 <div className="properties-metadata">
@@ -992,7 +1069,9 @@ export const App = () => {
               </div>
             ) : null}
             <div className="modal-actions">
-              <Button variant="muted" onClick={closeModals}>Close</Button>
+              <Button variant="muted" onClick={closeModals}>
+                Close
+              </Button>
             </div>
           </div>
         </div>

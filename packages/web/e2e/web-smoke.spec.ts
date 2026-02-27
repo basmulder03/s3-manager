@@ -38,11 +38,7 @@ const ensureBucket = async (): Promise<void> => {
 };
 
 const seedPrefix = async (prefix: string): Promise<void> => {
-  const keys = [
-    `${prefix}/report.txt`,
-    `${prefix}/docs/readme.md`,
-    `${prefix}/archive/old.log`,
-  ];
+  const keys = [`${prefix}/report.txt`, `${prefix}/docs/readme.md`, `${prefix}/archive/old.log`];
 
   for (const key of keys) {
     await s3Client.send(
@@ -96,7 +92,7 @@ const openBrowserPath = async (path: string, page: Page): Promise<void> => {
   await page.getByRole('button', { name: 'Refresh' }).click();
 };
 
-test.describe('Stage 5 smoke', () => {
+test.describe('Web smoke', () => {
   test.beforeAll(async () => {
     await ensureBucket();
   });

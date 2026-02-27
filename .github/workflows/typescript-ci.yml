@@ -152,7 +152,7 @@ jobs:
         run: |
           timeout 90 bash -c 'until curl -s http://127.0.0.1:4566/_localstack/health | grep -q "\"s3\": \"available\""; do sleep 2; done'
 
-      - name: Run Stage 5 smoke E2E
+      - name: Run web smoke E2E
         run: bun run --filter web test:e2e
 
       - name: Upload Playwright report

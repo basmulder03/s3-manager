@@ -4,7 +4,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { App } from '@web/App';
 
 const createFolderMutate = vi.fn(async () => ({ path: 'my-bucket/new-folder/' }));
-const renameMutate = vi.fn(async () => ({ destinationPath: 'my-bucket/new-name', movedObjects: 1 }));
+const renameMutate = vi.fn(async () => ({
+  destinationPath: 'my-bucket/new-name',
+  movedObjects: 1,
+}));
 const deleteObjectMutate = vi.fn(async () => ({ success: true }));
 const deleteFolderMutate = vi.fn(async () => ({ deletedCount: 1 }));
 const deleteMultipleMutate = vi.fn(async () => ({ message: 'Deleted 2 item(s)', deletedCount: 2 }));
@@ -107,7 +110,7 @@ vi.mock('@web/trpc/client', () => ({
   },
 }));
 
-describe('Stage 5 browser parity interactions', () => {
+describe('Browser parity interactions', () => {
   beforeEach(() => {
     createFolderMutate.mockClear();
     renameMutate.mockClear();

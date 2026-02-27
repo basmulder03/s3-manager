@@ -24,7 +24,7 @@ const parsePath = (path: string): { bucket: string; prefix: string } => {
 };
 
 export const UploadPanel = ({ selectedPath, onUploadComplete }: UploadPanelProps) => {
-  const buckets = trpc.s3.listBuckets.useQuery();
+  const buckets = trpc.s3.listBuckets.useQuery({});
   const procedures = useMemo(() => createUploadProceduresFromTrpc(trpcProxyClient), []);
 
   const parsedPath = parsePath(selectedPath);
@@ -120,9 +120,7 @@ export const UploadPanel = ({ selectedPath, onUploadComplete }: UploadPanelProps
         </label>
 
         <div className="row-actions">
-          <Button onClick={upload}>
-            Upload File
-          </Button>
+          <Button onClick={upload}>Upload File</Button>
         </div>
       </div>
 

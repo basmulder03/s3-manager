@@ -1,6 +1,6 @@
-# Stage 5 E2E Plan
+# Web E2E Plan
 
-This plan defines the minimum end-to-end coverage required to lock in Stage 5 parity for the TypeScript stack.
+This plan defines the minimum end-to-end coverage required to lock in browser parity for the TypeScript stack.
 
 ## Goals
 
@@ -12,7 +12,7 @@ This plan defines the minimum end-to-end coverage required to lock in Stage 5 pa
 
 - Runner: Playwright (`@playwright/test`) in `packages/web`.
 - Config: `packages/web/playwright.config.ts`.
-- Initial smoke suite: `packages/web/e2e/stage5-smoke.spec.ts`.
+- Initial smoke suite: `packages/web/e2e/web-smoke.spec.ts`.
 - Environment:
   - LocalStack S3 at `http://localhost:4566`
   - Server at `http://localhost:3000`
@@ -67,4 +67,4 @@ This plan defines the minimum end-to-end coverage required to lock in Stage 5 pa
 ## Exit Criteria
 
 - All six core scenarios pass in CI on two consecutive runs.
-- Stage 5 parity matrix remains green with latest verification snapshot.
+- Browser parity matrix remains green with latest verification snapshot.

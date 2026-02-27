@@ -11,7 +11,7 @@ bun run dev
 PORT=3001 bun run dev
 ```
 
-## Running the Frontend (Stage 4)
+## Running the Frontend
 
 ```bash
 # From project root
@@ -24,7 +24,8 @@ http://localhost:5173
 
 The frontend talks to `VITE_API_URL` (defaults to `http://localhost:3000/trpc`).
 
-Stage 4 + initial Stage 5 frontend includes:
+Frontend includes:
+
 - Auth controls in UI (login, logout, refresh session)
 - S3 browser navigation with breadcrumbs
 - File upload panel using typed upload cookbook (direct vs multipart)
@@ -49,36 +50,36 @@ curl http://localhost:3000/openapi.json
 # API reference UI (Scalar)
 # Open in browser: http://localhost:3000/docs
 
-# Auth status (Stage 3)
+# Auth status
 curl http://localhost:3000/trpc/auth.status
 
-# Current authenticated user (Stage 3)
+# Current authenticated user
 curl http://localhost:3000/trpc/auth.me \
   -H 'Authorization: Bearer <access-token>'
 
-# Introspect current token if provider supports it (Stage 3)
+# Introspect current token if provider supports it
 curl http://localhost:3000/trpc/auth.introspect \
   -H 'Authorization: Bearer <access-token>'
 
-# OIDC login start (Stage 3)
+# OIDC login start
 curl -i http://localhost:3000/auth/login
 
-# Current HTTP auth user from cookie/header (Stage 3)
+# Current HTTP auth user from cookie/header
 curl -i http://localhost:3000/auth/user
 
-# Refresh tokens using refresh cookie (Stage 3)
+# Refresh tokens using refresh cookie
 curl -i -X POST http://localhost:3000/auth/refresh
 
 # Logout (revokes access/refresh tokens when revocation endpoint is available)
 curl -i http://localhost:3000/auth/logout
 
-# S3 buckets (Stage 2)
+# S3 buckets
 curl http://localhost:3000/trpc/s3.listBuckets
 
-# S3 virtual filesystem root (Stage 2)
+# S3 virtual filesystem root
 curl "http://localhost:3000/trpc/s3.browse?input=%7B%22virtualPath%22%3A%22%22%7D"
 
-# S3 create presigned upload URL (Stage 2)
+# S3 create presigned upload URL
 curl -X POST http://localhost:3000/trpc/s3.createPresignedUpload \
   -H 'content-type: application/json' \
   -d '{"json":{"bucketName":"my-bucket","objectKey":"folder/file.txt","contentType":"text/plain"}}'
@@ -107,7 +108,7 @@ packages/server/src/
 └── index.ts           # Entry point (loads env, starts server)
 
 packages/web/src/
-├── App.tsx            # Stage 4 frontend shell (health/auth/s3)
+├── App.tsx            # Frontend shell (health/auth/s3)
 ├── trpc/client.ts     # Typed tRPC client
 ├── state/ui.ts        # Zustand UI state
 ├── components/        # Reusable UI components
@@ -179,17 +180,20 @@ AUTH_REVOKE_ON_LOGOUT=true
 ```
 
 Production auth/cookie baseline:
+
 - `AUTH_REQUIRED=true`
 - `SESSION_COOKIE_SECURE=true`
 - If cross-site cookies are required: `SESSION_COOKIE_SAME_SITE=None` and keep secure=true
 - Keep token lifetimes explicit with `AUTH_ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS` and `AUTH_REFRESH_TOKEN_COOKIE_MAX_AGE_SECONDS`
 
 Permission behavior for tRPC routes:
+
 - `LOCAL_DEV_MODE=true`: permissions come from `DEFAULT_ROLE` + `rolePermissions`
 - `LOCAL_DEV_MODE=false`: bearer access token is verified against OIDC JWKS
 - fallback `x-user-permissions` header only applies when `AUTH_REQUIRED=false`
 
 Frontend upload helper:
+
 - Web-ready core: `packages/server/src/shared/upload/client.ts`
 - Shared contracts: `packages/server/src/shared/upload/contracts.ts`
 - Optional tRPC adapter: `packages/server/src/shared/upload/trpc-adapter.ts`
@@ -200,28 +204,28 @@ Frontend upload helper:
 ## Adding a New tRPC Router
 
 1. Create router file:
+
 ```typescript
 // src/routers/my-feature.ts
 import { router, publicProcedure } from '../trpc';
 import { z } from 'zod';
 
 export const myFeatureRouter = router({
-  getData: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .query(async ({ input }) => {
-      return { data: `Hello ${input.id}` };
-    }),
+  getData: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
+    return { data: `Hello ${input.id}` };
+  }),
 });
 ```
 
 2. Add to main router:
+
 ```typescript
 // src/trpc/router.ts
 import { myFeatureRouter } from '../routers/my-feature';
 
 export const appRouter = router({
   health: healthRouter,
-  myFeature: myFeatureRouter,  // Add here
+  myFeature: myFeatureRouter, // Add here
 });
 ```
 
@@ -238,15 +242,18 @@ export const appRouter = router({
 ## Troubleshooting
 
 **Server won't start:**
+
 - Check `.env.local` exists
 - Verify S3_ENDPOINT is valid URL
 - Look for validation errors in console
 
 **Env vars not loading:**
+
 - File must be in project ROOT (not packages/server/)
 - Check file name (`.env.local` not `env.local`)
 
 **Type errors:**
+
 ```bash
 # Check what's wrong
 bun run typecheck
@@ -258,16 +265,18 @@ bun run lint --fix
 ## Next Steps
 
 See docs for:
+
 - Detailed architecture explanation
 - Testing and CI workflows
 - Deployment guidance
 
-Stage 6 currently focuses on CI/CD readiness with `.github/workflows/typescript-ci.yml`.
+Current focus includes CI/CD readiness with `.github/workflows/typescript-ci.yml`.
 Branch protection recommendations are documented in `docs/development/ci.md`.
 
 ## Quick Wins
 
 Current TypeScript version:
+
 - ✅ Strong type safety across server and web
 - ✅ Config validated at startup
 - ✅ Fast local hot reload

@@ -15,7 +15,7 @@ const webServer = managedServers
         env: {
           NODE_ENV: 'test',
           PORT: new URL(apiOrigin).port,
-          SECRET_KEY: 'stage5-e2e-secret',
+          SECRET_KEY: 'e2e-test-secret',
           LOCAL_DEV_MODE: 'true',
           AUTH_REQUIRED: 'false',
           S3_ENDPOINT: s3Endpoint,
