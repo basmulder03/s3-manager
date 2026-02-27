@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { trpc } from '@web/trpc/client';
 import { useUiStore } from '@web/state/ui';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FileModals, SignInGate } from '@web/components';
 import { useBrowserController } from '@web/hooks';
 import { FinderHeader, FinderSidebar } from '@web/layout';
@@ -29,6 +29,7 @@ export const App = () => {
   const setTheme = useUiStore((state) => state.setTheme);
   const location = useLocation();
   const navigate = useNavigate();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const selectedPath = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -121,15 +122,21 @@ export const App = () => {
         setTheme={setTheme}
         authenticated={authenticated}
         onAfterRefresh={refreshAuthState}
+        sidebarOpen={isSidebarOpen}
+        onToggleSidebar={() => setIsSidebarOpen((previous) => !previous)}
       />
 
-      <div className={styles.finderWindow}>
-        <FinderSidebar
-          provider={authStatus.data?.provider}
-          userEmail={authMe.data?.email}
-          selectedPath={selectedPath}
-          permissions={permissions}
-        />
+      <div
+        className={`${styles.finderWindow} ${!isSidebarOpen ? styles.finderWindowCollapsed : ''}`}
+      >
+        {isSidebarOpen ? (
+          <FinderSidebar
+            provider={authStatus.data?.provider}
+            userEmail={authMe.data?.email}
+            selectedPath={selectedPath}
+            permissions={permissions}
+          />
+        ) : null}
 
         <section className={styles.finderContent}>
           <Routes>
@@ -145,6 +152,8 @@ export const App = () => {
                     browse={browse}
                     selectedItems={browser.selectedItems}
                     selectedFiles={browser.selectedFiles}
+                    folderSizesByPath={browser.folderSizesByPath}
+                    folderSizeLoadingPaths={browser.folderSizeLoadingPaths}
                     browserMessage={browser.browserMessage}
                     contextMenu={browser.contextMenu}
                     onBulkDownload={browser.bulkDownload}
@@ -153,9 +162,11 @@ export const App = () => {
                     onRowClick={browser.handleRowClick}
                     onRowDoubleClick={browser.handleRowDoubleClick}
                     onOpenContextMenu={browser.openContextMenu}
+                    onCloseContextMenu={browser.closeContextMenu}
                     onRename={browser.renamePathItem}
                     onMove={browser.movePathItem}
                     onDownload={browser.downloadFile}
+                    onCalculateFolderSize={browser.calculateFolderSize}
                     onOpenProperties={browser.openProperties}
                     onDeletePathItems={browser.deletePathItems}
                   />

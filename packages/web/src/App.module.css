@@ -41,6 +41,15 @@
   align-items: center;
 }
 
+.iconToggleButton {
+  width: 2rem;
+  height: 2rem;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  font-size: 1rem;
+}
+
 .hero h1 {
   margin: 0.28rem 0;
   font-size: clamp(1.2rem, 1.6vw, 1.6rem);
@@ -93,6 +102,10 @@
   background: var(--surface);
   overflow: hidden;
   box-shadow: var(--shadow);
+}
+
+.finderWindowCollapsed {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .finderSidebar {
@@ -209,7 +222,7 @@
 
 .browserToolbar {
   display: grid;
-  gap: 0.45rem;
+  gap: 0;
 }
 
 .browserControls {
@@ -224,7 +237,8 @@
   gap: 0.7rem;
   padding: 0.62rem;
   border: 1px solid color-mix(in srgb, var(--line) 74%, var(--brand));
-  border-radius: 12px;
+  border-radius: 12px 12px 0 0;
+  border-bottom: 0;
   background: color-mix(in srgb, var(--surface) 84%, transparent);
   backdrop-filter: blur(12px);
 }
@@ -276,6 +290,18 @@
 .breadcrumbInput {
   min-width: 180px;
   width: 100%;
+  padding: 0.22rem 0.4rem;
+  border-radius: 6px;
+  font-size: 0.84rem;
+  line-height: 1.2;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.breadcrumbInput:focus {
+  border: 0;
+  box-shadow: none;
 }
 
 .breadcrumbPart {
@@ -304,7 +330,7 @@
 
 .itemsTableWrap {
   border: 1px solid color-mix(in srgb, var(--line) 84%, var(--brand));
-  border-radius: 10px;
+  border-radius: 0 0 12px 12px;
   overflow: hidden;
 }
 
@@ -328,24 +354,15 @@
 }
 
 .itemsTable thead th:nth-child(1) {
-  width: 24%;
+  width: 54%;
 }
 
 .itemsTable thead th:nth-child(2) {
-  width: 37%;
+  width: 20%;
 }
 
 .itemsTable thead th:nth-child(3) {
-  width: 13%;
-}
-
-.itemsTable thead th:nth-child(4) {
-  width: 18%;
-}
-
-.itemsTable thead th:nth-child(5) {
-  width: 8%;
-  text-align: right;
+  width: 26%;
 }
 
 .emptyItemsState {
@@ -353,7 +370,7 @@
   gap: 0.22rem;
   padding: 1.2rem;
   border: 1px solid color-mix(in srgb, var(--line) 84%, var(--brand));
-  border-radius: 10px;
+  border-radius: 0 0 12px 12px;
   background: color-mix(in srgb, var(--surface-soft) 88%, transparent);
 }
 
@@ -407,10 +424,6 @@
   background: color-mix(in srgb, var(--brand-soft) 74%, var(--surface));
 }
 
-.itemsTable tbody tr.isSelected .itemPath {
-  color: color-mix(in srgb, var(--brand) 52%, var(--text));
-}
-
 .nameCell {
   padding-left: 0.52rem !important;
 }
@@ -446,49 +459,58 @@
   font-size: 0.95rem;
 }
 
-.itemPath {
-  font-family: 'IBM Plex Mono', monospace;
-}
-
-.menuCell {
-  text-align: right;
-}
-
-.rowMenuButton {
-  border: 1px solid var(--line);
-  background: var(--surface-soft);
-  color: var(--text);
-  border-radius: 6px;
-  width: 2rem;
-  height: 1.7rem;
-  font-size: 1rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.rowMenuButton:hover {
-  background: var(--surface-alt);
-}
-
 .contextMenu {
   position: fixed;
   z-index: 30;
-  min-width: 190px;
+  min-width: 210px;
   display: grid;
-  gap: 0.32rem;
-  padding: 0.5rem;
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
+  gap: 0.1rem;
+  padding: 0.28rem;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 82%, #7a8797);
+  border-radius: 8px;
   background: var(--surface);
-  box-shadow: 0 16px 34px rgba(23, 38, 60, 0.16);
+  box-shadow: 0 14px 26px rgba(16, 24, 38, 0.2);
 }
 
-.contextGroupTitle {
-  margin: 0.2rem 0 0.1rem;
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.contextMenuItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.35rem 0.5rem;
+}
+
+.contextMenuHint {
+  font-size: 0.74rem;
   color: var(--muted);
+  white-space: nowrap;
+}
+
+.contextMenuItem:hover {
+  background: color-mix(in srgb, var(--brand) 12%, var(--surface));
+}
+
+.contextMenuItemDanger {
+  color: var(--danger);
+}
+
+.contextMenuItemDanger:hover {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+}
+
+.contextMenuSeparator {
+  height: 1px;
+  margin: 0.18rem 0.1rem;
+  background: color-mix(in srgb, var(--line) 86%, var(--surface));
 }
 
 .modalOverlay {
@@ -606,19 +628,13 @@
 @media (max-width: 1060px) {
   .itemsTable thead th:nth-child(2),
   .itemsTable thead th:nth-child(3),
-  .itemsTable thead th:nth-child(4),
   .itemsTable tbody td:nth-child(2),
-  .itemsTable tbody td:nth-child(3),
-  .itemsTable tbody td:nth-child(4) {
+  .itemsTable tbody td:nth-child(3) {
     display: none;
   }
 
   .itemsTable thead th:nth-child(1) {
     width: auto;
-  }
-
-  .itemsTable thead th:nth-child(5) {
-    width: 70px;
   }
 }
 
@@ -641,21 +657,15 @@
   }
 
   .itemsTable tbody tr {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
+    display: table-row;
   }
 
   .itemsTable tbody td {
     border: 0;
   }
 
-  .itemsTable tbody td:not(.nameCell):not(.menuCell) {
+  .itemsTable tbody td:not(.nameCell) {
     display: none;
-  }
-
-  .menuCell {
-    padding-right: 0.52rem !important;
   }
 
   .folderInput {

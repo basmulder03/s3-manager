@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { trpcProxyClient } from '@web/trpc/client';
 import type { BrowseItem } from '@server/services/s3/types';
 import {
@@ -55,7 +55,17 @@ export const useBrowserController = ({
   const [deleteModal, setDeleteModal] = useState<DeleteModalState | null>(null);
   const [propertiesModal, setPropertiesModal] = useState<PropertiesModalState | null>(null);
   const [modalError, setModalError] = useState('');
+  const [folderSizesByPath, setFolderSizesByPath] = useState<Record<string, number>>({});
+  const [folderSizeLoadingPaths, setFolderSizeLoadingPaths] = useState<Set<string>>(new Set());
   const activeModalRef = useRef<HTMLDivElement>(null);
+
+  const browseItemsByPath = useMemo(() => {
+    const byPath = new Map<string, BrowseItem>();
+    for (const item of browseItems ?? []) {
+      byPath.set(item.path, item);
+    }
+    return byPath;
+  }, [browseItems]);
 
   const selection = useBrowserSelectionState({
     browseItems,
@@ -83,6 +93,91 @@ export const useBrowserController = ({
       bucketName: bucketName ?? '',
       objectKey: parts.join('/'),
     };
+  };
+
+  const getAncestorDirectories = (directoryPath: string): string[] => {
+    const normalized = directoryPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!normalized) {
+      return [''];
+    }
+
+    const segments = normalized.split('/');
+    const ancestors = [''];
+    for (let index = 0; index < segments.length; index += 1) {
+      ancestors.push(segments.slice(0, index + 1).join('/'));
+    }
+    return ancestors;
+  };
+
+  const getParentDirectoryPath = (path: string): string => {
+    const normalized = path.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!normalized) {
+      return '';
+    }
+
+    const parts = normalized.split('/');
+    return parts.slice(0, -1).join('/');
+  };
+
+  const removeFolderSizeEntriesByPrefix = (directoryPath: string) => {
+    const normalized = directoryPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    setFolderSizesByPath((previous) => {
+      let changed = false;
+      const next = { ...previous };
+      for (const key of Object.keys(next)) {
+        if (key === normalized || key.startsWith(`${normalized}/`)) {
+          delete next[key];
+          changed = true;
+        }
+      }
+
+      return changed ? next : previous;
+    });
+  };
+
+  const invalidateAncestors = (path: string) => {
+    const parentDirectoryPath = getParentDirectoryPath(path);
+    const ancestors = getAncestorDirectories(parentDirectoryPath);
+    setFolderSizesByPath((previous) => {
+      let changed = false;
+      const next = { ...previous };
+      for (const ancestor of ancestors) {
+        if (ancestor in next) {
+          delete next[ancestor];
+          changed = true;
+        }
+      }
+      return changed ? next : previous;
+    });
+  };
+
+  const updateFolderSizeAncestors = (directoryPath: string, delta: number) => {
+    const ancestors = getAncestorDirectories(directoryPath);
+    setFolderSizesByPath((previous) => {
+      const next = { ...previous };
+      let changed = false;
+
+      for (const ancestor of ancestors) {
+        const current = next[ancestor];
+        if (typeof current !== 'number') {
+          continue;
+        }
+
+        next[ancestor] = Math.max(0, current + delta);
+        changed = true;
+      }
+
+      return changed ? next : previous;
+    });
+  };
+
+  const clearFolderSizeCaches = () => {
+    setFolderSizesByPath({});
+    setFolderSizeLoadingPaths(new Set());
+  };
+
+  const closeContextMenu = () => {
+    selection.setContextMenu(null);
   };
 
   const createFolderInCurrentPath = async () => {
@@ -126,6 +221,58 @@ export const useBrowserController = ({
     }
   };
 
+  const calculateFolderSize = async (path: string) => {
+    const normalized = path.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!normalized) {
+      return;
+    }
+
+    closeContextMenu();
+
+    setFolderSizeLoadingPaths((previous) => {
+      const next = new Set(previous);
+      next.add(normalized);
+      return next;
+    });
+
+    try {
+      const updates: Record<string, number> = {};
+
+      const calculateRecursive = async (directoryPath: string): Promise<number> => {
+        const result = await trpcProxyClient.s3.browse.query({ virtualPath: directoryPath });
+        let totalSize = 0;
+
+        for (const item of result.items) {
+          if (item.type === 'file') {
+            totalSize += item.size ?? 0;
+            continue;
+          }
+
+          totalSize += await calculateRecursive(item.path);
+        }
+
+        updates[directoryPath] = totalSize;
+        return totalSize;
+      };
+
+      const totalSize = await calculateRecursive(normalized);
+
+      setFolderSizesByPath((previous) => ({
+        ...previous,
+        ...updates,
+      }));
+      setBrowserMessage(`Calculated size for ${normalized}: ${totalSize} bytes.`);
+    } catch {
+      setBrowserMessage('Failed to calculate folder size.');
+    } finally {
+      setFolderSizeLoadingPaths((previous) => {
+        const next = new Set(previous);
+        next.delete(normalized);
+        return next;
+      });
+    }
+  };
+
   const removeItem = async (path: string, type: 'file' | 'directory'): Promise<boolean> => {
     try {
       if (type === 'directory') {
@@ -147,7 +294,7 @@ export const useBrowserController = ({
     }
 
     setDeleteModal({ items });
-    selection.setContextMenu(null);
+    closeContextMenu();
     setModalError('');
   };
 
@@ -191,7 +338,7 @@ export const useBrowserController = ({
     }
 
     setRenameModal({ sourcePath: path, currentName, nextName: currentName });
-    selection.setContextMenu(null);
+    closeContextMenu();
     setModalError('');
   };
 
@@ -202,12 +349,12 @@ export const useBrowserController = ({
     }
 
     setMoveModal({ sourcePath: path, destinationPath: selectedPath || '' });
-    selection.setContextMenu(null);
+    closeContextMenu();
     setModalError('');
   };
 
   const openProperties = async (path: string) => {
-    selection.setContextMenu(null);
+    closeContextMenu();
     setPropertiesModal({ path, loading: true, error: '', details: null });
 
     try {
@@ -244,9 +391,16 @@ export const useBrowserController = ({
     }
 
     try {
+      const sourceItem = browseItemsByPath.get(renameModal.sourcePath);
       await renameItemAsync({ sourcePath: renameModal.sourcePath, newName: nextName });
       closeModals();
       setBrowserMessage('Item renamed successfully.');
+      closeContextMenu();
+
+      if (sourceItem?.type === 'directory') {
+        removeFolderSizeEntriesByPrefix(sourceItem.path);
+      }
+
       refreshBrowse();
     } catch {
       setModalError('Failed to rename item.');
@@ -270,9 +424,21 @@ export const useBrowserController = ({
     }
 
     try {
+      const sourceItem = browseItemsByPath.get(moveModal.sourcePath);
       await renameItemAsync({ sourcePath: moveModal.sourcePath, destinationPath });
       closeModals();
       setBrowserMessage('Item moved successfully.');
+      closeContextMenu();
+
+      if (sourceItem?.type === 'file' && typeof sourceItem.size === 'number') {
+        const sourceParent = getParentDirectoryPath(sourceItem.path);
+        const destinationParent = getParentDirectoryPath(destinationPath);
+        updateFolderSizeAncestors(sourceParent, -sourceItem.size);
+        updateFolderSizeAncestors(destinationParent, sourceItem.size);
+      } else {
+        clearFolderSizeCaches();
+      }
+
       refreshBrowse();
     } catch {
       setModalError('Failed to move item.');
@@ -295,6 +461,8 @@ export const useBrowserController = ({
         const result = await deleteMultipleAsync({ paths: targetItems.map((item) => item.path) });
         closeModals();
         selection.clearSelection();
+        closeContextMenu();
+        clearFolderSizeCaches();
         setBrowserMessage(result.message);
         refreshBrowse();
         return;
@@ -309,11 +477,19 @@ export const useBrowserController = ({
       const ok = await removeItem(item.path, item.type);
       if (ok) {
         success += 1;
+        if (item.type === 'file' && typeof item.size === 'number') {
+          const parentDirectoryPath = getParentDirectoryPath(item.path);
+          updateFolderSizeAncestors(parentDirectoryPath, -item.size);
+        } else {
+          removeFolderSizeEntriesByPrefix(item.path);
+          invalidateAncestors(item.path);
+        }
       }
     }
 
     closeModals();
     selection.clearSelection();
+    closeContextMenu();
     setBrowserMessage(`Deleted ${success} of ${targetItems.length} selected item(s).`);
     refreshBrowse();
   };
@@ -329,7 +505,7 @@ export const useBrowserController = ({
     selectedSingleItem: selection.selectedSingleItem,
     onCloseModals: closeModals,
     onClearSelection: selection.clearSelection,
-    onCloseContextMenu: () => selection.setContextMenu(null),
+    onCloseContextMenu: closeContextMenu,
     onSelectAll: (paths) => selection.setSelectedItems(new Set(paths)),
     onBulkDelete: bulkDelete,
     onBulkDownload: bulkDownload,
@@ -343,6 +519,8 @@ export const useBrowserController = ({
     browserMessage,
     selectedItems: selection.selectedItems,
     selectedFiles: selection.selectedFiles,
+    folderSizesByPath,
+    folderSizeLoadingPaths,
     contextMenu: selection.contextMenu,
     renameModal,
     moveModal,
@@ -365,12 +543,14 @@ export const useBrowserController = ({
     handleRowClick: selection.handleRowClick,
     handleRowDoubleClick: selection.handleRowDoubleClick,
     openContextMenu: selection.openContextMenu,
+    closeContextMenu,
     createFolderInCurrentPath,
     bulkDownload,
     bulkDelete,
     renamePathItem,
     movePathItem,
     downloadFile,
+    calculateFolderSize,
     openProperties,
     deletePathItems,
     submitRename,

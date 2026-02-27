@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { Button, Input } from '@web/components/ui';
-import { Panel } from '@web/components';
 import type { BrowseItem } from '@server/services/s3/types';
 import styles from '@web/App.module.css';
 
@@ -23,6 +22,8 @@ interface BrowserPageProps {
   };
   selectedItems: Set<string>;
   selectedFiles: BrowseItem[];
+  folderSizesByPath: Record<string, number>;
+  folderSizeLoadingPaths: Set<string>;
   browserMessage: string;
   contextMenu: { x: number; y: number; item: BrowseItem } | null;
   onBulkDownload: () => Promise<void>;
@@ -31,9 +32,11 @@ interface BrowserPageProps {
   onRowClick: (item: BrowseItem, index: number, event: MouseEvent<HTMLElement>) => void;
   onRowDoubleClick: (item: BrowseItem) => void;
   onOpenContextMenu: (item: BrowseItem, event: MouseEvent) => void;
+  onCloseContextMenu: () => void;
   onRename: (path: string, currentName: string) => void;
   onMove: (path: string) => void;
   onDownload: (path: string) => Promise<void>;
+  onCalculateFolderSize: (path: string) => Promise<void>;
   onOpenProperties: (path: string) => Promise<void>;
   onDeletePathItems: (items: BrowseItem[]) => void;
 }
@@ -59,6 +62,8 @@ export const BrowserPage = ({
   browse,
   selectedItems,
   selectedFiles,
+  folderSizesByPath,
+  folderSizeLoadingPaths,
   browserMessage,
   contextMenu,
   onBulkDownload,
@@ -67,9 +72,11 @@ export const BrowserPage = ({
   onRowClick,
   onRowDoubleClick,
   onOpenContextMenu,
+  onCloseContextMenu,
   onRename,
   onMove,
   onDownload,
+  onCalculateFolderSize,
   onOpenProperties,
   onDeletePathItems,
 }: BrowserPageProps) => {
@@ -162,7 +169,7 @@ export const BrowserPage = ({
   const selectedRecordsCount = selectedItems.size;
 
   return (
-    <Panel title="Files" subtitle="Browse and manage items">
+    <>
       <div className={styles.browserToolbar}>
         <div className={styles.explorerChrome}>
           <div className={styles.browserControls}>
@@ -300,10 +307,8 @@ export const BrowserPage = ({
                 <thead>
                   <tr>
                     <th>Name</th>
-                    <th>Path</th>
                     <th>Size</th>
                     <th>Modified</th>
-                    <th>Menu</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -345,22 +350,20 @@ export const BrowserPage = ({
                           <strong>{item.name}</strong>
                         </div>
                       </td>
-                      <td className={styles.itemPath}>{item.path || '/'}</td>
-                      <td>{item.size === null ? '-' : `${item.size} bytes`}</td>
-                      <td>{formatDate(item.lastModified)}</td>
-                      <td className={styles.menuCell}>
-                        {!isParentNavigation ? (
-                          <button
-                            className={styles.rowMenuButton}
-                            onPointerDown={(event) => event.stopPropagation()}
-                            onDoubleClick={(event) => event.stopPropagation()}
-                            onClick={(event) => onOpenContextMenu(item, event)}
-                            aria-label={`Open menu for ${item.name}`}
-                          >
-                            ⋯
-                          </button>
-                        ) : null}
+                      <td>
+                        {isParentNavigation
+                          ? ''
+                          : item.type === 'directory'
+                            ? folderSizeLoadingPaths.has(item.path)
+                              ? 'Calculating...'
+                              : typeof folderSizesByPath[item.path] === 'number'
+                                ? `${folderSizesByPath[item.path]} bytes`
+                                : '-'
+                            : item.size === null
+                              ? '-'
+                              : `${item.size} bytes`}
                       </td>
+                      <td>{isParentNavigation ? '' : formatDate(item.lastModified)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -375,50 +378,93 @@ export const BrowserPage = ({
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
             >
-              <p className={styles.contextGroupTitle}>Quick Actions</p>
               {contextMenu.item.type === 'directory' ? (
-                <Button variant="muted" onClick={() => setSelectedPath(contextMenu.item.path)}>
-                  Open
-                </Button>
+                <>
+                  <button
+                    className={styles.contextMenuItem}
+                    onClick={() => {
+                      onCloseContextMenu();
+                      setSelectedPath(contextMenu.item.path);
+                    }}
+                  >
+                    <span>Open</span>
+                    <span className={styles.contextMenuHint}>Enter</span>
+                  </button>
+                  <button
+                    className={styles.contextMenuItem}
+                    onClick={() => {
+                      void onCalculateFolderSize(contextMenu.item.path);
+                    }}
+                  >
+                    <span>Calculate Size</span>
+                  </button>
+                </>
               ) : (
                 <>
-                  <Button variant="muted" onClick={() => void onDownload(contextMenu.item.path)}>
-                    Download
-                  </Button>
-                  <Button
-                    variant="muted"
-                    onClick={() => void onOpenProperties(contextMenu.item.path)}
+                  <button
+                    className={styles.contextMenuItem}
+                    onClick={() => {
+                      onCloseContextMenu();
+                      void onDownload(contextMenu.item.path);
+                    }}
                   >
-                    Properties
-                  </Button>
+                    <span>Download</span>
+                    <span className={styles.contextMenuHint}>Ctrl/Cmd+D</span>
+                  </button>
+                  <button
+                    className={styles.contextMenuItem}
+                    onClick={() => {
+                      void onOpenProperties(contextMenu.item.path);
+                    }}
+                  >
+                    <span>Properties</span>
+                  </button>
                 </>
               )}
 
-              {canWrite ? <p className={styles.contextGroupTitle}>Edit</p> : null}
+              {canWrite || canDelete ? <div className={styles.contextMenuSeparator} /> : null}
+
               {canWrite ? (
-                <Button
-                  variant="muted"
-                  onClick={() => onRename(contextMenu.item.path, contextMenu.item.name)}
+                <button
+                  className={styles.contextMenuItem}
+                  onClick={() => {
+                    onCloseContextMenu();
+                    onRename(contextMenu.item.path, contextMenu.item.name);
+                  }}
                 >
-                  Rename
-                </Button>
+                  <span>Rename</span>
+                  <span className={styles.contextMenuHint}>F2</span>
+                </button>
               ) : null}
               {canWrite ? (
-                <Button variant="muted" onClick={() => onMove(contextMenu.item.path)}>
-                  Move
-                </Button>
+                <button
+                  className={styles.contextMenuItem}
+                  onClick={() => {
+                    onCloseContextMenu();
+                    onMove(contextMenu.item.path);
+                  }}
+                >
+                  <span>Move</span>
+                  <span className={styles.contextMenuHint}>Ctrl/Cmd+Shift+M</span>
+                </button>
               ) : null}
 
-              {canDelete ? <p className={styles.contextGroupTitle}>Danger</p> : null}
               {canDelete ? (
-                <Button variant="danger" onClick={() => onDeletePathItems([contextMenu.item])}>
-                  Delete
-                </Button>
+                <button
+                  className={`${styles.contextMenuItem} ${styles.contextMenuItemDanger}`}
+                  onClick={() => {
+                    onCloseContextMenu();
+                    onDeletePathItems([contextMenu.item]);
+                  }}
+                >
+                  <span>Delete</span>
+                  <span className={styles.contextMenuHint}>Delete</span>
+                </button>
               ) : null}
             </div>
           ) : null}
         </>
       ) : null}
-    </Panel>
+    </>
   );
 };

@@ -7,6 +7,8 @@ interface FinderHeaderProps {
   setTheme: (theme: 'light' | 'dark') => void;
   authenticated: boolean;
   onAfterRefresh: () => void;
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
 }
 
 export const FinderHeader = ({
@@ -14,14 +16,31 @@ export const FinderHeader = ({
   setTheme,
   authenticated,
   onAfterRefresh,
+  sidebarOpen,
+  onToggleSidebar,
 }: FinderHeaderProps) => {
   return (
     <header className={styles.hero}>
       <div className={styles.heroTopline}>
         <p className={styles.heroKicker}>S3 MANAGER</p>
         <div className={styles.heroActions}>
-          <Button variant="muted" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          <Button
+            variant="muted"
+            className={styles.iconToggleButton}
+            onClick={onToggleSidebar}
+            aria-label={sidebarOpen ? 'Hide session panel' : 'Show session panel'}
+            title={sidebarOpen ? 'Hide session panel' : 'Show session panel'}
+          >
+            ☰
+          </Button>
+          <Button
+            variant="muted"
+            className={styles.iconToggleButton}
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          >
+            {theme === 'dark' ? '☀' : '🌙'}
           </Button>
           <AuthActions authenticated={authenticated} onAfterRefresh={onAfterRefresh} />
         </div>

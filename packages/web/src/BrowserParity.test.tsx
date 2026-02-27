@@ -177,10 +177,9 @@ describe('Browser parity interactions', () => {
     const fileCell = screen.getAllByText('report.txt')[0]!;
     fireEvent.contextMenu(fileCell);
 
-    expect(await screen.findByText('Quick Actions')).toBeInTheDocument();
-    expect(screen.getByText('Edit')).toBeInTheDocument();
-    expect(screen.getByText('Danger')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Rename' }).length).toBeGreaterThan(0);
+    expect(await screen.findByText('Properties')).toBeInTheDocument();
+    expect(screen.getByText('Rename')).toBeInTheDocument();
+    expect(screen.getByText('Move')).toBeInTheDocument();
   });
 
   it('hides write and delete actions when user only has view permission', async () => {

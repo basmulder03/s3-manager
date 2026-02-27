@@ -133,6 +133,16 @@ export const useBrowserSelectionState = ({
       return;
     }
 
+    if (selectedItems.has(item.path)) {
+      setSelectedItems((previous) => {
+        const next = new Set(previous);
+        next.delete(item.path);
+        return next;
+      });
+      setLastSelectedIndex(null);
+      return;
+    }
+
     selectOnly(item.path);
     setLastSelectedIndex(index);
   };

@@ -98,7 +98,7 @@ describe('App routes', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Files')).toBeInTheDocument();
+    expect(screen.getByTestId('breadcrumb-trail')).toBeInTheDocument();
   });
 
   it('redirects unknown page routes to file browser', () => {
@@ -111,7 +111,7 @@ describe('App routes', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Files')).toBeInTheDocument();
+    expect(screen.getByTestId('breadcrumb-trail')).toBeInTheDocument();
   });
 
   it('shows sign-in screen only when auth is required and user is signed out', () => {
@@ -124,6 +124,6 @@ describe('App routes', () => {
 
     expect(screen.getByText('Sign in to continue')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument();
-    expect(screen.queryByText('Files')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('breadcrumb-trail')).not.toBeInTheDocument();
   });
 });
