@@ -218,11 +218,6 @@
   gap: 0.55rem;
 }
 
-.pathInput {
-  flex: 1;
-  min-width: 280px;
-}
-
 .folderInput {
   max-width: 260px;
 }
@@ -265,6 +260,11 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-soft);
+}
+
+.breadcrumbInput {
+  min-width: 260px;
+  width: 100%;
 }
 
 .breadcrumbPart {
@@ -618,7 +618,6 @@
     padding-left: 2rem;
   }
 
-  .pathInput,
   .folderInput {
     min-width: 100%;
     max-width: none;

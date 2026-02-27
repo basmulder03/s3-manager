@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { Button, Input } from '@web/components/ui';
 import { Panel } from '@web/components';
@@ -81,13 +81,11 @@ export const BrowserPage = ({
   onOpenProperties,
   onDeletePathItems,
 }: BrowserPageProps) => {
-  const [pathDraft, setPathDraft] = useState(selectedPath);
+  const [isBreadcrumbEditing, setIsBreadcrumbEditing] = useState(false);
+  const [breadcrumbDraft, setBreadcrumbDraft] = useState(selectedPath ? `/${selectedPath}` : '/');
+  const breadcrumbInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    setPathDraft(selectedPath);
-  }, [selectedPath]);
-
-  const commitPath = (rawPath: string) => {
+  const commitBreadcrumbPath = (rawPath: string) => {
     const normalized = rawPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
     if (normalized !== selectedPath) {
       setSelectedPath(normalized);
@@ -95,14 +93,35 @@ export const BrowserPage = ({
   };
 
   useEffect(() => {
+    if (isBreadcrumbEditing) {
+      return;
+    }
+
+    setBreadcrumbDraft(selectedPath ? `/${selectedPath}` : '/');
+  }, [isBreadcrumbEditing, selectedPath]);
+
+  useEffect(() => {
+    if (!isBreadcrumbEditing) {
+      return;
+    }
+
     const timeoutId = window.setTimeout(() => {
-      commitPath(pathDraft);
+      commitBreadcrumbPath(breadcrumbDraft);
     }, 320);
 
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [pathDraft, selectedPath]);
+  }, [breadcrumbDraft, isBreadcrumbEditing, selectedPath]);
+
+  useEffect(() => {
+    if (!isBreadcrumbEditing) {
+      return;
+    }
+
+    breadcrumbInputRef.current?.focus();
+    breadcrumbInputRef.current?.select();
+  }, [isBreadcrumbEditing]);
 
   const breadcrumbSegments = useMemo(() => {
     const normalized = selectedPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
@@ -121,18 +140,6 @@ export const BrowserPage = ({
     <Panel title="Files" subtitle="Browse and manage items">
       <div className={styles.browserToolbar}>
         <div className={styles.browserControls}>
-          <Input
-            className={styles.pathInput}
-            value={pathDraft}
-            onChange={(event) => setPathDraft(event.target.value)}
-            onBlur={(event) => commitPath(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                commitPath((event.target as HTMLInputElement).value);
-              }
-            }}
-            placeholder="bucket/folder"
-          />
           <Button variant="muted" onClick={browse.refetch}>
             Refresh
           </Button>
@@ -153,18 +160,59 @@ export const BrowserPage = ({
         ) : null}
       </div>
 
-      <div className={styles.breadcrumbTrail}>
-        <button className={styles.breadcrumbLink} onClick={() => setSelectedPath('')}>
-          root
-        </button>
-        {breadcrumbSegments.map((segment) => (
-          <span key={segment.path} className={styles.breadcrumbPart}>
-            <span className={styles.breadcrumbDivider}>/</span>
-            <button className={styles.breadcrumbLink} onClick={() => setSelectedPath(segment.path)}>
-              {segment.label}
+      <div
+        className={styles.breadcrumbTrail}
+        data-testid="breadcrumb-trail"
+        onDoubleClick={() => setIsBreadcrumbEditing(true)}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            setIsBreadcrumbEditing(true);
+          }
+        }}
+      >
+        {isBreadcrumbEditing ? (
+          <Input
+            ref={breadcrumbInputRef}
+            className={styles.breadcrumbInput}
+            value={breadcrumbDraft}
+            onChange={(event) => setBreadcrumbDraft(event.target.value)}
+            onBlur={(event) => {
+              commitBreadcrumbPath(event.target.value);
+              setIsBreadcrumbEditing(false);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                commitBreadcrumbPath((event.target as HTMLInputElement).value);
+                setIsBreadcrumbEditing(false);
+                return;
+              }
+
+              if (event.key === 'Escape') {
+                setBreadcrumbDraft(selectedPath ? `/${selectedPath}` : '/');
+                setIsBreadcrumbEditing(false);
+              }
+            }}
+            aria-label="Breadcrumb path"
+            placeholder="/bucket/folder"
+          />
+        ) : (
+          <>
+            <button className={styles.breadcrumbLink} onClick={() => setSelectedPath('')}>
+              root
             </button>
-          </span>
-        ))}
+            {breadcrumbSegments.map((segment) => (
+              <span key={segment.path} className={styles.breadcrumbPart}>
+                <span className={styles.breadcrumbDivider}>/</span>
+                <button
+                  className={styles.breadcrumbLink}
+                  onClick={() => setSelectedPath(segment.path)}
+                >
+                  {segment.label}
+                </button>
+              </span>
+            ))}
+          </>
+        )}
       </div>
 
       <p className={styles.hotkeysHint}>
