@@ -1,6 +1,7 @@
 import { Button } from '@web/components/ui';
 import type { SnackbarItem } from '@web/hooks';
 import styles from '@web/App.module.css';
+import { X } from 'lucide-react';
 
 interface SnackbarHostProps {
   snackbars: SnackbarItem[];
@@ -53,7 +54,7 @@ export const SnackbarHost = ({ snackbars, onDismiss }: SnackbarHostProps) => {
             onClick={() => onDismiss(snackbar.id)}
             aria-label="Dismiss status message"
           >
-            ×
+            <X className={styles.snackbarDismissIcon} aria-hidden="true" />
           </Button>
         </div>
       ))}

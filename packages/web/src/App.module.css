@@ -47,7 +47,12 @@
   display: inline-grid;
   place-items: center;
   padding: 0;
-  font-size: 1rem;
+}
+
+.iconToggleIcon {
+  width: 1rem;
+  height: 1rem;
+  stroke-width: 2;
 }
 
 .hero h1 {
@@ -852,8 +857,12 @@
   display: inline-grid;
   place-items: center;
   padding: 0;
-  font-size: 1rem;
-  line-height: 1;
+}
+
+.snackbarDismissIcon {
+  width: 0.95rem;
+  height: 0.95rem;
+  stroke-width: 2;
 }
 
 .snackbarAction {

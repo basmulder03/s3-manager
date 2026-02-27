@@ -1,6 +1,7 @@
 import { AuthActions } from '@web/components';
 import { Button } from '@web/components/ui';
 import styles from '@web/App.module.css';
+import { Menu, Moon, Sun } from 'lucide-react';
 
 interface FinderHeaderProps {
   theme: 'light' | 'dark';
@@ -29,7 +30,7 @@ export const FinderHeader = ({
             aria-label={sidebarOpen ? 'Hide session panel' : 'Show session panel'}
             title={sidebarOpen ? 'Hide session panel' : 'Show session panel'}
           >
-            ☰
+            <Menu className={styles.iconToggleIcon} aria-hidden="true" />
           </Button>
           <Button
             variant="muted"
@@ -38,7 +39,11 @@ export const FinderHeader = ({
             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
           >
-            {theme === 'dark' ? '☀' : '🌙'}
+            {theme === 'dark' ? (
+              <Sun className={styles.iconToggleIcon} aria-hidden="true" />
+            ) : (
+              <Moon className={styles.iconToggleIcon} aria-hidden="true" />
+            )}
           </Button>
           <AuthActions authenticated={authenticated} />
         </div>

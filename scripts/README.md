@@ -24,8 +24,12 @@ Used by:
 Initialization script for LocalStack that creates test S3 buckets:
 
 - `test-bucket` - Empty bucket for testing
-- `demo-bucket` - Contains sample files and folder structure
+- `demo-bucket` - Contains seeded sample files/folders for local testing
 - `uploads` - Empty bucket for upload testing
+
+Sample demo objects include multiple file types for UI/API checks:
+
+- `txt`, `html`, `svg`, `png`, `mp4` (placeholder)
 
 Also configures bucket CORS for local browser uploads from:
 
