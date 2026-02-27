@@ -353,6 +353,13 @@ config:
         endpoint: 'http://rook-ceph-rgw.rook-ceph.svc.cluster.local:8080'
         accessKey: '' # Set via secret
         secretKey: '' # Set via secret
+        # Optional: reference credentials from an existing Kubernetes Secret.
+        # When set, the app resolves credentials at startup from that Secret.
+        # credentialsSecretRef:
+        #   name: rook-ceph-object-user-my-store-s3-manager-user
+        #   namespace: rook-ceph
+        #   accessKeyKey: AccessKey
+        #   secretKeyKey: SecretKey
         region: 'us-east-1'
         useSSL: false
         verifySSL: false
