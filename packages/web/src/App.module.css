@@ -888,7 +888,15 @@
   color: var(--text);
   box-shadow: 0 16px 34px rgba(10, 22, 38, 0.25);
   padding: 0.58rem 0.7rem;
-  animation: snackbarIn 180ms ease-out;
+  opacity: 0;
+  transform: translateY(10px);
+  animation: snackbarIn 180ms ease-out forwards;
+}
+
+.snackbarAutoDismiss {
+  animation:
+    snackbarIn 180ms ease-out forwards,
+    snackbarOut 180ms ease-in var(--snackbar-fadeout-delay, 3020ms) forwards;
 }
 
 .snackbarBody {
@@ -953,6 +961,18 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes snackbarOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(8px);
   }
 }
 

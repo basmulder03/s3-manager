@@ -26,10 +26,41 @@ const DEFAULT_DURATION_MS = 3200;
 export const useSnackbarQueue = () => {
   const [snackbars, setSnackbars] = useState<SnackbarItem[]>([]);
   const nextIdRef = useRef(1);
+  const timersRef = useRef<Map<number, number>>(new Map());
 
-  const dismissSnackbar = useCallback((id: number) => {
-    setSnackbars((previous) => previous.filter((item) => item.id !== id));
+  const clearDismissTimer = useCallback((id: number) => {
+    const timer = timersRef.current.get(id);
+    if (typeof timer !== 'number') {
+      return;
+    }
+
+    window.clearTimeout(timer);
+    timersRef.current.delete(id);
   }, []);
+
+  const dismissSnackbar = useCallback(
+    (id: number) => {
+      clearDismissTimer(id);
+      setSnackbars((previous) => previous.filter((item) => item.id !== id));
+    },
+    [clearDismissTimer]
+  );
+
+  const scheduleDismiss = useCallback(
+    (id: number, durationMs: number) => {
+      if (durationMs <= 0) {
+        clearDismissTimer(id);
+        return;
+      }
+
+      clearDismissTimer(id);
+      const timer = window.setTimeout(() => {
+        dismissSnackbar(id);
+      }, durationMs);
+      timersRef.current.set(id, timer);
+    },
+    [clearDismissTimer, dismissSnackbar]
+  );
 
   const enqueueSnackbar = useCallback(
     ({
@@ -54,9 +85,10 @@ export const useSnackbarQueue = () => {
           onAction: onAction ?? null,
         },
       ]);
+      scheduleDismiss(id, durationMs);
       return id;
     },
-    []
+    [scheduleDismiss]
   );
 
   const updateSnackbar = useCallback(
@@ -69,32 +101,25 @@ export const useSnackbarQueue = () => {
         >
       >
     ) => {
+      if (typeof updates.durationMs === 'number') {
+        scheduleDismiss(id, updates.durationMs);
+      }
+
       setSnackbars((previous) =>
         previous.map((item) => (item.id === id ? { ...item, ...updates } : item))
       );
     },
-    []
+    [scheduleDismiss]
   );
 
   useEffect(() => {
-    if (snackbars.length === 0) {
-      return;
-    }
-
-    const timers = snackbars
-      .filter((snackbar) => snackbar.durationMs > 0)
-      .map((snackbar) =>
-        window.setTimeout(() => {
-          dismissSnackbar(snackbar.id);
-        }, snackbar.durationMs)
-      );
-
     return () => {
-      for (const timer of timers) {
+      for (const timer of timersRef.current.values()) {
         window.clearTimeout(timer);
       }
+      timersRef.current.clear();
     };
-  }, [dismissSnackbar, snackbars]);
+  }, []);
 
   return {
     snackbars,
