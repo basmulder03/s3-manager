@@ -1,10 +1,35 @@
-import type {
-  UploadHelperOptions,
-  UploadHelperResult,
-} from './contracts';
+import type { UploadHelperOptions, UploadHelperResult } from './contracts';
 
 const DEFAULT_MULTIPART_THRESHOLD_BYTES = 12 * 1024 * 1024;
 const DEFAULT_RETRIES_PER_PART = 3;
+
+const runProxyUpload = async (options: UploadHelperOptions): Promise<UploadHelperResult> => {
+  if (!options.proxyUpload) {
+    throw new Error('Proxy upload is not configured');
+  }
+
+  const proxied = await options.proxyUpload({
+    bucketName: options.bucketName,
+    objectKey: options.objectKey,
+    file: options.file,
+    contentType: options.contentType ?? options.file.type,
+    metadata: options.metadata,
+  });
+
+  options.onProgress?.({
+    uploadedParts: 1,
+    totalParts: 1,
+    uploadedBytes: options.file.size,
+    totalBytes: options.file.size,
+  });
+
+  return {
+    strategy: 'proxy',
+    key: proxied.key,
+    etag: proxied.etag,
+    location: proxied.location,
+  };
+};
 
 const extractEtag = (response: Response): string => {
   const etag = response.headers.get('ETag') ?? response.headers.get('etag');
@@ -52,11 +77,20 @@ const runDirectUpload = async (options: UploadHelperOptions): Promise<UploadHelp
     metadata: options.metadata,
   });
 
-  const response = await fetch(presigned.uploadUrl, {
-    method: 'PUT',
-    headers: presigned.requiredHeaders,
-    body: options.file.slice(0, options.file.size),
-  });
+  let response: Response;
+  try {
+    response = await fetch(presigned.uploadUrl, {
+      method: 'PUT',
+      headers: presigned.requiredHeaders,
+      body: options.file.slice(0, options.file.size),
+    });
+  } catch (error) {
+    if (options.proxyUpload) {
+      return runProxyUpload(options);
+    }
+
+    throw error;
+  }
 
   if (!response.ok) {
     throw new Error(`Direct upload failed with status ${response.status}`);
@@ -77,7 +111,10 @@ const runDirectUpload = async (options: UploadHelperOptions): Promise<UploadHelp
   };
 };
 
-const runMultipartUpload = async (options: UploadHelperOptions, partSizeBytes: number): Promise<UploadHelperResult> => {
+const runMultipartUpload = async (
+  options: UploadHelperOptions,
+  partSizeBytes: number
+): Promise<UploadHelperResult> => {
   const init = await options.client.initiateMultipartUpload({
     bucketName: options.bucketName,
     objectKey: options.objectKey,
@@ -144,7 +181,13 @@ const runMultipartUpload = async (options: UploadHelperOptions, partSizeBytes: n
   }
 };
 
-export const uploadObjectWithCookbook = async (options: UploadHelperOptions): Promise<UploadHelperResult> => {
+export const uploadObjectWithCookbook = async (
+  options: UploadHelperOptions
+): Promise<UploadHelperResult> => {
+  if (options.forceProxyUpload) {
+    return runProxyUpload(options);
+  }
+
   const threshold = options.multipartThresholdBytes ?? DEFAULT_MULTIPART_THRESHOLD_BYTES;
   const cookbook = await options.client.uploadCookbook({
     bucketName: options.bucketName,

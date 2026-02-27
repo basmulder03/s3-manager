@@ -25,6 +25,7 @@ interface BrowserPageProps {
   setSelectedPath: (path: string) => void;
   canWrite: boolean;
   canDelete: boolean;
+  isUploading: boolean;
   browse: {
     data?: BrowseData;
     isLoading: boolean;
@@ -38,6 +39,8 @@ interface BrowserPageProps {
   contextMenu: { x: number; y: number; item: BrowseItem } | null;
   onBulkDownload: () => Promise<void>;
   onBulkDelete: () => Promise<void>;
+  onUploadFiles: (files: FileList | File[]) => Promise<void>;
+  onUploadFolder: (files: FileList | File[]) => Promise<void>;
   onClearSelection: () => void;
   onRowClick: (item: BrowseItem, index: number, event: MouseEvent<HTMLElement>) => void;
   onRowDoubleClick: (item: BrowseItem) => void;
@@ -82,6 +85,7 @@ export const BrowserPage = ({
   setSelectedPath,
   canWrite,
   canDelete,
+  isUploading,
   browse,
   selectedItems,
   selectedFiles,
@@ -90,6 +94,8 @@ export const BrowserPage = ({
   contextMenu,
   onBulkDownload,
   onBulkDelete,
+  onUploadFiles,
+  onUploadFolder,
   onClearSelection,
   onRowClick,
   onRowDoubleClick,
@@ -112,6 +118,12 @@ export const BrowserPage = ({
   ]);
   const breadcrumbInputRef = useRef<HTMLInputElement>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
+  const uploadFilesInputRef = useRef<HTMLInputElement>(null);
+  const uploadFolderInputRef = useRef<HTMLInputElement>(null);
+  const folderInputAttributes = {
+    directory: '',
+    webkitdirectory: '',
+  } as Record<string, string>;
 
   const commitBreadcrumbPath = (rawPath: string) => {
     const normalized = rawPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
@@ -342,6 +354,8 @@ export const BrowserPage = ({
   };
 
   const selectedRecordsCount = selectedItems.size;
+  const hasBucketContext = selectedPath.trim().replace(/^\/+/, '').length > 0;
+  const uploadDisabled = isUploading || !hasBucketContext;
   const openFilter = () => {
     if (isFilterOpen) {
       filterInputRef.current?.focus();
@@ -500,6 +514,31 @@ export const BrowserPage = ({
               </>
             ) : null}
 
+            {canWrite ? (
+              <>
+                <Button
+                  variant="muted"
+                  disabled={uploadDisabled}
+                  onClick={() => uploadFilesInputRef.current?.click()}
+                  title={
+                    !hasBucketContext ? 'Navigate to a bucket before uploading' : 'Upload files'
+                  }
+                >
+                  Upload Files
+                </Button>
+                <Button
+                  variant="muted"
+                  disabled={uploadDisabled}
+                  onClick={() => uploadFolderInputRef.current?.click()}
+                  title={
+                    !hasBucketContext ? 'Navigate to a bucket before uploading' : 'Upload folder'
+                  }
+                >
+                  Upload Folder
+                </Button>
+              </>
+            ) : null}
+
             <Button
               variant="muted"
               className={`${styles.iconButton} ${styles.refreshButton}`}
@@ -520,6 +559,39 @@ export const BrowserPage = ({
 
       {browse.data ? (
         <>
+          <input
+            ref={uploadFilesInputRef}
+            className={styles.hiddenInput}
+            type="file"
+            multiple
+            data-testid="upload-files-input"
+            onChange={(event) => {
+              const files = event.target.files;
+              if (!files || files.length === 0) {
+                return;
+              }
+
+              void onUploadFiles(files);
+              event.target.value = '';
+            }}
+          />
+          <input
+            ref={uploadFolderInputRef}
+            className={styles.hiddenInput}
+            type="file"
+            multiple
+            data-testid="upload-folder-input"
+            {...folderInputAttributes}
+            onChange={(event) => {
+              const files = event.target.files;
+              if (!files || files.length === 0) {
+                return;
+              }
+
+              void onUploadFolder(files);
+              event.target.value = '';
+            }}
+          />
           {renderedItems.length === 0 ? (
             <div className={styles.emptyItemsState}>
               <p>No items in this location.</p>

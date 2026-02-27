@@ -121,13 +121,21 @@ export interface UploadHelperOptions {
   file: BrowserFileLike;
   contentType?: string;
   metadata?: Record<string, string>;
+  forceProxyUpload?: boolean;
+  proxyUpload?: (input: {
+    bucketName: string;
+    objectKey: string;
+    file: BrowserFileLike;
+    contentType?: string;
+    metadata?: Record<string, string>;
+  }) => Promise<{ key: string; etag: string | null; location: string | null }>;
   multipartThresholdBytes?: number;
   retriesPerPart?: number;
   onProgress?: (event: UploadProgressEvent) => void;
 }
 
 export interface UploadHelperResult {
-  strategy: 'direct' | 'multipart';
+  strategy: 'direct' | 'multipart' | 'proxy';
   key: string;
   etag: string | null;
   location: string | null;

@@ -96,6 +96,19 @@ export interface PresignedUploadResult {
   requiredHeaders: Record<string, string>;
 }
 
+export interface ProxyUploadInput {
+  bucketName: string;
+  objectKey: string;
+  body: Uint8Array;
+  contentType?: string;
+  metadata?: Record<string, string>;
+}
+
+export interface ProxyUploadResult {
+  key: string;
+  etag: string | null;
+}
+
 export interface InitiateMultipartUploadInput {
   bucketName: string;
   objectKey: string;

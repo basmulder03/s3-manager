@@ -6,6 +6,7 @@ import { createContext } from '@/trpc';
 import { config } from '@/config';
 import { getLogger, getTelemetryStatus, telemetryMiddleware } from '@/telemetry';
 import { registerAuthHttpRoutes } from '@/http/auth';
+import { registerUploadHttpRoutes } from '@/http/upload';
 import { getOpenApiDocument, getScalarHtml } from '@/openapi/document';
 
 /**
@@ -80,6 +81,7 @@ export const createApp = () => {
   });
 
   registerAuthHttpRoutes(app);
+  registerUploadHttpRoutes(app);
 
   // tRPC endpoint
   app.use(

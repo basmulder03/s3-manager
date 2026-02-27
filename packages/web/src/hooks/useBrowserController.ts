@@ -1,6 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
 import { trpcProxyClient } from '@web/trpc/client';
 import type { BrowseItem } from '@server/services/s3/types';
+import { createUploadProceduresFromTrpc } from '@server/shared/upload/trpc-adapter';
+import { uploadObjectWithCookbook } from '@server/shared/upload/client';
+import { uploadObjectViaProxy } from '@web/upload/proxyUpload';
 import {
   type DeleteModalState,
   type MoveModalState,
@@ -57,8 +60,10 @@ export const useBrowserController = ({
   const [modalError, setModalError] = useState('');
   const [folderSizesByPath, setFolderSizesByPath] = useState<Record<string, number>>({});
   const [folderSizeLoadingPaths, setFolderSizeLoadingPaths] = useState<Set<string>>(new Set());
+  const [isUploading, setIsUploading] = useState(false);
   const activeModalRef = useRef<HTMLDivElement>(null);
   const { snackbars, enqueueSnackbar, dismissSnackbar } = useSnackbarQueue();
+  const uploadProcedures = useMemo(() => createUploadProceduresFromTrpc(trpcProxyClient), []);
 
   const browseItemsByPath = useMemo(() => {
     const byPath = new Map<string, BrowseItem>();
@@ -179,6 +184,127 @@ export const useBrowserController = ({
 
   const closeContextMenu = () => {
     selection.setContextMenu(null);
+  };
+
+  const uploadFromSelection = async (
+    files: FileList | File[],
+    mode: 'files' | 'folder'
+  ): Promise<void> => {
+    if (isUploading) {
+      return;
+    }
+
+    if (!canWrite) {
+      enqueueSnackbar({ message: 'You do not have write permission.', tone: 'error' });
+      return;
+    }
+
+    const normalizedSelectedPath = selectedPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    const [bucketName, ...prefixParts] = normalizedSelectedPath.split('/');
+    if (!bucketName) {
+      enqueueSnackbar({
+        message: 'Navigate to a bucket path before uploading.',
+        tone: 'error',
+      });
+      return;
+    }
+
+    const uploadFiles = Array.from(files);
+    if (uploadFiles.length === 0) {
+      return;
+    }
+
+    const prefix = prefixParts.join('/');
+    const normalizedPrefix = prefix ? `${prefix}/` : '';
+
+    let uploadedCount = 0;
+    let failedCount = 0;
+    const failureReasons = new Map<string, number>();
+    const failureExamples = new Map<string, string[]>();
+
+    const getUploadFailureReason = (error: unknown): string => {
+      const rawMessage =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message.trim()
+          : 'Upload failed';
+      const normalized = rawMessage.toLowerCase();
+
+      if (normalized.includes('failed to fetch')) {
+        return 'Upload request could not reach S3 (usually CORS or endpoint configuration).';
+      }
+
+      return rawMessage;
+    };
+    setIsUploading(true);
+
+    try {
+      for (const file of uploadFiles) {
+        const relativePath =
+          mode === 'folder'
+            ? (file.webkitRelativePath || file.name).replace(/\\/g, '/').replace(/^\/+/, '')
+            : file.name;
+        const objectKey = `${normalizedPrefix}${relativePath}`;
+
+        try {
+          await uploadObjectWithCookbook({
+            client: uploadProcedures,
+            bucketName,
+            objectKey,
+            file,
+            contentType: file.type || 'application/octet-stream',
+            metadata: {
+              original_filename: file.name,
+            },
+            forceProxyUpload: true,
+            proxyUpload: uploadObjectViaProxy,
+          });
+          uploadedCount += 1;
+        } catch (error) {
+          failedCount += 1;
+          const reason = getUploadFailureReason(error);
+          failureReasons.set(reason, (failureReasons.get(reason) ?? 0) + 1);
+          const examples = failureExamples.get(reason) ?? [];
+          if (examples.length < 2) {
+            examples.push(relativePath);
+            failureExamples.set(reason, examples);
+          }
+        }
+      }
+
+      if (uploadedCount > 0) {
+        refreshBrowse();
+      }
+
+      const failureReasonSummary = Array.from(failureReasons.entries())
+        .sort((left, right) => right[1] - left[1])
+        .slice(0, 2)
+        .map(([reason, count]) => {
+          const examples = failureExamples.get(reason) ?? [];
+          const suffix = examples.length > 0 ? `, e.g. ${examples.join(', ')}` : '';
+          return count > 1 ? `${reason} (${count}${suffix})` : `${reason}${suffix}`;
+        })
+        .join('; ');
+
+      if (failedCount === 0) {
+        enqueueSnackbar({ message: `Uploaded ${uploadedCount} item(s).`, tone: 'success' });
+        return;
+      }
+
+      if (uploadedCount === 0) {
+        enqueueSnackbar({
+          message: `Failed to upload ${failedCount} item(s): ${failureReasonSummary}`,
+          tone: 'error',
+        });
+        return;
+      }
+
+      enqueueSnackbar({
+        message: `Uploaded ${uploadedCount} item(s), failed ${failedCount} item(s): ${failureReasonSummary}`,
+        tone: 'info',
+      });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const createFolderInCurrentPath = async () => {
@@ -533,6 +659,7 @@ export const useBrowserController = ({
     dismissSnackbar,
     selectedItems: selection.selectedItems,
     selectedFiles: selection.selectedFiles,
+    isUploading,
     folderSizesByPath,
     folderSizeLoadingPaths,
     contextMenu: selection.contextMenu,
@@ -559,6 +686,8 @@ export const useBrowserController = ({
     openContextMenu: selection.openContextMenu,
     closeContextMenu,
     createFolderInCurrentPath,
+    uploadFiles: (files: FileList | File[]) => uploadFromSelection(files, 'files'),
+    uploadFolder: (files: FileList | File[]) => uploadFromSelection(files, 'folder'),
     bulkDownload,
     bulkDelete,
     renamePathItem,

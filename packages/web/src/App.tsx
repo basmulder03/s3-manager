@@ -216,6 +216,7 @@ export const App = () => {
                     setSelectedPath={setSelectedPath}
                     canWrite={canWrite}
                     canDelete={canDelete}
+                    isUploading={browser.isUploading}
                     browse={browse}
                     selectedItems={browser.selectedItems}
                     selectedFiles={browser.selectedFiles}
@@ -224,6 +225,8 @@ export const App = () => {
                     contextMenu={browser.contextMenu}
                     onBulkDownload={browser.bulkDownload}
                     onBulkDelete={browser.bulkDelete}
+                    onUploadFiles={browser.uploadFiles}
+                    onUploadFolder={browser.uploadFolder}
                     onClearSelection={browser.clearSelection}
                     onRowClick={browser.handleRowClick}
                     onRowDoubleClick={browser.handleRowDoubleClick}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { uploadObjectWithCookbook } from '@server/shared/upload/client';
 import type { createUploadProceduresFromTrpc } from '@server/shared/upload/trpc-adapter';
+import { uploadObjectViaProxy } from '@web/upload/proxyUpload';
 
 type UploadProcedures = ReturnType<typeof createUploadProceduresFromTrpc>;
 
@@ -50,6 +51,8 @@ export const useUploadExecutionState = ({
         metadata: {
           original_filename: file.name,
         },
+        forceProxyUpload: true,
+        proxyUpload: uploadObjectViaProxy,
         onProgress(event) {
           const pct = Math.round((event.uploadedBytes / event.totalBytes) * 100);
           setProgress(Number.isFinite(pct) ? pct : 0);

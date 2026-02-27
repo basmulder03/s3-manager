@@ -13,6 +13,7 @@ const createProps = () => {
       setSelectedPath,
       canWrite: true,
       canDelete: true,
+      isUploading: false,
       browse: {
         data: {
           breadcrumbs: [
@@ -32,6 +33,8 @@ const createProps = () => {
       contextMenu: null,
       onBulkDownload: vi.fn(async () => {}),
       onBulkDelete: vi.fn(async () => {}),
+      onUploadFiles: vi.fn(async () => {}),
+      onUploadFolder: vi.fn(async () => {}),
       onClearSelection: vi.fn(),
       onRowClick: vi.fn(),
       onRowDoubleClick: vi.fn(),
@@ -177,5 +180,35 @@ describe('BrowserPage sorting and filtering', () => {
     expect(screen.getByText('invoice-2.pdf')).toBeInTheDocument();
     expect(screen.queryByText('invoice-1.pdf')).not.toBeInTheDocument();
     expect(screen.queryByText('photos')).not.toBeInTheDocument();
+  });
+
+  it('triggers file and folder upload handlers', () => {
+    const { props } = createProps();
+    render(<BrowserPage {...props} selectedPath="" />);
+
+    const uploadFile = new File(['hello'], 'hello.txt', { type: 'text/plain' });
+    const folderFile = new File(['world'], 'inside.txt', { type: 'text/plain' });
+    Object.defineProperty(folderFile, 'webkitRelativePath', {
+      configurable: true,
+      value: 'my-folder/inside.txt',
+    });
+
+    fireEvent.change(screen.getByTestId('upload-files-input'), {
+      target: { files: [uploadFile] },
+    });
+    fireEvent.change(screen.getByTestId('upload-folder-input'), {
+      target: { files: [folderFile] },
+    });
+
+    expect(props.onUploadFiles).toHaveBeenCalledTimes(1);
+    expect(props.onUploadFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables upload buttons when not inside a bucket', () => {
+    const { props } = createProps();
+    render(<BrowserPage {...props} selectedPath="" />);
+
+    expect(screen.getByRole('button', { name: 'Upload Files' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Upload Folder' })).toBeDisabled();
   });
 });

@@ -317,6 +317,10 @@
   margin-left: auto;
 }
 
+.hiddenInput {
+  display: none;
+}
+
 .folderInput {
   max-width: 260px;
 }

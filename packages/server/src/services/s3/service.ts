@@ -20,7 +20,12 @@ import { getLogger } from '@/telemetry';
 import { recordS3FileAccess } from '@/telemetry/metrics';
 import { getS3Client } from '@/services/s3/client';
 import { S3ServiceError } from '@/services/s3/errors';
-import { buildBreadcrumbs, joinObjectKey, normalizeVirtualPath, parseVirtualPath } from '@/services/s3/path';
+import {
+  buildBreadcrumbs,
+  joinObjectKey,
+  normalizeVirtualPath,
+  parseVirtualPath,
+} from '@/services/s3/path';
 import type {
   AbortMultipartUploadInput,
   BrowseItem,
@@ -43,6 +48,8 @@ import type {
   ObjectMetadataResult,
   ObjectPropertiesInput,
   ObjectPropertiesResult,
+  ProxyUploadInput,
+  ProxyUploadResult,
   PresignedUploadInput,
   PresignedUploadResult,
   RenameItemInput,
@@ -79,7 +86,11 @@ const toCopySource = (bucketName: string, objectKey: string): string => {
   return `/${bucketName}/${encodeURIComponent(objectKey).replace(/%2F/g, '/')}`;
 };
 
-const ensureRenameTarget = (sourceKey: string, newName?: string, destinationPrefix?: string): string => {
+const ensureRenameTarget = (
+  sourceKey: string,
+  newName?: string,
+  destinationPrefix?: string
+): string => {
   if (destinationPrefix && destinationPrefix.length > 0) {
     const cleanSource = sourceKey.endsWith('/') ? sourceKey.slice(0, -1) : sourceKey;
     const sourceName = cleanSource.split('/').pop();
@@ -87,7 +98,9 @@ const ensureRenameTarget = (sourceKey: string, newName?: string, destinationPref
       throw new S3ServiceError('Unable to resolve source name for move operation', 'INVALID_PATH');
     }
 
-    return sourceKey.endsWith('/') ? `${destinationPrefix}${sourceName}/` : `${destinationPrefix}${sourceName}`;
+    return sourceKey.endsWith('/')
+      ? `${destinationPrefix}${sourceName}/`
+      : `${destinationPrefix}${sourceName}`;
   }
 
   if (!newName || newName.trim().length === 0) {
@@ -103,12 +116,17 @@ const ensureRenameTarget = (sourceKey: string, newName?: string, destinationPref
   const parentParts = cleanSource.split('/').slice(0, -1);
   const parentPrefix = parentParts.length > 0 ? `${parentParts.join('/')}/` : '';
 
-  return sourceKey.endsWith('/') ? `${parentPrefix}${normalizedName}/` : `${parentPrefix}${normalizedName}`;
+  return sourceKey.endsWith('/')
+    ? `${parentPrefix}${normalizedName}/`
+    : `${parentPrefix}${normalizedName}`;
 };
 
 const normalizeMetadataValue = (value: string): string => value.trim();
 
-const buildUploadMetadata = (actor: string, provided?: Record<string, string>): Record<string, string> => {
+const buildUploadMetadata = (
+  actor: string,
+  provided?: Record<string, string>
+): Record<string, string> => {
   const metadata: Record<string, string> = {
     uploaded_by: actor,
     uploaded_at: new Date().toISOString(),
@@ -120,7 +138,10 @@ const buildUploadMetadata = (actor: string, provided?: Record<string, string>): 
   }
 
   for (const [key, value] of Object.entries(provided)) {
-    const normalizedKey = key.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    const normalizedKey = key
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '_');
     const normalizedValue = normalizeMetadataValue(value);
 
     if (normalizedKey.length === 0 || normalizedValue.length === 0) {
@@ -253,7 +274,10 @@ export class S3Service {
     }
   }
 
-  async getObjectMetadata(input: ObjectMetadataInput, actor?: string): Promise<ObjectMetadataResult> {
+  async getObjectMetadata(
+    input: ObjectMetadataInput,
+    actor?: string
+  ): Promise<ObjectMetadataResult> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
 
@@ -312,7 +336,10 @@ export class S3Service {
     }
   }
 
-  async getObjectProperties(input: ObjectPropertiesInput, actor?: string): Promise<ObjectPropertiesResult> {
+  async getObjectProperties(
+    input: ObjectPropertiesInput,
+    actor?: string
+  ): Promise<ObjectPropertiesResult> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
 
@@ -348,7 +375,9 @@ export class S3Service {
         metadata: headResponse.Metadata ?? {},
         ...(headResponse.VersionId ? { versionId: headResponse.VersionId } : {}),
         ...(headResponse.CacheControl ? { cacheControl: headResponse.CacheControl } : {}),
-        ...(headResponse.ContentDisposition ? { contentDisposition: headResponse.ContentDisposition } : {}),
+        ...(headResponse.ContentDisposition
+          ? { contentDisposition: headResponse.ContentDisposition }
+          : {}),
         ...(headResponse.ContentEncoding ? { contentEncoding: headResponse.ContentEncoding } : {}),
         ...(headResponse.ContentLanguage ? { contentLanguage: headResponse.ContentLanguage } : {}),
         ...(headResponse.Expires ? { expires: headResponse.Expires.toISOString() } : {}),
@@ -371,7 +400,10 @@ export class S3Service {
     }
   }
 
-  async createPresignedUpload(input: PresignedUploadInput, actor?: string): Promise<PresignedUploadResult> {
+  async createPresignedUpload(
+    input: PresignedUploadInput,
+    actor?: string
+  ): Promise<PresignedUploadResult> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
 
@@ -426,6 +458,53 @@ export class S3Service {
         Date.now() - startedAt
       );
       throw mapError(error, `Failed to generate upload URL for '${input.objectKey}'`);
+    }
+  }
+
+  async uploadObjectViaProxy(input: ProxyUploadInput, actor?: string): Promise<ProxyUploadResult> {
+    const startedAt = Date.now();
+    const safeActor = metricActor(actor);
+
+    try {
+      const client = this.clientProvider();
+      const metadata = buildUploadMetadata(safeActor, input.metadata);
+      const result = await client.send(
+        new PutObjectCommand({
+          Bucket: input.bucketName,
+          Key: input.objectKey,
+          Body: input.body,
+          ContentType: input.contentType,
+          Metadata: metadata,
+        })
+      );
+
+      recordS3FileAccess(
+        {
+          operation: 'write',
+          actor: safeActor,
+          bucket: input.bucketName,
+          objectKey: input.objectKey,
+          result: 'success',
+        },
+        Date.now() - startedAt
+      );
+
+      return {
+        key: input.objectKey,
+        etag: result.ETag ?? null,
+      };
+    } catch (error) {
+      recordS3FileAccess(
+        {
+          operation: 'write',
+          actor: safeActor,
+          bucket: input.bucketName,
+          objectKey: input.objectKey,
+          result: 'failure',
+        },
+        Date.now() - startedAt
+      );
+      throw mapError(error, `Failed to proxy upload for '${input.objectKey}'`);
     }
   }
 
@@ -783,9 +862,8 @@ export class S3Service {
         }
 
         const destinationPrefixRaw = destinationParts.join('/');
-        const destinationPrefix = destinationPrefixRaw.length > 0
-          ? `${destinationPrefixRaw.replace(/\/+$/, '')}/`
-          : '';
+        const destinationPrefix =
+          destinationPrefixRaw.length > 0 ? `${destinationPrefixRaw.replace(/\/+$/, '')}/` : '';
 
         return {
           bucketName: destinationBucket,
@@ -1020,7 +1098,10 @@ export class S3Service {
         },
         Date.now() - startedAt
       );
-      throw mapError(error, `Failed to create multipart URL for '${input.objectKey}' part ${input.partNumber}`);
+      throw mapError(
+        error,
+        `Failed to create multipart URL for '${input.objectKey}' part ${input.partNumber}`
+      );
     }
   }
 
