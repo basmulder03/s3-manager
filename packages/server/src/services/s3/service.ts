@@ -19,7 +19,12 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getLogger } from '@/telemetry';
 import { recordS3FileAccess } from '@/telemetry/metrics';
-import { getS3Client } from '@/services/s3/client';
+import {
+  getS3Client,
+  listS3SourceIds,
+  resolveBucketReference,
+  toBucketReference,
+} from '@/services/s3/client';
 import { S3ServiceError } from '@/services/s3/errors';
 import {
   buildBreadcrumbs,
@@ -175,6 +180,20 @@ const parsePathToBucketAndKey = (path: string): { bucketName: string; objectKey:
 
   return {
     bucketName,
+    objectKey,
+  };
+};
+
+const resolvePathTarget = (
+  path: string
+): { sourceId: string; bucketName: string; bucketReference: string; objectKey: string } => {
+  const { bucketName, objectKey } = parsePathToBucketAndKey(path);
+  const resolved = resolveBucketReference(bucketName);
+
+  return {
+    sourceId: resolved.sourceId,
+    bucketName: resolved.bucketName,
+    bucketReference: resolved.bucketReference,
     objectKey,
   };
 };
@@ -335,19 +354,28 @@ const readBodyAsBytes = async (body: unknown): Promise<Uint8Array> => {
 };
 
 export class S3Service {
-  constructor(private readonly clientProvider: () => S3Client = getS3Client) {}
+  constructor(private readonly clientProvider: (sourceId?: string) => S3Client = getS3Client) {}
 
   async listBuckets(actor?: string): Promise<S3BucketSummary[]> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
 
     try {
-      const client = this.clientProvider();
-      const response = await client.send(new ListBucketsCommand({}));
-      const buckets = (response.Buckets ?? []).map<S3BucketSummary>((bucket) => ({
-        name: bucket.Name ?? '',
-        creationDate: toIso(bucket.CreationDate),
-      }));
+      const sourceIds = listS3SourceIds();
+      const bucketGroups = await Promise.all(
+        sourceIds.map(async (sourceId) => {
+          const client = this.clientProvider(sourceId);
+          const response = await client.send(new ListBucketsCommand({}));
+          return (response.Buckets ?? []).map<S3BucketSummary>((bucket) => {
+            const bucketName = bucket.Name ?? '';
+            return {
+              name: bucketName.length > 0 ? toBucketReference(sourceId, bucketName) : '',
+              creationDate: toIso(bucket.CreationDate),
+            };
+          });
+        })
+      );
+      const buckets = bucketGroups.flat();
 
       recordS3FileAccess(
         {
@@ -379,12 +407,13 @@ export class S3Service {
   async listObjects(input: ListObjectsInput, actor?: string): Promise<ListObjectsResult> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
+    const target = resolveBucketReference(input.bucketName);
 
     try {
-      const client = this.clientProvider();
+      const client = this.clientProvider(target.sourceId);
       const response = await client.send(
         new ListObjectsV2Command({
-          Bucket: input.bucketName,
+          Bucket: target.bucketName,
           Prefix: input.prefix ?? '',
           MaxKeys: input.maxKeys ?? 1000,
           ContinuationToken: input.continuationToken,
@@ -412,7 +441,7 @@ export class S3Service {
         {
           operation: 'read',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.prefix ?? '*',
           result: 'success',
         },
@@ -425,7 +454,7 @@ export class S3Service {
         {
           operation: 'read',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.prefix ?? '*',
           result: 'failure',
         },
@@ -441,12 +470,13 @@ export class S3Service {
   ): Promise<ObjectMetadataResult> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
+    const target = resolveBucketReference(input.bucketName);
 
     try {
-      const client = this.clientProvider();
+      const client = this.clientProvider(target.sourceId);
       const headResponse = await client.send(
         new HeadObjectCommand({
-          Bucket: input.bucketName,
+          Bucket: target.bucketName,
           Key: input.objectKey,
         })
       );
@@ -455,7 +485,7 @@ export class S3Service {
       const downloadUrl = await getSignedUrl(
         client,
         new GetObjectCommand({
-          Bucket: input.bucketName,
+          Bucket: target.bucketName,
           Key: input.objectKey,
         }),
         {
@@ -467,7 +497,7 @@ export class S3Service {
         {
           operation: 'read',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'success',
         },
@@ -487,7 +517,7 @@ export class S3Service {
         {
           operation: 'read',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'failure',
         },
@@ -505,12 +535,12 @@ export class S3Service {
     const safeActor = metricActor(actor);
 
     try {
-      const { bucketName, objectKey } = parsePathToBucketAndKey(input.path);
-      const client = this.clientProvider();
+      const target = resolvePathTarget(input.path);
+      const client = this.clientProvider(target.sourceId);
       const headResponse = await client.send(
         new HeadObjectCommand({
-          Bucket: bucketName,
-          Key: objectKey,
+          Bucket: target.bucketName,
+          Key: target.objectKey,
         })
       );
 
@@ -518,16 +548,16 @@ export class S3Service {
         {
           operation: 'read',
           actor: safeActor,
-          bucket: bucketName,
-          objectKey,
+          bucket: target.bucketReference,
+          objectKey: target.objectKey,
           result: 'success',
         },
         Date.now() - startedAt
       );
 
       return {
-        name: objectKey.split('/').pop() ?? objectKey,
-        key: objectKey,
+        name: target.objectKey.split('/').pop() ?? target.objectKey,
+        key: target.objectKey,
         size: headResponse.ContentLength ?? 0,
         contentType: headResponse.ContentType ?? 'application/octet-stream',
         lastModified: toIso(headResponse.LastModified),
@@ -569,12 +599,12 @@ export class S3Service {
     const safeActor = metricActor(actor);
 
     try {
-      const { bucketName, objectKey } = parsePathToBucketAndKey(input.path);
-      const client = this.clientProvider();
+      const target = resolvePathTarget(input.path);
+      const client = this.clientProvider(target.sourceId);
       const current = await client.send(
         new HeadObjectCommand({
-          Bucket: bucketName,
-          Key: objectKey,
+          Bucket: target.bucketName,
+          Key: target.objectKey,
         })
       );
 
@@ -617,9 +647,9 @@ export class S3Service {
 
       await client.send(
         new CopyObjectCommand({
-          Bucket: bucketName,
-          CopySource: toCopySource(bucketName, objectKey),
-          Key: objectKey,
+          Bucket: target.bucketName,
+          CopySource: toCopySource(target.bucketName, target.objectKey),
+          Key: target.objectKey,
           MetadataDirective: 'REPLACE',
           Metadata: metadata,
           ContentType: contentType,
@@ -634,8 +664,8 @@ export class S3Service {
 
       const updated = await client.send(
         new HeadObjectCommand({
-          Bucket: bucketName,
-          Key: objectKey,
+          Bucket: target.bucketName,
+          Key: target.objectKey,
         })
       );
 
@@ -643,16 +673,16 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: bucketName,
-          objectKey,
+          bucket: target.bucketReference,
+          objectKey: target.objectKey,
           result: 'success',
         },
         Date.now() - startedAt
       );
 
       return {
-        name: objectKey.split('/').pop() ?? objectKey,
-        key: objectKey,
+        name: target.objectKey.split('/').pop() ?? target.objectKey,
+        key: target.objectKey,
         size: updated.ContentLength ?? 0,
         contentType: updated.ContentType ?? 'application/octet-stream',
         lastModified: toIso(updated.LastModified),
@@ -692,18 +722,18 @@ export class S3Service {
     const safeActor = metricActor(actor);
 
     try {
-      const { bucketName, objectKey } = parsePathToBucketAndKey(input.path);
-      const client = this.clientProvider();
+      const target = resolvePathTarget(input.path);
+      const client = this.clientProvider(target.sourceId);
       const headResponse = await client.send(
         new HeadObjectCommand({
-          Bucket: bucketName,
-          Key: objectKey,
+          Bucket: target.bucketName,
+          Key: target.objectKey,
         })
       );
 
       const size = headResponse.ContentLength ?? 0;
       const contentType = headResponse.ContentType ?? 'application/octet-stream';
-      if (!canReadOrWriteAsText(objectKey, contentType)) {
+      if (!canReadOrWriteAsText(target.objectKey, contentType)) {
         throw new S3ServiceError('This file type cannot be viewed as text', 'ValidationError');
       }
 
@@ -716,8 +746,8 @@ export class S3Service {
 
       const objectResponse = await client.send(
         new GetObjectCommand({
-          Bucket: bucketName,
-          Key: objectKey,
+          Bucket: target.bucketName,
+          Key: target.objectKey,
         })
       );
 
@@ -733,8 +763,8 @@ export class S3Service {
         {
           operation: 'read',
           actor: safeActor,
-          bucket: bucketName,
-          objectKey,
+          bucket: target.bucketReference,
+          objectKey: target.objectKey,
           result: 'success',
         },
         Date.now() - startedAt
@@ -771,17 +801,17 @@ export class S3Service {
     const safeActor = metricActor(actor);
 
     try {
-      const { bucketName, objectKey } = parsePathToBucketAndKey(input.path);
-      const client = this.clientProvider();
+      const target = resolvePathTarget(input.path);
+      const client = this.clientProvider(target.sourceId);
       const headResponse = await client.send(
         new HeadObjectCommand({
-          Bucket: bucketName,
-          Key: objectKey,
+          Bucket: target.bucketName,
+          Key: target.objectKey,
         })
       );
 
       const existingContentType = headResponse.ContentType ?? 'application/octet-stream';
-      if (!canReadOrWriteAsText(objectKey, existingContentType)) {
+      if (!canReadOrWriteAsText(target.objectKey, existingContentType)) {
         throw new S3ServiceError('This file type cannot be edited as text', 'ValidationError');
       }
 
@@ -801,8 +831,8 @@ export class S3Service {
 
       const putResponse = await client.send(
         new PutObjectCommand({
-          Bucket: bucketName,
-          Key: objectKey,
+          Bucket: target.bucketName,
+          Key: target.objectKey,
           Body: body,
           ContentType: existingContentType,
           Metadata: headResponse.Metadata,
@@ -813,8 +843,8 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: bucketName,
-          objectKey,
+          bucket: target.bucketReference,
+          objectKey: target.objectKey,
           result: 'success',
         },
         Date.now() - startedAt
@@ -848,15 +878,16 @@ export class S3Service {
   ): Promise<PresignedUploadResult> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
+    const target = resolveBucketReference(input.bucketName);
 
     try {
-      const client = this.clientProvider();
+      const client = this.clientProvider(target.sourceId);
       const expiresInSeconds = input.expiresInSeconds ?? 900;
       const metadata = buildUploadMetadata(safeActor, input.metadata);
       const uploadUrl = await getSignedUrl(
         client,
         new PutObjectCommand({
-          Bucket: input.bucketName,
+          Bucket: target.bucketName,
           Key: input.objectKey,
           ContentType: input.contentType,
           Metadata: metadata,
@@ -870,7 +901,7 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'success',
         },
@@ -893,7 +924,7 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'failure',
         },
@@ -906,13 +937,14 @@ export class S3Service {
   async uploadObjectViaProxy(input: ProxyUploadInput, actor?: string): Promise<ProxyUploadResult> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
+    const target = resolveBucketReference(input.bucketName);
 
     try {
-      const client = this.clientProvider();
+      const client = this.clientProvider(target.sourceId);
       const metadata = buildUploadMetadata(safeActor, input.metadata);
       const result = await client.send(
         new PutObjectCommand({
-          Bucket: input.bucketName,
+          Bucket: target.bucketName,
           Key: input.objectKey,
           Body: input.body,
           ContentType: input.contentType,
@@ -924,7 +956,7 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'success',
         },
@@ -940,7 +972,7 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'failure',
         },
@@ -953,12 +985,13 @@ export class S3Service {
   async deleteObject(input: DeleteObjectInput, actor?: string): Promise<void> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
+    const target = resolveBucketReference(input.bucketName);
 
     try {
-      const client = this.clientProvider();
+      const client = this.clientProvider(target.sourceId);
       await client.send(
         new DeleteObjectCommand({
-          Bucket: input.bucketName,
+          Bucket: target.bucketName,
           Key: input.objectKey,
         })
       );
@@ -967,7 +1000,7 @@ export class S3Service {
         {
           operation: 'delete',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'success',
         },
@@ -978,7 +1011,7 @@ export class S3Service {
         {
           operation: 'delete',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'failure',
         },
@@ -998,14 +1031,16 @@ export class S3Service {
 
     for (const path of input.paths) {
       try {
-        const { bucketName, objectKey } = parsePathToBucketAndKey(path);
+        const target = resolvePathTarget(path);
         const normalizedPath = normalizeVirtualPath(path);
-        const folderPrefix = objectKey.endsWith('/') ? objectKey : `${objectKey}/`;
-        const client = this.clientProvider();
+        const folderPrefix = target.objectKey.endsWith('/')
+          ? target.objectKey
+          : `${target.objectKey}/`;
+        const client = this.clientProvider(target.sourceId);
 
         const folderProbe = await client.send(
           new ListObjectsV2Command({
-            Bucket: bucketName,
+            Bucket: target.bucketName,
             Prefix: folderPrefix,
             MaxKeys: 1,
           })
@@ -1016,7 +1051,10 @@ export class S3Service {
           const folderResult = await this.deleteFolder({ path: normalizedPath }, actor);
           deletedCount += folderResult.deletedCount;
         } else {
-          await this.deleteObject({ bucketName, objectKey }, actor);
+          await this.deleteObject(
+            { bucketName: target.bucketReference, objectKey: target.objectKey },
+            actor
+          );
           deletedCount += 1;
         }
       } catch (error) {
@@ -1056,10 +1094,11 @@ export class S3Service {
       }
 
       const { bucketName, prefix } = parseVirtualPath(normalizedPath);
-      const client = this.clientProvider();
+      const target = resolveBucketReference(bucketName);
+      const client = this.clientProvider(target.sourceId);
       const response = await client.send(
         new ListObjectsV2Command({
-          Bucket: bucketName,
+          Bucket: target.bucketName,
           Prefix: prefix,
           Delimiter: '/',
         })
@@ -1080,7 +1119,7 @@ export class S3Service {
           {
             name,
             type: 'directory',
-            path: `${bucketName}/${folderPrefix.replace(/\/$/, '')}`,
+            path: `${target.bucketReference}/${folderPrefix.replace(/\/$/, '')}`,
             size: null,
             lastModified: null,
           },
@@ -1102,7 +1141,7 @@ export class S3Service {
           {
             name,
             type: 'file',
-            path: `${bucketName}/${key}`,
+            path: `${target.bucketReference}/${key}`,
             size: item.Size ?? 0,
             lastModified: toIso(item.LastModified),
             etag: item.ETag,
@@ -1121,7 +1160,7 @@ export class S3Service {
         {
           operation: 'read',
           actor: safeActor,
-          bucket: bucketName,
+          bucket: target.bucketReference,
           objectKey: prefix || '*',
           result: 'success',
         },
@@ -1155,12 +1194,13 @@ export class S3Service {
 
     try {
       const { bucketName, prefix } = parseVirtualPath(input.path);
+      const target = resolveBucketReference(bucketName);
       const folderKey = `${joinObjectKey(prefix, input.folderName)}/`;
 
-      const client = this.clientProvider();
+      const client = this.clientProvider(target.sourceId);
       await client.send(
         new PutObjectCommand({
-          Bucket: bucketName,
+          Bucket: target.bucketName,
           Key: folderKey,
           Body: '',
         })
@@ -1170,7 +1210,7 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: bucketName,
+          bucket: target.bucketReference,
           objectKey: folderKey,
           result: 'success',
         },
@@ -1178,7 +1218,7 @@ export class S3Service {
       );
 
       return {
-        path: `${bucketName}/${folderKey}`,
+        path: `${target.bucketReference}/${folderKey}`,
       };
     } catch (error) {
       recordS3FileAccess(
@@ -1201,18 +1241,19 @@ export class S3Service {
 
     try {
       const { bucketName, prefix } = parseVirtualPath(input.path);
+      const target = resolveBucketReference(bucketName);
       if (!prefix || prefix.length === 0) {
         throw new S3ServiceError('Cannot delete bucket root with deleteFolder', 'INVALID_PATH');
       }
 
-      const client = this.clientProvider();
+      const client = this.clientProvider(target.sourceId);
       let continuationToken: string | undefined;
       const keysToDelete: Array<{ Key: string }> = [];
 
       do {
         const response = await client.send(
           new ListObjectsV2Command({
-            Bucket: bucketName,
+            Bucket: target.bucketName,
             Prefix: prefix,
             ContinuationToken: continuationToken,
           })
@@ -1236,7 +1277,7 @@ export class S3Service {
         const batch = keysToDelete.slice(i, i + 1000);
         await client.send(
           new DeleteObjectsCommand({
-            Bucket: bucketName,
+            Bucket: target.bucketName,
             Delete: {
               Objects: batch,
             },
@@ -1249,7 +1290,7 @@ export class S3Service {
         {
           operation: 'delete',
           actor: safeActor,
-          bucket: bucketName,
+          bucket: target.bucketReference,
           objectKey: prefix,
           result: 'success',
         },
@@ -1278,10 +1319,15 @@ export class S3Service {
 
     try {
       const normalizedSourcePath = normalizeVirtualPath(input.sourcePath);
-      const [sourceBucket, ...sourceParts] = normalizedSourcePath.split('/');
-      if (!sourceBucket || sourceBucket.length === 0 || sourceParts.length === 0) {
+      const [sourceBucketReference, ...sourceParts] = normalizedSourcePath.split('/');
+      if (
+        !sourceBucketReference ||
+        sourceBucketReference.length === 0 ||
+        sourceParts.length === 0
+      ) {
         throw new S3ServiceError('sourcePath must include bucket and key', 'INVALID_PATH');
       }
+      const sourceBucket = resolveBucketReference(sourceBucketReference);
 
       const sourceKeyRaw = sourceParts.join('/');
       const sourcePrefix = input.sourcePath.trim().endsWith('/')
@@ -1298,22 +1344,30 @@ export class S3Service {
         }
 
         const normalizedDestinationPath = normalizeVirtualPath(input.destinationPath);
-        const [destinationBucket, ...destinationParts] = normalizedDestinationPath.split('/');
-        if (!destinationBucket || destinationBucket.length === 0) {
+        const [destinationBucketReference, ...destinationParts] =
+          normalizedDestinationPath.split('/');
+        if (!destinationBucketReference || destinationBucketReference.length === 0) {
           throw new S3ServiceError('destinationPath must include bucket name', 'INVALID_PATH');
         }
+        const destinationBucket = resolveBucketReference(destinationBucketReference);
 
         const destinationPrefixRaw = destinationParts.join('/');
         const destinationPrefix =
           destinationPrefixRaw.length > 0 ? `${destinationPrefixRaw.replace(/\/+$/, '')}/` : '';
 
         return {
-          bucketName: destinationBucket,
+          sourceId: destinationBucket.sourceId,
+          bucketName: destinationBucket.bucketName,
+          bucketReference: destinationBucket.bucketReference,
           prefix: destinationPrefix,
         };
       })();
 
-      if (destinationBase && destinationBase.bucketName !== sourceBucket) {
+      if (
+        destinationBase &&
+        (destinationBase.bucketName !== sourceBucket.bucketName ||
+          destinationBase.sourceId !== sourceBucket.sourceId)
+      ) {
         throw new S3ServiceError('Cross-bucket move is not supported', 'INVALID_PATH');
       }
 
@@ -1322,7 +1376,7 @@ export class S3Service {
         throw new S3ServiceError('Source and destination are identical', 'INVALID_PATH');
       }
 
-      const client = this.clientProvider();
+      const client = this.clientProvider(sourceBucket.sourceId);
 
       if (sourcePrefix.endsWith('/')) {
         let continuationToken: string | undefined;
@@ -1331,7 +1385,7 @@ export class S3Service {
         do {
           const response = await client.send(
             new ListObjectsV2Command({
-              Bucket: sourceBucket,
+              Bucket: sourceBucket.bucketName,
               Prefix: sourcePrefix,
               ContinuationToken: continuationToken,
             })
@@ -1356,8 +1410,8 @@ export class S3Service {
 
           await client.send(
             new CopyObjectCommand({
-              Bucket: sourceBucket,
-              CopySource: toCopySource(sourceBucket, sourceKey),
+              Bucket: sourceBucket.bucketName,
+              CopySource: toCopySource(sourceBucket.bucketName, sourceKey),
               Key: destinationKey,
             })
           );
@@ -1367,7 +1421,7 @@ export class S3Service {
           const batch = sourceKeys.slice(i, i + 1000).map((Key) => ({ Key }));
           await client.send(
             new DeleteObjectsCommand({
-              Bucket: sourceBucket,
+              Bucket: sourceBucket.bucketName,
               Delete: { Objects: batch },
             })
           );
@@ -1377,7 +1431,7 @@ export class S3Service {
           {
             operation: 'write',
             actor: safeActor,
-            bucket: sourceBucket,
+            bucket: sourceBucket.bucketReference,
             objectKey: sourcePrefix,
             result: 'success',
           },
@@ -1386,22 +1440,22 @@ export class S3Service {
 
         return {
           sourcePath: input.sourcePath,
-          destinationPath: `${sourceBucket}/${targetKey.replace(/\/$/, '')}`,
+          destinationPath: `${sourceBucket.bucketReference}/${targetKey.replace(/\/$/, '')}`,
           movedObjects: sourceKeys.length,
         };
       }
 
       await client.send(
         new CopyObjectCommand({
-          Bucket: sourceBucket,
-          CopySource: toCopySource(sourceBucket, sourcePrefix),
+          Bucket: sourceBucket.bucketName,
+          CopySource: toCopySource(sourceBucket.bucketName, sourcePrefix),
           Key: targetKey,
         })
       );
 
       await client.send(
         new DeleteObjectCommand({
-          Bucket: sourceBucket,
+          Bucket: sourceBucket.bucketName,
           Key: sourcePrefix,
         })
       );
@@ -1410,7 +1464,7 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: sourceBucket,
+          bucket: sourceBucket.bucketReference,
           objectKey: sourcePrefix,
           result: 'success',
         },
@@ -1419,7 +1473,7 @@ export class S3Service {
 
       return {
         sourcePath: input.sourcePath,
-        destinationPath: `${sourceBucket}/${targetKey}`,
+        destinationPath: `${sourceBucket.bucketReference}/${targetKey}`,
         movedObjects: 1,
       };
     } catch (error) {
@@ -1443,13 +1497,14 @@ export class S3Service {
   ): Promise<InitiateMultipartUploadResult> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
+    const target = resolveBucketReference(input.bucketName);
 
     try {
-      const client = this.clientProvider();
+      const client = this.clientProvider(target.sourceId);
       const metadata = buildUploadMetadata(safeActor, input.metadata);
       const response = await client.send(
         new CreateMultipartUploadCommand({
-          Bucket: input.bucketName,
+          Bucket: target.bucketName,
           Key: input.objectKey,
           ContentType: input.contentType,
           Metadata: metadata,
@@ -1464,7 +1519,7 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'success',
         },
@@ -1480,7 +1535,7 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'failure',
         },
@@ -1496,14 +1551,15 @@ export class S3Service {
   ): Promise<CreateMultipartPartUrlResult> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
+    const target = resolveBucketReference(input.bucketName);
 
     try {
-      const client = this.clientProvider();
+      const client = this.clientProvider(target.sourceId);
       const expiresInSeconds = input.expiresInSeconds ?? 900;
       const uploadUrl = await getSignedUrl(
         client,
         new UploadPartCommand({
-          Bucket: input.bucketName,
+          Bucket: target.bucketName,
           Key: input.objectKey,
           UploadId: input.uploadId,
           PartNumber: input.partNumber,
@@ -1517,7 +1573,7 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'success',
         },
@@ -1534,7 +1590,7 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'failure',
         },
@@ -1553,9 +1609,10 @@ export class S3Service {
   ): Promise<CompleteMultipartUploadResult> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
+    const target = resolveBucketReference(input.bucketName);
 
     try {
-      const client = this.clientProvider();
+      const client = this.clientProvider(target.sourceId);
       const parts: CompletedPart[] = input.parts
         .map((part) => ({
           PartNumber: part.partNumber,
@@ -1565,7 +1622,7 @@ export class S3Service {
 
       const response = await client.send(
         new CompleteMultipartUploadCommand({
-          Bucket: input.bucketName,
+          Bucket: target.bucketName,
           Key: input.objectKey,
           UploadId: input.uploadId,
           MultipartUpload: {
@@ -1578,7 +1635,7 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'success',
         },
@@ -1595,7 +1652,7 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'failure',
         },
@@ -1608,12 +1665,13 @@ export class S3Service {
   async abortMultipartUpload(input: AbortMultipartUploadInput, actor?: string): Promise<void> {
     const startedAt = Date.now();
     const safeActor = metricActor(actor);
+    const target = resolveBucketReference(input.bucketName);
 
     try {
-      const client = this.clientProvider();
+      const client = this.clientProvider(target.sourceId);
       await client.send(
         new AbortMultipartUploadCommand({
-          Bucket: input.bucketName,
+          Bucket: target.bucketName,
           Key: input.objectKey,
           UploadId: input.uploadId,
         })
@@ -1623,7 +1681,7 @@ export class S3Service {
         {
           operation: 'delete',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'success',
         },
@@ -1634,7 +1692,7 @@ export class S3Service {
         {
           operation: 'delete',
           actor: safeActor,
-          bucket: input.bucketName,
+          bucket: target.bucketReference,
           objectKey: input.objectKey,
           result: 'failure',
         },

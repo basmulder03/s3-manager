@@ -24,22 +24,23 @@ metadata:
   namespace: s3-manager-test
 data:
   # Application settings
-  FLASK_ENV: "development"
-  LOG_LEVEL: "DEBUG"
-  
-  # S3 Configuration (LocalStack)
-  S3_ENDPOINT: "http://localstack.localstack.svc.cluster.local:4566"
-  S3_REGION: "us-east-1"
-  S3_USE_SSL: "false"
-  S3_VERIFY_SSL: "false"
-  
+  FLASK_ENV: 'development'
+  LOG_LEVEL: 'DEBUG'
+
+  # S3 Source Configuration (LocalStack)
+  S3_SOURCE_0_ID: 'local-a'
+  S3_SOURCE_0_ENDPOINT: 'http://localstack.localstack.svc.cluster.local:4566'
+  S3_SOURCE_0_REGION: 'us-east-1'
+  S3_SOURCE_0_USE_SSL: 'false'
+  S3_SOURCE_0_VERIFY_SSL: 'false'
+
   # OIDC Configuration - Keycloak integration
-  OIDC_PROVIDER: "keycloak"
-  OIDC_DISCOVERY_URL: "http://keycloak.keycloak.svc.cluster.local/realms/s3-manager/.well-known/openid-configuration"
-  OIDC_CLIENT_ID: "s3-manager-client"
-  OIDC_REDIRECT_URI: "http://s3-manager.local/auth/callback"
-  OIDC_LOGOUT_REDIRECT_URI: "http://s3-manager.local"
-  OIDC_SCOPES: "openid profile email roles"
+  OIDC_PROVIDER: 'keycloak'
+  OIDC_DISCOVERY_URL: 'http://keycloak.keycloak.svc.cluster.local/realms/s3-manager/.well-known/openid-configuration'
+  OIDC_CLIENT_ID: 's3-manager-client'
+  OIDC_REDIRECT_URI: 'http://s3-manager.local/auth/callback'
+  OIDC_LOGOUT_REDIRECT_URI: 'http://s3-manager.local'
+  OIDC_SCOPES: 'openid profile email roles'
 
 ---
 # Secret with S3 credentials and app configuration
@@ -52,10 +53,10 @@ metadata:
 type: Opaque
 stringData:
   # LocalStack uses test credentials by default
-  S3_ACCESS_KEY: "test"
-  S3_SECRET_KEY: "test"
-  SECRET_KEY: "development-secret-key-change-in-production"
-  OIDC_CLIENT_SECRET: "dev-client-secret-12345"
+  S3_SOURCE_0_ACCESS_KEY: 'test'
+  S3_SOURCE_0_SECRET_KEY: 'test'
+  SECRET_KEY: 'development-secret-key-change-in-production'
+  OIDC_CLIENT_SECRET: 'dev-client-secret-12345'
 
 ---
 # Separate secret for Envoy Gateway OIDC
@@ -67,7 +68,7 @@ metadata:
   namespace: s3-manager-test
 type: Opaque
 stringData:
-  client-secret: "dev-client-secret-12345"
+  client-secret: 'dev-client-secret-12345'
 
 ---
 # Deployment
@@ -89,128 +90,132 @@ spec:
         app: s3-manager
     spec:
       containers:
-      - name: s3-manager
-        image: s3-manager:dev
-        imagePullPolicy: Never
-        ports:
-        - name: http
-          containerPort: 8080
-          protocol: TCP
-        
-        env:
-        # Load config from ConfigMap
-        - name: FLASK_ENV
-          valueFrom:
-            configMapKeyRef:
-              name: s3-manager-config
-              key: FLASK_ENV
-        - name: LOG_LEVEL
-          valueFrom:
-            configMapKeyRef:
-              name: s3-manager-config
-              key: LOG_LEVEL
-        - name: S3_ENDPOINT
-          valueFrom:
-            configMapKeyRef:
-              name: s3-manager-config
-              key: S3_ENDPOINT
-        - name: S3_REGION
-          valueFrom:
-            configMapKeyRef:
-              name: s3-manager-config
-              key: S3_REGION
-        - name: S3_USE_SSL
-          valueFrom:
-            configMapKeyRef:
-              name: s3-manager-config
-              key: S3_USE_SSL
-        - name: S3_VERIFY_SSL
-          valueFrom:
-            configMapKeyRef:
-              name: s3-manager-config
-              key: S3_VERIFY_SSL
-        - name: OIDC_PROVIDER
-          valueFrom:
-            configMapKeyRef:
-              name: s3-manager-config
-              key: OIDC_PROVIDER
-        - name: OIDC_DISCOVERY_URL
-          valueFrom:
-            configMapKeyRef:
-              name: s3-manager-config
-              key: OIDC_DISCOVERY_URL
-        - name: OIDC_CLIENT_ID
-          valueFrom:
-            configMapKeyRef:
-              name: s3-manager-config
-              key: OIDC_CLIENT_ID
-        - name: OIDC_REDIRECT_URI
-          valueFrom:
-            configMapKeyRef:
-              name: s3-manager-config
-              key: OIDC_REDIRECT_URI
-        - name: OIDC_LOGOUT_REDIRECT_URI
-          valueFrom:
-            configMapKeyRef:
-              name: s3-manager-config
-              key: OIDC_LOGOUT_REDIRECT_URI
-        - name: OIDC_SCOPES
-          valueFrom:
-            configMapKeyRef:
-              name: s3-manager-config
-              key: OIDC_SCOPES
-        
-        # Load S3 credentials from secret (LocalStack uses test/test)
-        - name: S3_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: s3-manager-secret
-              key: S3_ACCESS_KEY
-        - name: S3_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: s3-manager-secret
-              key: S3_SECRET_KEY
-        
-        # Load secret key from secret
-        - name: SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: s3-manager-secret
-              key: SECRET_KEY
-        
-        # Load OIDC client secret from secret
-        - name: OIDC_CLIENT_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: s3-manager-secret
-              key: OIDC_CLIENT_SECRET
-        
-        resources:
-          limits:
-            cpu: 500m
-            memory: 512Mi
-          requests:
-            cpu: 100m
-            memory: 128Mi
-        
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 5
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 3
+        - name: s3-manager
+          image: s3-manager:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          env:
+            # Load config from ConfigMap
+            - name: FLASK_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: s3-manager-config
+                  key: FLASK_ENV
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: s3-manager-config
+                  key: LOG_LEVEL
+            - name: S3_SOURCE_0_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: s3-manager-config
+                  key: S3_SOURCE_0_ID
+            - name: S3_SOURCE_0_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: s3-manager-config
+                  key: S3_SOURCE_0_ENDPOINT
+            - name: S3_SOURCE_0_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: s3-manager-config
+                  key: S3_SOURCE_0_REGION
+            - name: S3_SOURCE_0_USE_SSL
+              valueFrom:
+                configMapKeyRef:
+                  name: s3-manager-config
+                  key: S3_SOURCE_0_USE_SSL
+            - name: S3_SOURCE_0_VERIFY_SSL
+              valueFrom:
+                configMapKeyRef:
+                  name: s3-manager-config
+                  key: S3_SOURCE_0_VERIFY_SSL
+            - name: OIDC_PROVIDER
+              valueFrom:
+                configMapKeyRef:
+                  name: s3-manager-config
+                  key: OIDC_PROVIDER
+            - name: OIDC_DISCOVERY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: s3-manager-config
+                  key: OIDC_DISCOVERY_URL
+            - name: OIDC_CLIENT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: s3-manager-config
+                  key: OIDC_CLIENT_ID
+            - name: OIDC_REDIRECT_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: s3-manager-config
+                  key: OIDC_REDIRECT_URI
+            - name: OIDC_LOGOUT_REDIRECT_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: s3-manager-config
+                  key: OIDC_LOGOUT_REDIRECT_URI
+            - name: OIDC_SCOPES
+              valueFrom:
+                configMapKeyRef:
+                  name: s3-manager-config
+                  key: OIDC_SCOPES
+
+            # Load S3 source credentials from secret
+            - name: S3_SOURCE_0_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: s3-manager-secret
+                  key: S3_SOURCE_0_ACCESS_KEY
+            - name: S3_SOURCE_0_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: s3-manager-secret
+                  key: S3_SOURCE_0_SECRET_KEY
+            # Load secret key from secret
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: s3-manager-secret
+                  key: SECRET_KEY
+
+            # Load OIDC client secret from secret
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: s3-manager-secret
+                  key: OIDC_CLIENT_SECRET
+
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
 
 ---
 # Service
@@ -224,10 +229,10 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - name: http
-    port: 80
-    targetPort: http
-    protocol: TCP
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
   selector:
     app: s3-manager
 
@@ -241,18 +246,18 @@ metadata:
   namespace: s3-manager-test
 spec:
   parentRefs:
-  - name: eg
-    namespace: envoy-gateway-system
+    - name: eg
+      namespace: envoy-gateway-system
   hostnames:
-  - "s3-manager.local"
+    - 's3-manager.local'
   rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /
-    backendRefs:
-    - name: s3-manager
-      port: 80
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: s3-manager
+          port: 80
 
 ---
 # Envoy Gateway SecurityPolicy for OIDC Authentication
@@ -269,19 +274,19 @@ spec:
     name: s3-manager
   oidc:
     provider:
-      issuer: "http://keycloak.local/realms/s3-manager"
-      authorizationEndpoint: "http://keycloak.local/realms/s3-manager/protocol/openid-connect/auth"
-      tokenEndpoint: "http://keycloak.keycloak.svc.cluster.local/realms/s3-manager/protocol/openid-connect/token"
-    clientID: "s3-manager-client"
+      issuer: 'http://keycloak.local/realms/s3-manager'
+      authorizationEndpoint: 'http://keycloak.local/realms/s3-manager/protocol/openid-connect/auth'
+      tokenEndpoint: 'http://keycloak.keycloak.svc.cluster.local/realms/s3-manager/protocol/openid-connect/token'
+    clientID: 's3-manager-client'
     clientSecret:
       name: oidc-client-secret
-    redirectURL: "http://s3-manager.local/oauth2/callback"
-    logoutPath: "/oauth2/logout"
+    redirectURL: 'http://s3-manager.local/oauth2/callback'
+    logoutPath: '/oauth2/logout'
     scopes:
-    - openid
-    - profile
-    - email
-    - roles
+      - openid
+      - profile
+      - email
+      - roles
 
 ---
 # Envoy Gateway BackendTrafficPolicy for rate limiting
@@ -300,13 +305,13 @@ spec:
     type: Global
     global:
       rules:
-      - clientSelectors:
-        - headers:
-          - name: x-forwarded-for
-            type: Distinct
-        limit:
-          requests: 100
-          unit: Minute
+        - clientSelectors:
+            - headers:
+                - name: x-forwarded-for
+                  type: Distinct
+          limit:
+            requests: 100
+            unit: Minute
 
 ---
 # Legacy NGINX Ingress (fallback if Envoy Gateway is not available)

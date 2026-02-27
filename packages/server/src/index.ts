@@ -23,7 +23,7 @@ startupLogger.info(
   {
     environment: config.nodeEnv,
     oidcProvider: config.oidcProvider,
-    s3Endpoint: config.s3.endpoint,
+    s3Sources: config.s3.sources.map((source) => ({ id: source.id, endpoint: source.endpoint })),
     telemetry: telemetryStatus,
   },
   'Starting S3 Manager Server'

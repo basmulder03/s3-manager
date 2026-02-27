@@ -13,9 +13,12 @@ data:
   AUTH_REQUIRED: {{ .Values.config.authRequired | quote }}
   DEFAULT_ROLE: {{ .Values.config.defaultRole | quote }}
   PIM_ENABLED: {{ .Values.config.pim.enabled | quote }}
-  S3_ENDPOINT: {{ .Values.config.s3.endpoint | quote }}
-  S3_REGION: {{ .Values.config.s3.region | quote }}
-  S3_USE_SSL: {{ .Values.config.s3.useSSL | quote }}
-  S3_VERIFY_SSL: {{ .Values.config.s3.verifySSL | quote }}
+{{- range $index, $source := .Values.config.s3.sources }}
+  {{ printf "S3_SOURCE_%d_ID" $index }}: {{ default (printf "source%d" $index) $source.id | quote }}
+  {{ printf "S3_SOURCE_%d_ENDPOINT" $index }}: {{ $source.endpoint | quote }}
+  {{ printf "S3_SOURCE_%d_REGION" $index }}: {{ default "us-east-1" $source.region | quote }}
+  {{ printf "S3_SOURCE_%d_USE_SSL" $index }}: {{ default false $source.useSSL | quote }}
+  {{ printf "S3_SOURCE_%d_VERIFY_SSL" $index }}: {{ default false $source.verifySSL | quote }}
+{{- end }}
   SESSION_COOKIE_SECURE: {{ .Values.config.sessionCookieSecure | quote }}
   ROLE_PERMISSIONS: {{ .Values.config.rolePermissions | toJson | quote }}

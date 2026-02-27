@@ -8,10 +8,13 @@ const getCookieHeader = (setCookieHeaders: string[]): string => {
 describe('auth http flow', () => {
   beforeAll(() => {
     process.env.SECRET_KEY = 'test-secret';
-    process.env.S3_ENDPOINT = 'http://localhost:4566';
-    process.env.S3_ACCESS_KEY = 'test';
-    process.env.S3_SECRET_KEY = 'test';
-    process.env.S3_REGION = 'us-east-1';
+    process.env.S3_SOURCE_0_ID = 'test';
+    process.env.S3_SOURCE_0_ENDPOINT = 'http://localhost:4566';
+    process.env.S3_SOURCE_0_ACCESS_KEY = 'test';
+    process.env.S3_SOURCE_0_SECRET_KEY = 'test';
+    process.env.S3_SOURCE_0_REGION = 'us-east-1';
+    process.env.S3_SOURCE_0_USE_SSL = 'false';
+    process.env.S3_SOURCE_0_VERIFY_SSL = 'false';
     process.env.NODE_ENV = 'test';
     process.env.LOCAL_DEV_MODE = 'false';
     process.env.AUTH_REQUIRED = 'true';

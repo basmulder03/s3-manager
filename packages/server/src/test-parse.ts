@@ -8,7 +8,7 @@ loadDotenv({ path: resolve(rootDir, '.env') });
 
 console.log('About to parse with:');
 console.log('secretKey:', process.env.SECRET_KEY);
-console.log('s3.endpoint:', process.env.S3_ENDPOINT);
+console.log('s3.source0.endpoint:', process.env.S3_SOURCE_0_ENDPOINT);
 
 const testSchema = z.object({
   secretKey: z.string().min(1),
@@ -18,7 +18,7 @@ const testSchema = z.object({
 try {
   const result = testSchema.parse({
     secretKey: process.env.SECRET_KEY,
-    s3Endpoint: process.env.S3_ENDPOINT,
+    s3Endpoint: process.env.S3_SOURCE_0_ENDPOINT,
   });
   console.log('Parse succeeded!', result);
 } catch (e) {

@@ -10,5 +10,5 @@ const result2 = loadDotenv({ path: resolve(rootDir, '.env') });
 
 console.log('Result 1:', result1.error ? result1.error.message : 'OK');
 console.log('Result 2:', result2.error ? result2.error.message : 'OK');
-console.log('S3_ENDPOINT:', process.env.S3_ENDPOINT);
+console.log('S3_SOURCE_0_ENDPOINT:', process.env.S3_SOURCE_0_ENDPOINT);
 console.log('SECRET_KEY:', process.env.SECRET_KEY);

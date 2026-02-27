@@ -19,6 +19,26 @@ services:
       timeout: 5s
       retries: 20
 
+  localstack-2:
+    image: localstack/localstack:latest
+    container_name: s3-manager-localstack-2
+    ports:
+      - '4567:4566'
+    environment:
+      SERVICES: s3
+      DEBUG: 0
+      PERSISTENCE: 0
+      AWS_ACCESS_KEY_ID: test-2
+      AWS_SECRET_ACCESS_KEY: test-2
+      AWS_DEFAULT_REGION: us-east-1
+    volumes:
+      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh:ro
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:4566/_localstack/health']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
   keycloak:
     image: quay.io/keycloak/keycloak:23.0
     container_name: s3-manager-keycloak

@@ -153,9 +153,10 @@ Edit `.env.local` in the project root:
 ```bash
 # Required
 SECRET_KEY=dev-secret-key-change-in-production
-S3_ENDPOINT=http://localhost:4566
-S3_ACCESS_KEY=test
-S3_SECRET_KEY=test
+S3_SOURCE_0_ID=localstack
+S3_SOURCE_0_ENDPOINT=http://localhost:4566
+S3_SOURCE_0_ACCESS_KEY=test
+S3_SOURCE_0_SECRET_KEY=test
 
 # Optional (defaults shown)
 PORT=3000
@@ -164,7 +165,9 @@ WEB_ORIGIN=http://localhost:5173
 VITE_API_URL=http://localhost:3000/trpc
 LOCAL_DEV_MODE=false
 OIDC_PROVIDER=keycloak
-S3_REGION=us-east-1
+S3_SOURCE_0_REGION=us-east-1
+S3_SOURCE_0_USE_SSL=false
+S3_SOURCE_0_VERIFY_SSL=false
 
 # Telemetry
 OTEL_ENABLED=true
@@ -244,7 +247,7 @@ export const appRouter = router({
 **Server won't start:**
 
 - Check `.env.local` exists
-- Verify S3_ENDPOINT is valid URL
+- Verify `S3_SOURCE_0_ENDPOINT` is a valid URL
 - Look for validation errors in console
 
 **Env vars not loading:**

@@ -26,6 +26,115 @@ const optionalEnv = (value: string | undefined): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+type MutableS3Source = {
+  id?: string;
+  endpoint?: string;
+  accessKey?: string;
+  secretKey?: string;
+  region?: string;
+  useSsl?: string;
+  verifySsl?: string;
+};
+
+const parseBooleanEnv = (
+  value: string | undefined,
+  envName: string,
+  defaultValue: boolean
+): boolean => {
+  const normalized = optionalEnv(value);
+  if (normalized === undefined) {
+    return defaultValue;
+  }
+
+  const lowered = normalized.toLowerCase();
+  if (lowered === 'true') {
+    return true;
+  }
+  if (lowered === 'false') {
+    return false;
+  }
+
+  throw new Error(`${envName} must be either 'true' or 'false'`);
+};
+
+const parseS3SourcesEnv = (): unknown => {
+  const sourceByIndex = new Map<number, MutableS3Source>();
+
+  for (const [envName, envValue] of Object.entries(process.env)) {
+    const match = envName.match(
+      /^S3_SOURCE_(\d+)_(ID|ENDPOINT|ACCESS_KEY|SECRET_KEY|REGION|USE_SSL|VERIFY_SSL)$/
+    );
+    if (!match) {
+      continue;
+    }
+
+    const index = Number(match[1]);
+    const field = match[2];
+    const source = sourceByIndex.get(index) ?? {};
+
+    if (field === 'ID') {
+      source.id = envValue;
+    } else if (field === 'ENDPOINT') {
+      source.endpoint = envValue;
+    } else if (field === 'ACCESS_KEY') {
+      source.accessKey = envValue;
+    } else if (field === 'SECRET_KEY') {
+      source.secretKey = envValue;
+    } else if (field === 'REGION') {
+      source.region = envValue;
+    } else if (field === 'USE_SSL') {
+      source.useSsl = envValue;
+    } else if (field === 'VERIFY_SSL') {
+      source.verifySsl = envValue;
+    }
+
+    sourceByIndex.set(index, source);
+  }
+
+  if (sourceByIndex.size === 0) {
+    return undefined;
+  }
+
+  const sortedIndexes = [...sourceByIndex.keys()].sort((a, b) => a - b);
+
+  return sortedIndexes.map((index) => {
+    const source = sourceByIndex.get(index)!;
+    const endpoint = optionalEnv(source.endpoint);
+    const accessKey = optionalEnv(source.accessKey);
+    const secretKey = optionalEnv(source.secretKey);
+
+    if (!endpoint || !accessKey || !secretKey) {
+      throw new Error(
+        `S3 source ${index} is missing required values. Set S3_SOURCE_${index}_ENDPOINT, S3_SOURCE_${index}_ACCESS_KEY, and S3_SOURCE_${index}_SECRET_KEY`
+      );
+    }
+
+    return {
+      id: optionalEnv(source.id) ?? `source${index}`,
+      endpoint,
+      accessKey,
+      secretKey,
+      region: optionalEnv(source.region) ?? 'us-east-1',
+      useSsl: parseBooleanEnv(source.useSsl, `S3_SOURCE_${index}_USE_SSL`, false),
+      verifySsl: parseBooleanEnv(source.verifySsl, `S3_SOURCE_${index}_VERIFY_SSL`, false),
+    };
+  });
+};
+
+const s3SourceSchema = z.object({
+  id: z
+    .string()
+    .trim()
+    .min(1)
+    .regex(/^[a-z0-9][a-z0-9_-]*$/i, 'S3 source id must be alphanumeric, dash, or underscore'),
+  endpoint: z.string().url(),
+  accessKey: z.string().min(1, 'S3 source accessKey must be set'),
+  secretKey: z.string().min(1, 'S3 source secretKey must be set'),
+  region: z.string().default('us-east-1'),
+  useSsl: z.coerce.boolean().default(false),
+  verifySsl: z.coerce.boolean().default(false),
+});
+
 const configSchema = z.object({
   // Server Configuration
   port: z.coerce.number().int().positive().default(3000),
@@ -102,14 +211,32 @@ const configSchema = z.object({
   defaultRole: z.string().default('S3-Viewer'),
 
   // S3 Configuration
-  s3: z.object({
-    endpoint: z.string().url(),
-    accessKey: z.string().min(1, 'S3_ACCESS_KEY must be set'),
-    secretKey: z.string().min(1, 'S3_SECRET_KEY must be set'),
-    region: z.string().default('us-east-1'),
-    useSsl: booleanString,
-    verifySsl: booleanString,
-  }),
+  s3: z
+    .object({
+      sources: z
+        .array(s3SourceSchema)
+        .min(
+          1,
+          'Define at least one S3 source using S3_SOURCE_0_ENDPOINT, S3_SOURCE_0_ACCESS_KEY, and S3_SOURCE_0_SECRET_KEY'
+        ),
+    })
+    .transform((value) => {
+      const sources = value.sources;
+
+      const uniqueIds = new Set<string>();
+      for (const source of sources) {
+        if (uniqueIds.has(source.id)) {
+          throw new Error(`Duplicate S3 source id '${source.id}' in S3_SOURCE_<n>_ID values`);
+        }
+        uniqueIds.add(source.id);
+      }
+
+      const primary = sources[0]!;
+      return {
+        defaultSourceId: primary.id,
+        sources,
+      };
+    }),
 
   // Application Configuration
   app: z.object({
@@ -163,8 +290,8 @@ const configSchema = z.object({
         'req.headers.cookie',
         'request.headers.authorization',
         'request.headers.cookie',
-        's3.accessKey',
-        's3.secretKey',
+        's3.sources.*.accessKey',
+        's3.sources.*.secretKey',
         'keycloak.clientSecret',
         'azure.clientSecret',
         'google.clientSecret',
@@ -252,12 +379,7 @@ export const loadConfig = (): Config => {
 
       // S3
       s3: {
-        endpoint: process.env.S3_ENDPOINT,
-        accessKey: process.env.S3_ACCESS_KEY,
-        secretKey: process.env.S3_SECRET_KEY,
-        region: optionalEnv(process.env.S3_REGION),
-        useSsl: process.env.S3_USE_SSL,
-        verifySsl: process.env.S3_VERIFY_SSL,
+        sources: parseS3SourcesEnv(),
       },
 
       // App (use defaults)

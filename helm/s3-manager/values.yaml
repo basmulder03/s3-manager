@@ -348,12 +348,14 @@ config:
 
   # S3/Rook-Ceph configuration
   s3:
-    endpoint: 'http://rook-ceph-rgw.rook-ceph.svc.cluster.local:8080'
-    accessKey: '' # Set via secret
-    secretKey: '' # Set via secret
-    region: 'us-east-1'
-    useSSL: false
-    verifySSL: false
+    sources:
+      - id: primary
+        endpoint: 'http://rook-ceph-rgw.rook-ceph.svc.cluster.local:8080'
+        accessKey: '' # Set via secret
+        secretKey: '' # Set via secret
+        region: 'us-east-1'
+        useSSL: false
+        verifySSL: false
 
 # External secrets (if using external-secrets operator)
 externalSecrets:
