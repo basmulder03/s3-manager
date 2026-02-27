@@ -210,7 +210,7 @@ export const BrowserPage = ({
             <span>Path</span>
             <span>Size</span>
             <span>Modified</span>
-            <span>Actions</span>
+            <span>Menu</span>
           </div>
 
           <ul className={styles.items}>
@@ -250,43 +250,14 @@ export const BrowserPage = ({
                   </button>
 
                   <div className={styles.itemActions}>
-                    {canWrite ? (
-                      <button
-                        className={styles.rowAction}
-                        onClick={() => onRename(item.path, item.name)}
-                      >
-                        Rename
-                      </button>
-                    ) : null}
-                    {canWrite ? (
-                      <button className={styles.rowAction} onClick={() => onMove(item.path)}>
-                        Move
-                      </button>
-                    ) : null}
-                    {item.type === 'file' ? (
-                      <button
-                        className={styles.rowAction}
-                        onClick={() => void onDownload(item.path)}
-                      >
-                        Download
-                      </button>
-                    ) : null}
-                    {item.type === 'file' ? (
-                      <button
-                        className={styles.rowAction}
-                        onClick={() => void onOpenProperties(item.path)}
-                      >
-                        Properties
-                      </button>
-                    ) : null}
-                    {canDelete ? (
-                      <button
-                        className={`${styles.rowAction} ${styles.rowActionDanger}`}
-                        onClick={() => onDeletePathItems([item])}
-                      >
-                        Delete
-                      </button>
-                    ) : null}
+                    <button
+                      className={styles.rowMenuButton}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => onOpenContextMenu(item, event)}
+                      aria-label={`Open menu for ${item.name}`}
+                    >
+                      ⋯
+                    </button>
                   </div>
                 </div>
               </li>
@@ -297,6 +268,7 @@ export const BrowserPage = ({
             <div
               className={styles.contextMenu}
               style={{ left: contextMenu.x, top: contextMenu.y }}
+              onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
             >
               <p className={styles.contextGroupTitle}>Quick Actions</p>

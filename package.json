@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run --filter server dev & bun run --filter web dev",
+    "dev": "bun scripts/dev-all.ts",
     "dev:server": "bun run --filter server dev",
     "dev:web": "bun run --filter web dev",
     "build": "bun run build:server && bun run build:web",

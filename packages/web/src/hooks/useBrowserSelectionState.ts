@@ -56,15 +56,19 @@ export const useBrowserSelectionState = ({
   }, [selectedPath, browsePath]);
 
   useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+
     const close = () => {
       setContextMenu(null);
     };
 
-    window.addEventListener('click', close);
+    window.addEventListener('pointerdown', close);
     return () => {
-      window.removeEventListener('click', close);
+      window.removeEventListener('pointerdown', close);
     };
-  }, []);
+  }, [contextMenu]);
 
   const toggleSelection = (path: string, checked: boolean) => {
     setSelectedItems((previous) => {
@@ -144,6 +148,7 @@ export const useBrowserSelectionState = ({
 
   const openContextMenu = (item: BrowseItem, event: MouseEvent) => {
     event.preventDefault();
+    event.stopPropagation();
     if (!selectedItems.has(item.path)) {
       selectOnly(item.path);
     }
