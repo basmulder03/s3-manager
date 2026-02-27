@@ -2,9 +2,7 @@ import { beforeAll, describe, expect, it } from 'bun:test';
 import { SignJWT, exportJWK, generateKeyPair } from 'jose';
 
 const getCookieHeader = (setCookieHeaders: string[]): string => {
-  return setCookieHeaders
-    .map((entry) => entry.split(';')[0])
-    .join('; ');
+  return setCookieHeaders.map((entry) => entry.split(';')[0]).join('; ');
 };
 
 describe('auth http flow', () => {
@@ -105,7 +103,9 @@ describe('auth http flow', () => {
       const { createApp } = await import('../app');
       const app = createApp();
 
-      const loginResponse = await app.request('http://localhost:3000/auth/login?returnTo=%2Fdashboard');
+      const loginResponse = await app.request(
+        'http://localhost:3000/auth/login?returnTo=%2Fdashboard'
+      );
       expect(loginResponse.status).toBe(302);
 
       const loginLocation = loginResponse.headers.get('location');
@@ -114,9 +114,11 @@ describe('auth http flow', () => {
       const state = loginUrl.searchParams.get('state');
       expect(state).toBeTruthy();
 
-      const callbackResponse = await app.request(`http://localhost:3000/auth/callback?state=${state!}&code=sample-code`);
+      const callbackResponse = await app.request(
+        `http://localhost:3000/auth/callback?state=${state!}&code=sample-code`
+      );
       expect(callbackResponse.status).toBe(302);
-      expect(callbackResponse.headers.get('location')).toBe('/dashboard');
+      expect(callbackResponse.headers.get('location')).toBe('http://localhost:5173/dashboard');
 
       const callbackSetCookie = callbackResponse.headers.getSetCookie();
       expect(callbackSetCookie.length).toBeGreaterThanOrEqual(3);

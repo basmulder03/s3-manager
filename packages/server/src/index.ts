@@ -8,9 +8,13 @@ if ((process.env.NODE_ENV ?? 'development') === 'development') {
   loadDotenv({ path: resolve(rootDir, '.env.local'), override: true });
 }
 
-import { config } from '@/config';
-import { createApp } from '@/app';
-import { getLogger, initTelemetry, shutdownTelemetry } from '@/telemetry';
+const [{ config }, { createApp }, telemetry] = await Promise.all([
+  import('@/config'),
+  import('@/app'),
+  import('@/telemetry'),
+]);
+
+const { getLogger, initTelemetry, shutdownTelemetry } = telemetry;
 
 const telemetryStatus = await initTelemetry(config);
 const startupLogger = getLogger('Server');

@@ -27,6 +27,8 @@ const formatDate = (value: string | null): string => {
 export const App = () => {
   const selectedPath = useUiStore((state) => state.selectedPath);
   const setSelectedPath = useUiStore((state) => state.setSelectedPath);
+  const theme = useUiStore((state) => state.theme);
+  const setTheme = useUiStore((state) => state.setTheme);
   const [newFolderName, setNewFolderName] = useState('');
   const [browserMessage, setBrowserMessage] = useState('');
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
@@ -77,7 +79,13 @@ export const App = () => {
   const deleteFolder = trpc.s3.deleteFolder.useMutation();
   const deleteMultipleItems = trpc.s3.deleteMultiple.useMutation();
 
+  const authRequired = authStatus.data?.authRequired ?? true;
   const authenticated = authMe.isSuccess;
+  const permissions = authMe.data?.permissions ?? (authRequired ? [] : ['view', 'write', 'delete']);
+  const canView = permissions.includes('view');
+  const canWrite = permissions.includes('write');
+  const canDelete = permissions.includes('delete');
+  const showSignInOnly = authRequired && !authenticated;
   const isModalOpen =
     renameModal !== null || moveModal !== null || deleteModal !== null || propertiesModal !== null;
 
@@ -89,6 +97,10 @@ export const App = () => {
   const refreshBrowse = () => {
     void browse.refetch();
   };
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   useEffect(() => {
     setSelectedItems(new Set());
@@ -309,6 +321,11 @@ export const App = () => {
   };
 
   const createFolderInCurrentPath = async () => {
+    if (!canWrite) {
+      setBrowserMessage('You do not have write permission.');
+      return;
+    }
+
     if (!selectedPath) {
       setBrowserMessage('Navigate to a bucket path before creating folders.');
       return;
@@ -366,6 +383,11 @@ export const App = () => {
   };
 
   const bulkDelete = async () => {
+    if (!canDelete) {
+      setBrowserMessage('You do not have delete permission.');
+      return;
+    }
+
     if (selectedRecords.length === 0) {
       setBrowserMessage('No items selected.');
       return;
@@ -425,7 +447,7 @@ export const App = () => {
         return;
       }
 
-      if (event.key === 'Delete' && selectedRecords.length > 0) {
+      if (event.key === 'Delete' && canDelete && selectedRecords.length > 0) {
         event.preventDefault();
         void bulkDelete();
         return;
@@ -441,7 +463,7 @@ export const App = () => {
         return;
       }
 
-      if (event.key === 'F2' && selectedSingleItem) {
+      if (event.key === 'F2' && canWrite && selectedSingleItem) {
         event.preventDefault();
         void renamePathItem(selectedSingleItem.path, selectedSingleItem.name);
         return;
@@ -451,6 +473,7 @@ export const App = () => {
         (event.metaKey || event.ctrlKey) &&
         event.shiftKey &&
         event.key.toLowerCase() === 'm' &&
+        canWrite &&
         selectedSingleItem
       ) {
         event.preventDefault();
@@ -466,12 +489,19 @@ export const App = () => {
     browse.data?.items,
     isModalOpen,
     location.pathname,
+    canDelete,
+    canWrite,
     selectedFiles.length,
     selectedRecords.length,
     selectedSingleItem,
   ]);
 
   const renamePathItem = (path: string, currentName: string) => {
+    if (!canWrite) {
+      setBrowserMessage('You do not have write permission.');
+      return;
+    }
+
     setRenameModal({
       sourcePath: path,
       currentName,
@@ -482,6 +512,11 @@ export const App = () => {
   };
 
   const movePathItem = (path: string) => {
+    if (!canWrite) {
+      setBrowserMessage('You do not have write permission.');
+      return;
+    }
+
     setMoveModal({
       sourcePath: path,
       destinationPath: selectedPath || '',
@@ -491,6 +526,11 @@ export const App = () => {
   };
 
   const deletePathItems = (items: BrowseItem[]) => {
+    if (!canDelete) {
+      setBrowserMessage('You do not have delete permission.');
+      return;
+    }
+
     setDeleteModal({ items });
     setContextMenu(null);
     setModalError('');
@@ -524,6 +564,12 @@ export const App = () => {
   };
 
   const submitRename = async () => {
+    if (!canWrite) {
+      closeModals();
+      setBrowserMessage('You do not have write permission.');
+      return;
+    }
+
     if (!renameModal) {
       return;
     }
@@ -553,6 +599,12 @@ export const App = () => {
   };
 
   const submitMove = async () => {
+    if (!canWrite) {
+      closeModals();
+      setBrowserMessage('You do not have write permission.');
+      return;
+    }
+
     if (!moveModal) {
       return;
     }
@@ -577,6 +629,12 @@ export const App = () => {
   };
 
   const submitDelete = async () => {
+    if (!canDelete) {
+      closeModals();
+      setBrowserMessage('You do not have delete permission.');
+      return;
+    }
+
     if (!deleteModal) {
       return;
     }
@@ -615,20 +673,38 @@ export const App = () => {
     refreshBrowse();
   };
 
+  if (showSignInOnly) {
+    return (
+      <main className="signin-shell">
+        <section className="signin-card">
+          <p className="hero-kicker">S3 MANAGER</p>
+          <h1>Sign in to continue</h1>
+          <p>Authenticate with your configured identity provider to access the file browser.</p>
+          <AuthActions authenticated={false} onAfterRefresh={refreshAuthState} />
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell">
       <div className="hero-glow" />
       <header className="hero">
-        <p className="hero-kicker">S3 MANAGER</p>
-        <h1>Feature-parity browser with typed tRPC workflows</h1>
-        <p>
-          React + TypeScript + Vite + Zustand with auth controls, S3 browsing, bulk actions, and
-          keyboard/context shortcuts.
-        </p>
-        <nav className="tabs">
+        <div className="hero-topline">
+          <p className="hero-kicker">S3 MANAGER</p>
+          <div className="hero-actions">
+            <Button variant="muted" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+              {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            </Button>
+            <AuthActions authenticated={authenticated} onAfterRefresh={refreshAuthState} />
+          </div>
+        </div>
+        <h1>Finder-style S3 workspace</h1>
+        <p>Browse, manage, and upload objects with permission-aware actions.</p>
+        <nav className="tabs" aria-label="Primary">
           <NavLink to="/overview">Overview</NavLink>
-          <NavLink to="/browser">Browser</NavLink>
-          <NavLink to="/upload">Upload</NavLink>
+          {canView ? <NavLink to="/browser">Browser</NavLink> : null}
+          {canWrite ? <NavLink to="/upload">Upload</NavLink> : null}
         </nav>
       </header>
 
@@ -652,8 +728,6 @@ export const App = () => {
               </Panel>
 
               <Panel title="Current User" subtitle="From `trpc.auth.me` (protected)">
-                <AuthActions authenticated={authenticated} onAfterRefresh={refreshAuthState} />
-
                 {authMe.isError ? (
                   <p className="state warn">Not authenticated yet. Use Login to start OIDC flow.</p>
                 ) : (
@@ -675,219 +749,256 @@ export const App = () => {
         <Route
           path="/browser"
           element={
-            <Panel title="S3 Browser" subtitle="From `trpc.s3.browse`">
-              <div className="browser-toolbar">
-                <div className="browser-controls">
-                  <Input
-                    className="path-input"
-                    value={selectedPath}
-                    onChange={(event) => setSelectedPath(event.target.value)}
-                    placeholder="Path example: my-bucket/folder"
-                  />
-                  <Button variant="muted" onClick={() => browse.refetch()}>
-                    Refresh
-                  </Button>
-                  <Button variant="muted" onClick={() => setSelectedPath('')}>
-                    Root
-                  </Button>
-                </div>
-                <div className="browser-controls">
-                  <Input
-                    className="folder-input"
-                    value={newFolderName}
-                    onChange={(event) => setNewFolderName(event.target.value)}
-                    placeholder="New folder name"
-                  />
-                  <Button onClick={() => void createFolderInCurrentPath()}>Create Folder</Button>
-                </div>
-              </div>
-
-              <p className="hotkeys-hint">
-                Shortcuts: Ctrl/Cmd+A select all, Delete remove, Ctrl/Cmd+D download, F2 rename,
-                Ctrl/Cmd+Shift+M move.
-              </p>
-
-              {selectedItems.size > 0 ? (
-                <div className="selection-bar">
-                  <span>{selectedItems.size} selected</span>
-                  <Button
-                    variant="muted"
-                    onClick={() => void bulkDownload()}
-                    disabled={selectedFiles.length === 0}
-                    title={
-                      selectedFiles.length === 0
-                        ? 'Select at least one file'
-                        : 'Download selected files'
-                    }
-                  >
-                    Download Selected
-                  </Button>
-                  <Button variant="danger" onClick={() => void bulkDelete()}>
-                    Delete Selected
-                  </Button>
-                  <Button variant="muted" onClick={clearSelection}>
-                    Clear
-                  </Button>
-                </div>
-              ) : null}
-
-              {browse.isLoading ? <p className="state">Loading objects...</p> : null}
-              {browse.isError ? <p className="state error">Failed to load S3 path data.</p> : null}
-              {browserMessage ? <p className="state">{browserMessage}</p> : null}
-
-              {browse.data ? (
-                <>
-                  <div className="breadcrumbs">
-                    {browse.data.breadcrumbs.map((crumb) => (
-                      <Button
-                        key={crumb.path || 'home'}
-                        variant="muted"
-                        onClick={() => setSelectedPath(crumb.path)}
-                      >
-                        {crumb.name}
-                      </Button>
-                    ))}
+            canView ? (
+              <Panel title="S3 Browser" subtitle="From `trpc.s3.browse`">
+                <div className="browser-toolbar">
+                  <div className="browser-controls">
+                    <Input
+                      className="path-input"
+                      value={selectedPath}
+                      onChange={(event) => setSelectedPath(event.target.value)}
+                      placeholder="Path example: my-bucket/folder"
+                    />
+                    <Button variant="muted" onClick={() => browse.refetch()}>
+                      Refresh
+                    </Button>
+                    <Button variant="muted" onClick={() => setSelectedPath('')}>
+                      Root
+                    </Button>
                   </div>
-
-                  <div className="items-head" aria-hidden>
-                    <span>Type</span>
-                    <span>Name</span>
-                    <span>Path</span>
-                    <span>Size</span>
-                    <span>Modified</span>
-                    <span>Actions</span>
-                  </div>
-
-                  <ul className="items">
-                    {browse.data.items.map((item, index) => (
-                      <li
-                        key={`${item.type}:${item.path}`}
-                        className={selectedItems.has(item.path) ? 'is-selected' : ''}
-                      >
-                        <div
-                          className="item-row"
-                          onContextMenu={(event) => openContextMenu(item, event)}
-                        >
-                          <label className="row-checkbox">
-                            <input
-                              type="checkbox"
-                              checked={selectedItems.has(item.path)}
-                              onChange={(event) => {
-                                toggleSelection(item.path, event.target.checked);
-                                setLastSelectedIndex(index);
-                              }}
-                            />
-                          </label>
-                          <Button
-                            className="item-main"
-                            onClick={(event) => handleRowClick(item, index, event)}
-                          >
-                            <span className="tag">{item.type}</span>
-                            <strong>{item.name}</strong>
-                            <span className="item-path">{item.path}</span>
-                            <span>{item.size === null ? '-' : `${item.size} bytes`}</span>
-                            <span>{formatDate(item.lastModified)}</span>
-                          </Button>
-                          <div className="item-actions">
-                            <Button
-                              variant="muted"
-                              onClick={() => void renamePathItem(item.path, item.name)}
-                            >
-                              Rename
-                            </Button>
-                            <Button variant="muted" onClick={() => void movePathItem(item.path)}>
-                              Move
-                            </Button>
-                            {item.type === 'file' ? (
-                              <Button variant="muted" onClick={() => void downloadFile(item.path)}>
-                                Download
-                              </Button>
-                            ) : null}
-                            {item.type === 'file' ? (
-                              <Button
-                                variant="muted"
-                                onClick={() => void openProperties(item.path)}
-                              >
-                                Properties
-                              </Button>
-                            ) : null}
-                            <Button variant="danger" onClick={() => deletePathItems([item])}>
-                              Delete
-                            </Button>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-
-                  {contextMenu ? (
-                    <div
-                      className="context-menu"
-                      style={{ left: contextMenu.x, top: contextMenu.y }}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <p className="context-group-title">Quick Actions</p>
-                      {contextMenu.item.type === 'directory' ? (
-                        <Button
-                          variant="muted"
-                          onClick={() => setSelectedPath(contextMenu.item.path)}
-                        >
-                          Open
-                        </Button>
-                      ) : (
-                        <>
-                          <Button
-                            variant="muted"
-                            onClick={() => void downloadFile(contextMenu.item.path)}
-                          >
-                            Download
-                          </Button>
-                          <Button
-                            variant="muted"
-                            onClick={() => void openProperties(contextMenu.item.path)}
-                          >
-                            Properties
-                          </Button>
-                        </>
-                      )}
-
-                      <p className="context-group-title">Edit</p>
-                      <Button
-                        variant="muted"
-                        onClick={() =>
-                          void renamePathItem(contextMenu.item.path, contextMenu.item.name)
-                        }
-                      >
-                        Rename
-                      </Button>
-                      <Button
-                        variant="muted"
-                        onClick={() => void movePathItem(contextMenu.item.path)}
-                      >
-                        Move
-                      </Button>
-
-                      <p className="context-group-title">Danger</p>
-                      <Button variant="danger" onClick={() => deletePathItems([contextMenu.item])}>
-                        Delete
+                  {canWrite ? (
+                    <div className="browser-controls">
+                      <Input
+                        className="folder-input"
+                        value={newFolderName}
+                        onChange={(event) => setNewFolderName(event.target.value)}
+                        placeholder="New folder name"
+                      />
+                      <Button onClick={() => void createFolderInCurrentPath()}>
+                        Create Folder
                       </Button>
                     </div>
                   ) : null}
-                </>
-              ) : null}
-            </Panel>
+                </div>
+
+                <p className="hotkeys-hint">
+                  Shortcuts: Ctrl/Cmd+A select all, Delete remove, Ctrl/Cmd+D download, F2 rename,
+                  Ctrl/Cmd+Shift+M move.
+                </p>
+
+                {selectedItems.size > 0 ? (
+                  <div className="selection-bar">
+                    <span>{selectedItems.size} selected</span>
+                    <Button
+                      variant="muted"
+                      onClick={() => void bulkDownload()}
+                      disabled={selectedFiles.length === 0}
+                      title={
+                        selectedFiles.length === 0
+                          ? 'Select at least one file'
+                          : 'Download selected files'
+                      }
+                    >
+                      Download Selected
+                    </Button>
+                    {canDelete ? (
+                      <Button variant="danger" onClick={() => void bulkDelete()}>
+                        Delete Selected
+                      </Button>
+                    ) : null}
+                    <Button variant="muted" onClick={clearSelection}>
+                      Clear
+                    </Button>
+                  </div>
+                ) : null}
+
+                {browse.isLoading ? <p className="state">Loading objects...</p> : null}
+                {browse.isError ? (
+                  <p className="state error">Failed to load S3 path data.</p>
+                ) : null}
+                {browserMessage ? <p className="state">{browserMessage}</p> : null}
+
+                {browse.data ? (
+                  <>
+                    <div className="breadcrumbs">
+                      {browse.data.breadcrumbs.map((crumb) => (
+                        <Button
+                          key={crumb.path || 'home'}
+                          variant="muted"
+                          onClick={() => setSelectedPath(crumb.path)}
+                        >
+                          {crumb.name}
+                        </Button>
+                      ))}
+                    </div>
+
+                    <div className="items-head" aria-hidden>
+                      <span>Type</span>
+                      <span>Name</span>
+                      <span>Path</span>
+                      <span>Size</span>
+                      <span>Modified</span>
+                      <span>Actions</span>
+                    </div>
+
+                    <ul className="items">
+                      {browse.data.items.map((item, index) => (
+                        <li
+                          key={`${item.type}:${item.path}`}
+                          className={selectedItems.has(item.path) ? 'is-selected' : ''}
+                        >
+                          <div
+                            className="item-row"
+                            onContextMenu={(event) => openContextMenu(item, event)}
+                          >
+                            <label className="row-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={selectedItems.has(item.path)}
+                                onChange={(event) => {
+                                  toggleSelection(item.path, event.target.checked);
+                                  setLastSelectedIndex(index);
+                                }}
+                              />
+                            </label>
+                            <Button
+                              className="item-main"
+                              onClick={(event) => handleRowClick(item, index, event)}
+                            >
+                              <span className="tag">{item.type}</span>
+                              <strong>{item.name}</strong>
+                              <span className="item-path">{item.path}</span>
+                              <span>{item.size === null ? '-' : `${item.size} bytes`}</span>
+                              <span>{formatDate(item.lastModified)}</span>
+                            </Button>
+                            <div className="item-actions">
+                              {canWrite ? (
+                                <Button
+                                  variant="muted"
+                                  onClick={() => void renamePathItem(item.path, item.name)}
+                                >
+                                  Rename
+                                </Button>
+                              ) : null}
+                              {canWrite ? (
+                                <Button
+                                  variant="muted"
+                                  onClick={() => void movePathItem(item.path)}
+                                >
+                                  Move
+                                </Button>
+                              ) : null}
+                              {item.type === 'file' ? (
+                                <Button
+                                  variant="muted"
+                                  onClick={() => void downloadFile(item.path)}
+                                >
+                                  Download
+                                </Button>
+                              ) : null}
+                              {item.type === 'file' ? (
+                                <Button
+                                  variant="muted"
+                                  onClick={() => void openProperties(item.path)}
+                                >
+                                  Properties
+                                </Button>
+                              ) : null}
+                              {canDelete ? (
+                                <Button variant="danger" onClick={() => deletePathItems([item])}>
+                                  Delete
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+
+                    {contextMenu ? (
+                      <div
+                        className="context-menu"
+                        style={{ left: contextMenu.x, top: contextMenu.y }}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <p className="context-group-title">Quick Actions</p>
+                        {contextMenu.item.type === 'directory' ? (
+                          <Button
+                            variant="muted"
+                            onClick={() => setSelectedPath(contextMenu.item.path)}
+                          >
+                            Open
+                          </Button>
+                        ) : (
+                          <>
+                            <Button
+                              variant="muted"
+                              onClick={() => void downloadFile(contextMenu.item.path)}
+                            >
+                              Download
+                            </Button>
+                            <Button
+                              variant="muted"
+                              onClick={() => void openProperties(contextMenu.item.path)}
+                            >
+                              Properties
+                            </Button>
+                          </>
+                        )}
+
+                        {canWrite ? <p className="context-group-title">Edit</p> : null}
+                        {canWrite ? (
+                          <Button
+                            variant="muted"
+                            onClick={() =>
+                              void renamePathItem(contextMenu.item.path, contextMenu.item.name)
+                            }
+                          >
+                            Rename
+                          </Button>
+                        ) : null}
+                        {canWrite ? (
+                          <Button
+                            variant="muted"
+                            onClick={() => void movePathItem(contextMenu.item.path)}
+                          >
+                            Move
+                          </Button>
+                        ) : null}
+
+                        {canDelete ? <p className="context-group-title">Danger</p> : null}
+                        {canDelete ? (
+                          <Button
+                            variant="danger"
+                            onClick={() => deletePathItems([contextMenu.item])}
+                          >
+                            Delete
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+              </Panel>
+            ) : (
+              <Navigate to="/overview" replace />
+            )
           }
         />
 
         <Route
           path="/upload"
           element={
-            <Panel
-              title="Uploader"
-              subtitle="Uses typed upload cookbook with direct/multipart fallback"
-            >
-              <UploadPanel selectedPath={selectedPath} onUploadComplete={refreshBrowse} />
-            </Panel>
+            canWrite ? (
+              <Panel
+                title="Uploader"
+                subtitle="Uses typed upload cookbook with direct/multipart fallback"
+              >
+                <UploadPanel selectedPath={selectedPath} onUploadComplete={refreshBrowse} />
+              </Panel>
+            ) : (
+              <Navigate to="/overview" replace />
+            )
           }
         />
 

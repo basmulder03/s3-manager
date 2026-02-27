@@ -30,6 +30,27 @@ const callbackPath = config.oidcRedirectPath.startsWith('/')
   ? config.oidcRedirectPath
   : `/${config.oidcRedirectPath}`;
 
+const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, '');
+
+const resolveReturnTo = (rawReturnTo: string | undefined): string => {
+  const webOrigin = trimTrailingSlash(config.web.origin);
+  const fallback = `${webOrigin}/`;
+
+  if (!rawReturnTo || rawReturnTo.trim().length === 0) {
+    return fallback;
+  }
+
+  try {
+    const parsed = new URL(rawReturnTo, fallback);
+    if (parsed.origin !== webOrigin) {
+      return fallback;
+    }
+    return parsed.toString();
+  } catch {
+    return fallback;
+  }
+};
+
 const clearAuthCookies = (c: Context): void => {
   deleteCookie(c, ACCESS_TOKEN_COOKIE, { path: '/' });
   deleteCookie(c, ID_TOKEN_COOKIE, { path: '/' });
@@ -38,7 +59,7 @@ const clearAuthCookies = (c: Context): void => {
 
 export const registerAuthHttpRoutes = (app: Hono): void => {
   app.get('/auth/login', async (c) => {
-    const returnTo = c.req.query('returnTo') || '/';
+    const returnTo = resolveReturnTo(c.req.query('returnTo'));
 
     if (config.localDevMode) {
       return c.redirect(returnTo);
@@ -135,7 +156,7 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
   });
 
   app.get('/auth/logout', async (c) => {
-    const returnTo = c.req.query('returnTo') || '/';
+    const returnTo = resolveReturnTo(c.req.query('returnTo'));
     const accessToken = getCookie(c, ACCESS_TOKEN_COOKIE);
     const refreshToken = getCookie(c, REFRESH_TOKEN_COOKIE);
     const idToken = getCookie(c, ID_TOKEN_COOKIE);
@@ -161,7 +182,7 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
       }
 
       const logoutUrl = await buildLogoutUrl({
-        postLogoutRedirectUri: new URL(returnTo, c.req.url).toString(),
+        postLogoutRedirectUri: returnTo,
         idTokenHint: idToken,
       });
 

@@ -12,6 +12,9 @@ const deleteObjectMutate = vi.fn(async () => ({ success: true }));
 const deleteFolderMutate = vi.fn(async () => ({ deletedCount: 1 }));
 const deleteMultipleMutate = vi.fn(async () => ({ message: 'Deleted 2 item(s)', deletedCount: 2 }));
 const browseRefetch = vi.fn();
+let mockAuthRequired = false;
+let mockAuthenticated = false;
+let mockPermissions: Array<'view' | 'write' | 'delete'> = [];
 
 vi.mock('@web/components/UploadPanel', () => ({
   UploadPanel: () => <div>Upload Panel Mock</div>,
@@ -26,10 +29,25 @@ vi.mock('@web/trpc/client', () => ({
     },
     auth: {
       status: {
-        useQuery: () => ({ data: { authRequired: false, provider: 'keycloak' }, refetch: vi.fn() }),
+        useQuery: () => ({
+          data: { authRequired: mockAuthRequired, provider: 'keycloak' },
+          refetch: vi.fn(),
+        }),
       },
       me: {
-        useQuery: () => ({ isSuccess: false, isError: true, data: undefined, refetch: vi.fn() }),
+        useQuery: () => ({
+          isSuccess: mockAuthenticated,
+          isError: !mockAuthenticated,
+          data: mockAuthenticated
+            ? {
+                name: 'Alice',
+                email: 'alice@example.com',
+                roles: ['S3-Admin'],
+                permissions: mockPermissions,
+              }
+            : undefined,
+          refetch: vi.fn(),
+        }),
       },
     },
     s3: {
@@ -112,6 +130,9 @@ vi.mock('@web/trpc/client', () => ({
 
 describe('Browser parity interactions', () => {
   beforeEach(() => {
+    mockAuthRequired = false;
+    mockAuthenticated = false;
+    mockPermissions = [];
     createFolderMutate.mockClear();
     renameMutate.mockClear();
     deleteObjectMutate.mockClear();
@@ -160,5 +181,22 @@ describe('Browser parity interactions', () => {
     expect(screen.getByText('Edit')).toBeInTheDocument();
     expect(screen.getByText('Danger')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Rename' }).length).toBeGreaterThan(0);
+  });
+
+  it('hides write and delete actions when user only has view permission', async () => {
+    mockAuthRequired = true;
+    mockAuthenticated = true;
+    mockPermissions = ['view'];
+
+    render(
+      <MemoryRouter initialEntries={['/browser']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole('button', { name: 'Create Folder' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete Selected' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 });
