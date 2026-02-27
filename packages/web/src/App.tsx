@@ -1,15 +1,12 @@
-import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { Panel } from '@web/components/Panel';
-import { KeyValue } from '@web/components/KeyValue';
-import { AuthActions } from '@web/components/AuthActions';
-import { UploadPanel } from '@web/components/UploadPanel';
-import { Button } from '@web/components/ui/Button';
-import { Input } from '@web/components/ui/Input';
-import { trpc, trpcProxyClient } from '@web/trpc/client';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { trpc } from '@web/trpc/client';
 import { useUiStore } from '@web/state/ui';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
-import type { BrowseItem } from '@server/services/s3/types';
+import { useEffect } from 'react';
+import { FileModals, SignInGate } from '@web/components';
+import { useBrowserController } from '@web/hooks';
+import { FinderHeader, FinderSidebar } from '@web/layout';
+import { BrowserPage, OverviewPage, UploadPage } from '@web/pages';
+import styles from '@web/App.module.css';
 
 const formatDate = (value: string | null): string => {
   if (!value) {
@@ -29,44 +26,6 @@ export const App = () => {
   const setSelectedPath = useUiStore((state) => state.setSelectedPath);
   const theme = useUiStore((state) => state.theme);
   const setTheme = useUiStore((state) => state.setTheme);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [browserMessage, setBrowserMessage] = useState('');
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    item: BrowseItem;
-  } | null>(null);
-  const [renameModal, setRenameModal] = useState<{
-    sourcePath: string;
-    currentName: string;
-    nextName: string;
-  } | null>(null);
-  const [moveModal, setMoveModal] = useState<{
-    sourcePath: string;
-    destinationPath: string;
-  } | null>(null);
-  const [deleteModal, setDeleteModal] = useState<{ items: BrowseItem[] } | null>(null);
-  const [propertiesModal, setPropertiesModal] = useState<{
-    path: string;
-    loading: boolean;
-    error: string;
-    details: null | {
-      name: string;
-      key: string;
-      size: number;
-      contentType: string;
-      lastModified: string | null;
-      etag: string | null;
-      storageClass: string;
-      metadata: Record<string, string>;
-    };
-  } | null>(null);
-  const [modalError, setModalError] = useState<string>('');
-  const renameInputRef = useRef<HTMLInputElement | null>(null);
-  const moveInputRef = useRef<HTMLInputElement | null>(null);
-  const activeModalRef = useRef<HTMLDivElement | null>(null);
   const location = useLocation();
 
   const healthInfo = trpc.health.info.useQuery({});
@@ -86,8 +45,6 @@ export const App = () => {
   const canWrite = permissions.includes('write');
   const canDelete = permissions.includes('delete');
   const showSignInOnly = authRequired && !authenticated;
-  const isModalOpen =
-    renameModal !== null || moveModal !== null || deleteModal !== null || propertiesModal !== null;
 
   const refreshAuthState = () => {
     void authStatus.refetch();
@@ -102,693 +59,76 @@ export const App = () => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
-  useEffect(() => {
-    setSelectedItems(new Set());
-    setLastSelectedIndex(null);
-  }, [selectedPath, browse.data?.path]);
-
-  useEffect(() => {
-    const close = () => {
-      setContextMenu(null);
-    };
-
-    window.addEventListener('click', close);
-    return () => {
-      window.removeEventListener('click', close);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (renameModal) {
-      renameInputRef.current?.focus();
-      renameInputRef.current?.select();
-    }
-  }, [renameModal]);
-
-  useEffect(() => {
-    if (moveModal) {
-      moveInputRef.current?.focus();
-      moveInputRef.current?.select();
-    }
-  }, [moveModal]);
-
-  useEffect(() => {
-    if (!isModalOpen) {
-      return;
-    }
-
-    const onFocusTrap = (event: KeyboardEvent) => {
-      if (event.key !== 'Tab') {
-        return;
-      }
-
-      const container = activeModalRef.current;
-      if (!container) {
-        return;
-      }
-
-      const focusable = Array.from(
-        container.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
-        )
-      );
-
-      if (focusable.length === 0) {
-        return;
-      }
-
-      const first = focusable[0]!;
-      const last = focusable[focusable.length - 1]!;
-      const active = document.activeElement as HTMLElement | null;
-
-      if (event.shiftKey) {
-        if (!active || active === first || !container.contains(active)) {
-          event.preventDefault();
-          last.focus();
-        }
-        return;
-      }
-
-      if (!active || active === last || !container.contains(active)) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    window.addEventListener('keydown', onFocusTrap);
-    return () => {
-      window.removeEventListener('keydown', onFocusTrap);
-    };
-  }, [isModalOpen]);
-
-  const itemsByPath = useMemo(() => {
-    const map = new Map<string, BrowseItem>();
-    for (const item of browse.data?.items ?? []) {
-      map.set(item.path, item);
-    }
-    return map;
-  }, [browse.data?.items]);
-
-  const selectedRecords = useMemo(() => {
-    const records: BrowseItem[] = [];
-    for (const path of selectedItems) {
-      const record = itemsByPath.get(path);
-      if (record) {
-        records.push(record);
-      }
-    }
-    return records;
-  }, [itemsByPath, selectedItems]);
-
-  const selectedFiles = useMemo(() => {
-    return selectedRecords.filter((item) => item.type === 'file');
-  }, [selectedRecords]);
-
-  const selectedSingleItem = useMemo(() => {
-    return selectedRecords.length === 1 ? selectedRecords[0] : null;
-  }, [selectedRecords]);
-
-  const toggleSelection = (path: string, checked: boolean) => {
-    setSelectedItems((previous) => {
-      const next = new Set(previous);
-      if (checked) {
-        next.add(path);
-      } else {
-        next.delete(path);
-      }
-      return next;
-    });
-  };
-
-  const clearSelection = () => {
-    setSelectedItems(new Set());
-    setLastSelectedIndex(null);
-  };
-
-  const closeModals = () => {
-    setRenameModal(null);
-    setMoveModal(null);
-    setDeleteModal(null);
-    setPropertiesModal(null);
-    setModalError('');
-  };
-
-  const selectRange = (endIndex: number) => {
-    if (!browse.data?.items || lastSelectedIndex === null) {
-      return;
-    }
-
-    const start = Math.min(lastSelectedIndex, endIndex);
-    const end = Math.max(lastSelectedIndex, endIndex);
-
-    setSelectedItems((previous) => {
-      const next = new Set(previous);
-      for (let index = start; index <= end; index += 1) {
-        const item = browse.data?.items[index];
-        if (item) {
-          next.add(item.path);
-        }
-      }
-      return next;
-    });
-  };
-
-  const selectOnly = (path: string) => {
-    setSelectedItems(new Set([path]));
-  };
-
-  const handleRowClick = (
-    item: BrowseItem,
-    index: number,
-    event: MouseEvent<HTMLButtonElement>
-  ) => {
-    if (event.shiftKey) {
-      event.preventDefault();
-      selectRange(index);
-      return;
-    }
-
-    if (event.metaKey || event.ctrlKey) {
-      event.preventDefault();
-      setSelectedItems((previous) => {
-        const next = new Set(previous);
-        if (next.has(item.path)) {
-          next.delete(item.path);
-        } else {
-          next.add(item.path);
-        }
-        return next;
-      });
-      setLastSelectedIndex(index);
-      return;
-    }
-
-    if (item.type === 'directory') {
-      setSelectedPath(item.path);
-      return;
-    }
-
-    selectOnly(item.path);
-    setLastSelectedIndex(index);
-  };
-
-  const openContextMenu = (item: BrowseItem, event: MouseEvent) => {
-    event.preventDefault();
-    if (!selectedItems.has(item.path)) {
-      selectOnly(item.path);
-    }
-
-    const menuWidth = 220;
-    const menuHeight = 230;
-    const margin = 10;
-
-    const x = Math.min(event.clientX, window.innerWidth - menuWidth - margin);
-    const y = Math.min(event.clientY, window.innerHeight - menuHeight - margin);
-
-    setContextMenu({
-      x: Math.max(margin, x),
-      y: Math.max(margin, y),
-      item,
-    });
-  };
-
-  const splitObjectPath = (path: string): { bucketName: string; objectKey: string } => {
-    const [bucketName, ...parts] = path.split('/');
-    return {
-      bucketName: bucketName ?? '',
-      objectKey: parts.join('/'),
-    };
-  };
-
-  const createFolderInCurrentPath = async () => {
-    if (!canWrite) {
-      setBrowserMessage('You do not have write permission.');
-      return;
-    }
-
-    if (!selectedPath) {
-      setBrowserMessage('Navigate to a bucket path before creating folders.');
-      return;
-    }
-
-    if (!newFolderName.trim()) {
-      setBrowserMessage('Folder name is required.');
-      return;
-    }
-
-    try {
-      await createFolder.mutateAsync({
-        path: selectedPath,
-        folderName: newFolderName.trim(),
-      });
-      setNewFolderName('');
-      setBrowserMessage('Folder created successfully.');
-      refreshBrowse();
-    } catch {
-      setBrowserMessage('Failed to create folder.');
-    }
-  };
-
-  const downloadFile = async (path: string, silent = false) => {
-    try {
-      const { bucketName, objectKey } = splitObjectPath(path);
-      const metadata = await trpcProxyClient.s3.getObjectMetadata.query({
-        bucketName,
-        objectKey,
-      });
-
-      window.open(metadata.downloadUrl, '_blank', 'noopener,noreferrer');
-      if (!silent) {
-        setBrowserMessage('Download link opened.');
-      }
-    } catch {
-      if (!silent) {
-        setBrowserMessage('Failed to generate download URL.');
-      }
-    }
-  };
-
-  const removeItem = async (path: string, type: 'file' | 'directory'): Promise<boolean> => {
-    try {
-      if (type === 'directory') {
-        await deleteFolder.mutateAsync({ path });
-      } else {
-        const { bucketName, objectKey } = splitObjectPath(path);
-        await deleteObject.mutateAsync({ bucketName, objectKey });
-      }
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const bulkDelete = async () => {
-    if (!canDelete) {
-      setBrowserMessage('You do not have delete permission.');
-      return;
-    }
-
-    if (selectedRecords.length === 0) {
-      setBrowserMessage('No items selected.');
-      return;
-    }
-
-    deletePathItems(selectedRecords);
-  };
-
-  const bulkDownload = async () => {
-    if (selectedRecords.length === 0) {
-      setBrowserMessage('No items selected.');
-      return;
-    }
-
-    const files = selectedRecords.filter((item) => item.type === 'file');
-    if (files.length === 0) {
-      setBrowserMessage('No files selected. Folders cannot be downloaded.');
-      return;
-    }
-
-    for (const file of files) {
-      await downloadFile(file.path, true);
-    }
-
-    setBrowserMessage(`Started download for ${files.length} file(s).`);
-  };
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (location.pathname !== '/browser') {
-        return;
-      }
-
-      if (isModalOpen) {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          closeModals();
-        }
-        return;
-      }
-
-      const target = event.target;
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
-        event.preventDefault();
-        const all = new Set((browse.data?.items ?? []).map((item) => item.path));
-        setSelectedItems(all);
-        return;
-      }
-
-      if (event.key === 'Escape') {
-        clearSelection();
-        setContextMenu(null);
-        return;
-      }
-
-      if (event.key === 'Delete' && canDelete && selectedRecords.length > 0) {
-        event.preventDefault();
-        void bulkDelete();
-        return;
-      }
-
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        event.key.toLowerCase() === 'd' &&
-        selectedFiles.length > 0
-      ) {
-        event.preventDefault();
-        void bulkDownload();
-        return;
-      }
-
-      if (event.key === 'F2' && canWrite && selectedSingleItem) {
-        event.preventDefault();
-        void renamePathItem(selectedSingleItem.path, selectedSingleItem.name);
-        return;
-      }
-
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        event.shiftKey &&
-        event.key.toLowerCase() === 'm' &&
-        canWrite &&
-        selectedSingleItem
-      ) {
-        event.preventDefault();
-        void movePathItem(selectedSingleItem.path);
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [
-    browse.data?.items,
-    isModalOpen,
-    location.pathname,
-    canDelete,
+  const browser = useBrowserController({
+    selectedPath,
+    setSelectedPath,
+    browseItems: browse.data?.items,
+    browsePath: browse.data?.path,
+    refreshBrowse,
     canWrite,
-    selectedFiles.length,
-    selectedRecords.length,
-    selectedSingleItem,
-  ]);
-
-  const renamePathItem = (path: string, currentName: string) => {
-    if (!canWrite) {
-      setBrowserMessage('You do not have write permission.');
-      return;
-    }
-
-    setRenameModal({
-      sourcePath: path,
-      currentName,
-      nextName: currentName,
-    });
-    setContextMenu(null);
-    setModalError('');
-  };
-
-  const movePathItem = (path: string) => {
-    if (!canWrite) {
-      setBrowserMessage('You do not have write permission.');
-      return;
-    }
-
-    setMoveModal({
-      sourcePath: path,
-      destinationPath: selectedPath || '',
-    });
-    setContextMenu(null);
-    setModalError('');
-  };
-
-  const deletePathItems = (items: BrowseItem[]) => {
-    if (!canDelete) {
-      setBrowserMessage('You do not have delete permission.');
-      return;
-    }
-
-    setDeleteModal({ items });
-    setContextMenu(null);
-    setModalError('');
-  };
-
-  const openProperties = async (path: string) => {
-    setContextMenu(null);
-    setPropertiesModal({
-      path,
-      loading: true,
-      error: '',
-      details: null,
-    });
-
-    try {
-      const details = await trpcProxyClient.s3.getProperties.query({ path });
-      setPropertiesModal({
-        path,
-        loading: false,
-        error: '',
-        details,
-      });
-    } catch {
-      setPropertiesModal({
-        path,
-        loading: false,
-        error: 'Failed to load file properties.',
-        details: null,
-      });
-    }
-  };
-
-  const submitRename = async () => {
-    if (!canWrite) {
-      closeModals();
-      setBrowserMessage('You do not have write permission.');
-      return;
-    }
-
-    if (!renameModal) {
-      return;
-    }
-
-    const nextName = renameModal.nextName.trim();
-    if (nextName.length === 0) {
-      setModalError('Name is required.');
-      return;
-    }
-
-    if (nextName === renameModal.currentName) {
-      closeModals();
-      return;
-    }
-
-    try {
-      await renameItem.mutateAsync({
-        sourcePath: renameModal.sourcePath,
-        newName: nextName,
-      });
-      closeModals();
-      setBrowserMessage('Item renamed successfully.');
-      refreshBrowse();
-    } catch {
-      setModalError('Failed to rename item.');
-    }
-  };
-
-  const submitMove = async () => {
-    if (!canWrite) {
-      closeModals();
-      setBrowserMessage('You do not have write permission.');
-      return;
-    }
-
-    if (!moveModal) {
-      return;
-    }
-
-    const destinationPath = moveModal.destinationPath.trim();
-    if (destinationPath.length === 0) {
-      setModalError('Destination path is required.');
-      return;
-    }
-
-    try {
-      await renameItem.mutateAsync({
-        sourcePath: moveModal.sourcePath,
-        destinationPath,
-      });
-      closeModals();
-      setBrowserMessage('Item moved successfully.');
-      refreshBrowse();
-    } catch {
-      setModalError('Failed to move item.');
-    }
-  };
-
-  const submitDelete = async () => {
-    if (!canDelete) {
-      closeModals();
-      setBrowserMessage('You do not have delete permission.');
-      return;
-    }
-
-    if (!deleteModal) {
-      return;
-    }
-
-    const targetItems = deleteModal.items;
-
-    if (targetItems.length > 1) {
-      try {
-        const result = await deleteMultipleItems.mutateAsync({
-          paths: targetItems.map((item) => item.path),
-        });
-
-        closeModals();
-        clearSelection();
-        setBrowserMessage(result.message);
-        refreshBrowse();
-        return;
-      } catch {
-        setModalError('Failed to delete selected items.');
-        return;
-      }
-    }
-
-    let success = 0;
-    for (const item of targetItems) {
-      const ok = await removeItem(item.path, item.type);
-      if (ok) {
-        success += 1;
-      }
-    }
-
-    const total = targetItems.length;
-    closeModals();
-    clearSelection();
-    setBrowserMessage(`Deleted ${success} of ${total} selected item(s).`);
-    refreshBrowse();
-  };
+    canDelete,
+    locationPathname: location.pathname,
+    createFolderAsync: createFolder.mutateAsync,
+    renameItemAsync: renameItem.mutateAsync,
+    deleteObjectAsync: deleteObject.mutateAsync,
+    deleteFolderAsync: deleteFolder.mutateAsync,
+    deleteMultipleAsync: async (input) => {
+      const result = await deleteMultipleItems.mutateAsync(input);
+      return {
+        message: result.message,
+      };
+    },
+  });
 
   if (showSignInOnly) {
-    return (
-      <main className="signin-shell">
-        <section className="signin-card">
-          <p className="hero-kicker">S3 MANAGER</p>
-          <h1>Sign in to continue</h1>
-          <p>Authenticate with your configured identity provider to access the file browser.</p>
-          <AuthActions authenticated={false} onAfterRefresh={refreshAuthState} />
-        </section>
-      </main>
-    );
+    return <SignInGate onAfterRefresh={refreshAuthState} />;
   }
 
   return (
-    <main className="app-shell">
-      <div className="hero-glow" />
-      <header className="hero">
-        <div className="hero-topline">
-          <p className="hero-kicker">S3 MANAGER</p>
-          <div className="hero-actions">
-            <Button variant="muted" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-              {theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            </Button>
-            <AuthActions authenticated={authenticated} onAfterRefresh={refreshAuthState} />
-          </div>
-        </div>
-        <h1>Finder-style S3 workspace</h1>
-        <p>Browse, manage, and upload objects with permission-aware actions.</p>
-        <nav className="tabs" aria-label="Primary">
-          <NavLink to="/overview">Overview</NavLink>
-          {canView ? <NavLink to="/browser">Browser</NavLink> : null}
-          {canWrite ? <NavLink to="/upload">Upload</NavLink> : null}
-        </nav>
-      </header>
+    <main className={styles.appShell}>
+      <div className={styles.heroGlow} />
+      <FinderHeader
+        theme={theme}
+        setTheme={setTheme}
+        authenticated={authenticated}
+        onAfterRefresh={refreshAuthState}
+        canView={canView}
+        canWrite={canWrite}
+      />
 
-      <div className="finder-window">
-        <aside className="finder-sidebar" aria-label="Workspace sidebar">
-          <section>
-            <p className="finder-sidebar-title">Favorites</p>
-            <nav className="finder-nav">
-              <NavLink to="/overview">Overview</NavLink>
-              {canView ? <NavLink to="/browser">All Files</NavLink> : null}
-              {canWrite ? <NavLink to="/upload">Uploads</NavLink> : null}
-            </nav>
-          </section>
+      <div className={styles.finderWindow}>
+        <FinderSidebar
+          canView={canView}
+          canWrite={canWrite}
+          provider={authStatus.data?.provider}
+          userEmail={authMe.data?.email}
+          selectedPath={selectedPath}
+          permissions={permissions}
+        />
 
-          <section>
-            <p className="finder-sidebar-title">Session</p>
-            <div className="finder-meta">
-              <span>Provider</span>
-              <strong>{authStatus.data?.provider ?? '-'}</strong>
-            </div>
-            <div className="finder-meta">
-              <span>User</span>
-              <strong>{authMe.data?.email ?? 'Not signed in'}</strong>
-            </div>
-            <div className="finder-meta">
-              <span>Path</span>
-              <strong>{selectedPath || '/'}</strong>
-            </div>
-          </section>
-
-          <section>
-            <p className="finder-sidebar-title">Permissions</p>
-            <div className="permission-chips">
-              {permissions.length > 0 ? (
-                permissions.map((permission) => (
-                  <span key={permission} className="permission-chip">
-                    {permission}
-                  </span>
-                ))
-              ) : (
-                <span className="permission-chip permission-chip-empty">none</span>
-              )}
-            </div>
-          </section>
-        </aside>
-
-        <section className="finder-content">
+        <section className={styles.finderContent}>
           <Routes>
             <Route
               path="/overview"
               element={
-                <section className="grid two">
-                  <Panel
-                    title="Server Status"
-                    subtitle="From `trpc.health.info` and `trpc.auth.status`"
-                  >
-                    <KeyValue label="App" value={healthInfo.data?.app ?? 'Loading...'} />
-                    <KeyValue label="Version" value={healthInfo.data?.version ?? '-'} />
-                    <KeyValue label="Environment" value={healthInfo.data?.env ?? '-'} />
-                    <KeyValue
-                      label="Auth Required"
-                      value={String(authStatus.data?.authRequired ?? false)}
-                    />
-                    <KeyValue label="Provider" value={authStatus.data?.provider ?? '-'} />
-                  </Panel>
-
-                  <Panel title="Current User" subtitle="From `trpc.auth.me` (protected)">
-                    {authMe.isError ? (
-                      <p className="state warn">
-                        Not authenticated yet. Use Login to start OIDC flow.
-                      </p>
-                    ) : (
-                      <>
-                        <KeyValue label="Name" value={authMe.data?.name ?? '-'} />
-                        <KeyValue label="Email" value={authMe.data?.email ?? '-'} />
-                        <KeyValue label="Roles" value={authMe.data?.roles?.join(', ') ?? '-'} />
-                        <KeyValue
-                          label="Permissions"
-                          value={authMe.data?.permissions?.join(', ') ?? '-'}
-                        />
-                      </>
-                    )}
-                  </Panel>
-                </section>
+                <OverviewPage
+                  app={healthInfo.data?.app ?? 'Loading...'}
+                  version={healthInfo.data?.version ?? '-'}
+                  env={healthInfo.data?.env ?? '-'}
+                  authRequired={authStatus.data?.authRequired ?? false}
+                  provider={authStatus.data?.provider ?? '-'}
+                  authError={authMe.isError}
+                  user={
+                    authMe.data
+                      ? {
+                          name: authMe.data.name,
+                          email: authMe.data.email,
+                          roles: authMe.data.roles,
+                          permissions: authMe.data.permissions,
+                        }
+                      : undefined
+                  }
+                />
               }
             />
 
@@ -796,239 +136,32 @@ export const App = () => {
               path="/browser"
               element={
                 canView ? (
-                  <Panel title="S3 Browser" subtitle="From `trpc.s3.browse`">
-                    <div className="browser-toolbar">
-                      <div className="browser-controls">
-                        <Input
-                          className="path-input"
-                          value={selectedPath}
-                          onChange={(event) => setSelectedPath(event.target.value)}
-                          placeholder="Path example: my-bucket/folder"
-                        />
-                        <Button variant="muted" onClick={() => browse.refetch()}>
-                          Refresh
-                        </Button>
-                        <Button variant="muted" onClick={() => setSelectedPath('')}>
-                          Root
-                        </Button>
-                      </div>
-                      {canWrite ? (
-                        <div className="browser-controls">
-                          <Input
-                            className="folder-input"
-                            value={newFolderName}
-                            onChange={(event) => setNewFolderName(event.target.value)}
-                            placeholder="New folder name"
-                          />
-                          <Button onClick={() => void createFolderInCurrentPath()}>
-                            Create Folder
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <p className="hotkeys-hint">
-                      Shortcuts: Ctrl/Cmd+A select all, Delete remove, Ctrl/Cmd+D download, F2
-                      rename, Ctrl/Cmd+Shift+M move.
-                    </p>
-
-                    {selectedItems.size > 0 ? (
-                      <div className="selection-bar">
-                        <span>{selectedItems.size} selected</span>
-                        <Button
-                          variant="muted"
-                          onClick={() => void bulkDownload()}
-                          disabled={selectedFiles.length === 0}
-                          title={
-                            selectedFiles.length === 0
-                              ? 'Select at least one file'
-                              : 'Download selected files'
-                          }
-                        >
-                          Download Selected
-                        </Button>
-                        {canDelete ? (
-                          <Button variant="danger" onClick={() => void bulkDelete()}>
-                            Delete Selected
-                          </Button>
-                        ) : null}
-                        <Button variant="muted" onClick={clearSelection}>
-                          Clear
-                        </Button>
-                      </div>
-                    ) : null}
-
-                    {browse.isLoading ? <p className="state">Loading objects...</p> : null}
-                    {browse.isError ? (
-                      <p className="state error">Failed to load S3 path data.</p>
-                    ) : null}
-                    {browserMessage ? <p className="state">{browserMessage}</p> : null}
-
-                    {browse.data ? (
-                      <>
-                        <div className="breadcrumbs">
-                          {browse.data.breadcrumbs.map((crumb) => (
-                            <Button
-                              key={crumb.path || 'home'}
-                              variant="muted"
-                              onClick={() => setSelectedPath(crumb.path)}
-                            >
-                              {crumb.name}
-                            </Button>
-                          ))}
-                        </div>
-
-                        <div className="items-head" aria-hidden>
-                          <span>Type</span>
-                          <span>Name</span>
-                          <span>Path</span>
-                          <span>Size</span>
-                          <span>Modified</span>
-                          <span>Actions</span>
-                        </div>
-
-                        <ul className="items">
-                          {browse.data.items.map((item, index) => (
-                            <li
-                              key={`${item.type}:${item.path}`}
-                              className={selectedItems.has(item.path) ? 'is-selected' : ''}
-                            >
-                              <div
-                                className="item-row"
-                                onContextMenu={(event) => openContextMenu(item, event)}
-                              >
-                                <label className="row-checkbox">
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedItems.has(item.path)}
-                                    onChange={(event) => {
-                                      toggleSelection(item.path, event.target.checked);
-                                      setLastSelectedIndex(index);
-                                    }}
-                                  />
-                                </label>
-                                <Button
-                                  className="item-main"
-                                  onClick={(event) => handleRowClick(item, index, event)}
-                                >
-                                  <span className="tag">{item.type}</span>
-                                  <strong>{item.name}</strong>
-                                  <span className="item-path">{item.path}</span>
-                                  <span>{item.size === null ? '-' : `${item.size} bytes`}</span>
-                                  <span>{formatDate(item.lastModified)}</span>
-                                </Button>
-                                <div className="item-actions">
-                                  {canWrite ? (
-                                    <Button
-                                      variant="muted"
-                                      onClick={() => void renamePathItem(item.path, item.name)}
-                                    >
-                                      Rename
-                                    </Button>
-                                  ) : null}
-                                  {canWrite ? (
-                                    <Button
-                                      variant="muted"
-                                      onClick={() => void movePathItem(item.path)}
-                                    >
-                                      Move
-                                    </Button>
-                                  ) : null}
-                                  {item.type === 'file' ? (
-                                    <Button
-                                      variant="muted"
-                                      onClick={() => void downloadFile(item.path)}
-                                    >
-                                      Download
-                                    </Button>
-                                  ) : null}
-                                  {item.type === 'file' ? (
-                                    <Button
-                                      variant="muted"
-                                      onClick={() => void openProperties(item.path)}
-                                    >
-                                      Properties
-                                    </Button>
-                                  ) : null}
-                                  {canDelete ? (
-                                    <Button
-                                      variant="danger"
-                                      onClick={() => deletePathItems([item])}
-                                    >
-                                      Delete
-                                    </Button>
-                                  ) : null}
-                                </div>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-
-                        {contextMenu ? (
-                          <div
-                            className="context-menu"
-                            style={{ left: contextMenu.x, top: contextMenu.y }}
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <p className="context-group-title">Quick Actions</p>
-                            {contextMenu.item.type === 'directory' ? (
-                              <Button
-                                variant="muted"
-                                onClick={() => setSelectedPath(contextMenu.item.path)}
-                              >
-                                Open
-                              </Button>
-                            ) : (
-                              <>
-                                <Button
-                                  variant="muted"
-                                  onClick={() => void downloadFile(contextMenu.item.path)}
-                                >
-                                  Download
-                                </Button>
-                                <Button
-                                  variant="muted"
-                                  onClick={() => void openProperties(contextMenu.item.path)}
-                                >
-                                  Properties
-                                </Button>
-                              </>
-                            )}
-
-                            {canWrite ? <p className="context-group-title">Edit</p> : null}
-                            {canWrite ? (
-                              <Button
-                                variant="muted"
-                                onClick={() =>
-                                  void renamePathItem(contextMenu.item.path, contextMenu.item.name)
-                                }
-                              >
-                                Rename
-                              </Button>
-                            ) : null}
-                            {canWrite ? (
-                              <Button
-                                variant="muted"
-                                onClick={() => void movePathItem(contextMenu.item.path)}
-                              >
-                                Move
-                              </Button>
-                            ) : null}
-
-                            {canDelete ? <p className="context-group-title">Danger</p> : null}
-                            {canDelete ? (
-                              <Button
-                                variant="danger"
-                                onClick={() => deletePathItems([contextMenu.item])}
-                              >
-                                Delete
-                              </Button>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </>
-                    ) : null}
-                  </Panel>
+                  <BrowserPage
+                    selectedPath={selectedPath}
+                    setSelectedPath={setSelectedPath}
+                    canWrite={canWrite}
+                    canDelete={canDelete}
+                    browse={browse}
+                    newFolderName={browser.newFolderName}
+                    setNewFolderName={browser.setNewFolderName}
+                    selectedItems={browser.selectedItems}
+                    selectedFiles={browser.selectedFiles}
+                    browserMessage={browser.browserMessage}
+                    contextMenu={browser.contextMenu}
+                    onCreateFolder={browser.createFolderInCurrentPath}
+                    onBulkDownload={browser.bulkDownload}
+                    onBulkDelete={browser.bulkDelete}
+                    onClearSelection={browser.clearSelection}
+                    onToggleSelection={browser.toggleSelection}
+                    onSetLastSelectedIndex={browser.setLastSelectedIndex}
+                    onRowClick={browser.handleRowClick}
+                    onOpenContextMenu={browser.openContextMenu}
+                    onRename={browser.renamePathItem}
+                    onMove={browser.movePathItem}
+                    onDownload={browser.downloadFile}
+                    onOpenProperties={browser.openProperties}
+                    onDeletePathItems={browser.deletePathItems}
+                  />
                 ) : (
                   <Navigate to="/overview" replace />
                 )
@@ -1039,12 +172,7 @@ export const App = () => {
               path="/upload"
               element={
                 canWrite ? (
-                  <Panel
-                    title="Uploader"
-                    subtitle="Uses typed upload cookbook with direct/multipart fallback"
-                  >
-                    <UploadPanel selectedPath={selectedPath} onUploadComplete={refreshBrowse} />
-                  </Panel>
+                  <UploadPage selectedPath={selectedPath} onUploadComplete={refreshBrowse} />
                 ) : (
                   <Navigate to="/overview" replace />
                 )
@@ -1056,188 +184,21 @@ export const App = () => {
         </section>
       </div>
 
-      {renameModal ? (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="rename-modal-title"
-          aria-describedby="rename-modal-description"
-          aria-label="Rename item dialog"
-        >
-          <div className="modal-card" ref={activeModalRef}>
-            <h3 id="rename-modal-title">Rename Item</h3>
-            <p id="rename-modal-description">Current name: {renameModal.currentName}</p>
-            <label>
-              New name
-              <Input
-                ref={renameInputRef}
-                value={renameModal.nextName}
-                onChange={(event) => {
-                  setRenameModal((previous) => {
-                    if (!previous) {
-                      return previous;
-                    }
-
-                    return {
-                      ...previous,
-                      nextName: event.target.value,
-                    };
-                  });
-                  setModalError('');
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    void submitRename();
-                  }
-                }}
-                placeholder="Enter new name"
-              />
-            </label>
-            {modalError ? <p className="state error">{modalError}</p> : null}
-            <div className="modal-actions">
-              <Button variant="muted" onClick={closeModals}>
-                Cancel
-              </Button>
-              <Button onClick={() => void submitRename()}>Save</Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {moveModal ? (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="move-modal-title"
-          aria-describedby="move-modal-description"
-          aria-label="Move item dialog"
-        >
-          <div className="modal-card" ref={activeModalRef}>
-            <h3 id="move-modal-title">Move Item</h3>
-            <p id="move-modal-description">Source: {moveModal.sourcePath}</p>
-            <label>
-              Destination path
-              <Input
-                ref={moveInputRef}
-                value={moveModal.destinationPath}
-                onChange={(event) => {
-                  setMoveModal((previous) => {
-                    if (!previous) {
-                      return previous;
-                    }
-
-                    return {
-                      ...previous,
-                      destinationPath: event.target.value,
-                    };
-                  });
-                  setModalError('');
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    void submitMove();
-                  }
-                }}
-                placeholder="my-bucket/folder"
-              />
-            </label>
-            {modalError ? <p className="state error">{modalError}</p> : null}
-            <div className="modal-actions">
-              <Button variant="muted" onClick={closeModals}>
-                Cancel
-              </Button>
-              <Button onClick={() => void submitMove()}>Move</Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {deleteModal ? (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-modal-title"
-          aria-describedby="delete-modal-description"
-          aria-label="Delete items dialog"
-        >
-          <div className="modal-card" ref={activeModalRef}>
-            <h3 id="delete-modal-title">Confirm Delete</h3>
-            <p id="delete-modal-description">
-              {deleteModal.items.length === 1
-                ? `Delete ${deleteModal.items[0]?.name ?? 'selected item'}?`
-                : `Delete ${deleteModal.items.length} selected item(s)?`}
-            </p>
-            <p className="state warn">This action cannot be undone.</p>
-            {modalError ? <p className="state error">{modalError}</p> : null}
-            <div className="modal-actions">
-              <Button variant="muted" onClick={closeModals}>
-                Cancel
-              </Button>
-              <Button variant="danger" onClick={() => void submitDelete()}>
-                Delete
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {propertiesModal ? (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="properties-modal-title"
-          aria-describedby="properties-modal-description"
-          aria-label="File properties dialog"
-        >
-          <div className="modal-card" ref={activeModalRef}>
-            <h3 id="properties-modal-title">File Properties</h3>
-            <p id="properties-modal-description">Path: {propertiesModal.path}</p>
-            {propertiesModal.loading ? <p className="state">Loading properties...</p> : null}
-            {propertiesModal.error ? <p className="state error">{propertiesModal.error}</p> : null}
-            {propertiesModal.details ? (
-              <div className="properties-grid">
-                <KeyValue label="Name" value={propertiesModal.details.name} />
-                <KeyValue label="Key" value={propertiesModal.details.key} />
-                <KeyValue label="Size" value={`${propertiesModal.details.size} bytes`} />
-                <KeyValue label="Content Type" value={propertiesModal.details.contentType} />
-                <KeyValue label="Storage Class" value={propertiesModal.details.storageClass} />
-                <KeyValue
-                  label="Last Modified"
-                  value={formatDate(propertiesModal.details.lastModified)}
-                />
-                <KeyValue label="ETag" value={propertiesModal.details.etag ?? '-'} />
-
-                <div className="properties-metadata">
-                  <p>Metadata</p>
-                  {Object.keys(propertiesModal.details.metadata).length === 0 ? (
-                    <code>-</code>
-                  ) : (
-                    <div className="metadata-table">
-                      {Object.entries(propertiesModal.details.metadata).map(([key, value]) => (
-                        <div key={key} className="metadata-row">
-                          <span>{key}</span>
-                          <code>{value}</code>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : null}
-            <div className="modal-actions">
-              <Button variant="muted" onClick={closeModals}>
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <FileModals
+        renameModal={browser.renameModal}
+        moveModal={browser.moveModal}
+        deleteModal={browser.deleteModal}
+        propertiesModal={browser.propertiesModal}
+        modalError={browser.modalError}
+        activeModalRef={browser.activeModalRef}
+        onClose={browser.closeModals}
+        onRenameNextNameChange={browser.setRenameNextName}
+        onMoveDestinationPathChange={browser.setMoveDestinationPath}
+        onSubmitRename={browser.submitRename}
+        onSubmitMove={browser.submitMove}
+        onSubmitDelete={browser.submitDelete}
+        formatDate={formatDate}
+      />
     </main>
   );
 };

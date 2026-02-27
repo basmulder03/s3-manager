@@ -1,0 +1,39 @@
+.button {
+  appearance: none;
+  border: 1px solid #1d4d98;
+  background: var(--brand);
+  color: #fff;
+  border-radius: 8px;
+  padding: 0.46rem 0.68rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.button:hover {
+  background: #174388;
+}
+
+.button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.muted {
+  background: var(--surface-alt);
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.muted:hover {
+  background: color-mix(in srgb, var(--surface-alt) 70%, var(--line));
+}
+
+.danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--line));
+}
+
+.danger:hover {
+  background: color-mix(in srgb, var(--danger-soft) 70%, var(--surface));
+}

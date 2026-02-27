@@ -1,0 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #eff1f4;
+  --surface: #ffffff;
+  --surface-soft: #f5f6f8;
+  --surface-alt: #f2f4f7;
+  --line: #d6d9df;
+  --line-strong: #b8bec8;
+  --text: #1c232c;
+  --muted: #596575;
+  --brand: #0f6adf;
+  --brand-soft: #e8f1ff;
+  --danger: #b6323f;
+  --danger-soft: #ffedf0;
+  --warning: #8d5b00;
+  --shadow: 0 20px 38px rgba(20, 27, 39, 0.1);
+}
+
+:root[data-theme='dark'] {
+  --bg: #1b1d22;
+  --surface: #24272d;
+  --surface-soft: #2a2e35;
+  --surface-alt: #30353d;
+  --line: #3a4049;
+  --line-strong: #4a535f;
+  --text: #ecf1f7;
+  --muted: #afbac7;
+  --brand: #58a2ff;
+  --brand-soft: #1d304d;
+  --danger: #ff7a86;
+  --danger-soft: #4a2328;
+  --warning: #f0c67a;
+  --shadow: 0 20px 38px rgba(0, 0, 0, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--text);
+  font-family: 'Manrope', sans-serif;
+  background:
+    radial-gradient(circle at 8% -20%, rgba(125, 163, 212, 0.18), transparent 36%),
+    radial-gradient(circle at 92% 120%, rgba(15, 106, 223, 0.12), transparent 30%), var(--bg);
+}
+
+code {
+  font-family: 'IBM Plex Mono', monospace;
+}

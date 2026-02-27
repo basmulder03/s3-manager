@@ -1,92 +1,37 @@
-import { useEffect, useMemo, useState } from 'react';
-import { uploadObjectWithCookbook } from '@server/shared/upload/client';
+import { useMemo } from 'react';
 import { createUploadProceduresFromTrpc } from '@server/shared/upload/trpc-adapter';
 import { trpc, trpcProxyClient } from '@web/trpc/client';
-import { Button } from '@web/components/ui/Button';
-import { Input } from '@web/components/ui/Input';
+import { Button, Input } from '@web/components/ui';
+import { useUploadController } from '@web/hooks';
+import styles from '@web/components/UploadPanel.module.css';
 
 interface UploadPanelProps {
   selectedPath: string;
   onUploadComplete: () => void;
 }
 
-const parsePath = (path: string): { bucket: string; prefix: string } => {
-  const trimmed = path.trim().replace(/^\/+/, '').replace(/\/+$/, '');
-  if (!trimmed) {
-    return { bucket: '', prefix: '' };
-  }
-
-  const [bucket, ...parts] = trimmed.split('/');
-  return {
-    bucket: bucket ?? '',
-    prefix: parts.length > 0 ? `${parts.join('/')}/` : '',
-  };
-};
-
 export const UploadPanel = ({ selectedPath, onUploadComplete }: UploadPanelProps) => {
   const buckets = trpc.s3.listBuckets.useQuery({});
   const procedures = useMemo(() => createUploadProceduresFromTrpc(trpcProxyClient), []);
-
-  const parsedPath = parsePath(selectedPath);
-  const [bucketName, setBucketName] = useState(parsedPath.bucket);
-  const [prefix, setPrefix] = useState(parsedPath.prefix);
-  const [file, setFile] = useState<File | null>(null);
-  const [status, setStatus] = useState('Idle');
-  const [progress, setProgress] = useState(0);
-  const [result, setResult] = useState<{ strategy: string; key: string } | null>(null);
-
-  useEffect(() => {
-    if (parsedPath.bucket) {
-      setBucketName(parsedPath.bucket);
-      setPrefix(parsedPath.prefix);
-    }
-  }, [parsedPath.bucket, parsedPath.prefix]);
-
-  const upload = async (): Promise<void> => {
-    if (!file) {
-      setStatus('Select a file first');
-      return;
-    }
-
-    if (!bucketName) {
-      setStatus('Select a bucket first');
-      return;
-    }
-
-    setStatus('Uploading...');
-    setProgress(0);
-    setResult(null);
-
-    const objectKey = `${prefix}${file.name}`;
-
-    try {
-      const uploaded = await uploadObjectWithCookbook({
-        client: procedures,
-        bucketName,
-        objectKey,
-        file,
-        contentType: file.type || 'application/octet-stream',
-        metadata: {
-          original_filename: file.name,
-        },
-        onProgress(event) {
-          const pct = Math.round((event.uploadedBytes / event.totalBytes) * 100);
-          setProgress(Number.isFinite(pct) ? pct : 0);
-        },
-      });
-
-      setStatus('Upload complete');
-      setResult({ strategy: uploaded.strategy, key: uploaded.key });
-      onUploadComplete();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Upload failed';
-      setStatus(message);
-    }
-  };
+  const {
+    bucketName,
+    setBucketName,
+    prefix,
+    setPrefix,
+    setFile,
+    status,
+    progress,
+    result,
+    upload,
+  } = useUploadController({
+    selectedPath,
+    procedures,
+    onUploadComplete,
+  });
 
   return (
-    <div className="upload-grid">
-      <div className="upload-fields">
+    <div className={styles.grid}>
+      <div className={styles.fields}>
         <label>
           Bucket
           <select value={bucketName} onChange={(event) => setBucketName(event.target.value)}>
@@ -102,7 +47,6 @@ export const UploadPanel = ({ selectedPath, onUploadComplete }: UploadPanelProps
         <label>
           Prefix
           <Input
-            className="path-input"
             value={prefix}
             onChange={(event) => setPrefix(event.target.value)}
             placeholder="folder/subfolder/"
@@ -119,21 +63,21 @@ export const UploadPanel = ({ selectedPath, onUploadComplete }: UploadPanelProps
           />
         </label>
 
-        <div className="row-actions">
+        <div className={styles.actions}>
           <Button onClick={upload}>Upload File</Button>
         </div>
       </div>
 
-      <div className="upload-status">
-        <p className="state">{status}</p>
-        <div className="progress-track">
-          <div className="progress-bar" style={{ width: `${progress}%` }} />
+      <div className={styles.status}>
+        <p className={styles.state}>{status}</p>
+        <div className={styles.track}>
+          <div className={styles.bar} style={{ width: `${progress}%` }} />
         </div>
-        <p className="state">Progress: {progress}%</p>
+        <p className={styles.state}>Progress: {progress}%</p>
         {result ? (
           <>
-            <p className="state">Strategy: {result.strategy}</p>
-            <p className="state">Key: {result.key}</p>
+            <p className={styles.state}>Strategy: {result.strategy}</p>
+            <p className={styles.state}>Key: {result.key}</p>
           </>
         ) : null}
       </div>

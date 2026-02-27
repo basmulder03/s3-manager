@@ -1,3 +1,5 @@
+import styles from '@web/components/KeyValue.module.css';
+
 interface KeyValueProps {
   label: string;
   value: string;
@@ -5,7 +7,7 @@ interface KeyValueProps {
 
 export const KeyValue = ({ label, value }: KeyValueProps) => {
   return (
-    <div className="key-value">
+    <div className={styles.item}>
       <span>{label}</span>
       <code>{value}</code>
     </div>

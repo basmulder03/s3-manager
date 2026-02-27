@@ -1,0 +1,15 @@
+.item {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.item span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.item code {
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: 'IBM Plex Mono', monospace;
+}
