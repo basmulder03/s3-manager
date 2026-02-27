@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { API_ORIGIN, trpc } from '@web/trpc/client';
 import { useUiStore } from '@web/state/ui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileModals, SignInGate, SnackbarHost } from '@web/components';
 import { useBrowserController } from '@web/hooks';
 import { FinderHeader, FinderSidebar } from '@web/layout';
@@ -32,10 +32,24 @@ export const App = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [pendingDiscardAction, setPendingDiscardAction] = useState<
+    { type: 'close' } | { type: 'open'; path: string; mode: 'view' | 'edit' } | null
+  >(null);
+  const lastOpenedPreviewKeyRef = useRef('');
 
   const selectedPath = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return normalizeVirtualPath(params.get('path') ?? '');
+  }, [location.search]);
+
+  const openedFilePath = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return normalizeVirtualPath(params.get('file') ?? '');
+  }, [location.search]);
+
+  const openedFileMode = useMemo<'view' | 'edit'>(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('mode') === 'edit' ? 'edit' : 'view';
   }, [location.search]);
 
   const setSelectedPath = useCallback(
@@ -179,6 +193,121 @@ export const App = () => {
     },
   });
 
+  const setOpenedFileInUrl = useCallback(
+    (path: string, mode: 'view' | 'edit') => {
+      const normalized = normalizeVirtualPath(path);
+      const params = new URLSearchParams(location.search);
+      if (normalized) {
+        params.set('file', normalized);
+        params.set('mode', mode);
+      } else {
+        params.delete('file');
+        params.delete('mode');
+      }
+
+      const nextSearch = params.toString();
+      const nextUrl = nextSearch.length > 0 ? `/?${nextSearch}` : '/';
+      const currentUrl = `${location.pathname}${location.search}`;
+      if (nextUrl !== currentUrl) {
+        navigate(nextUrl);
+      }
+    },
+    [location.pathname, location.search, navigate]
+  );
+
+  const clearOpenedFileInUrl = useCallback(() => {
+    const params = new URLSearchParams(location.search);
+    params.delete('file');
+    params.delete('mode');
+    const nextSearch = params.toString();
+    const nextUrl = nextSearch.length > 0 ? `/?${nextSearch}` : '/';
+    const currentUrl = `${location.pathname}${location.search}`;
+    if (nextUrl !== currentUrl) {
+      navigate(nextUrl);
+    }
+  }, [location.pathname, location.search, navigate]);
+
+  const hasUnsavedPreviewChanges =
+    browser.filePreviewModal?.mode === 'text' &&
+    browser.filePreviewModal.editable &&
+    browser.filePreviewModal.content !== browser.filePreviewModal.originalContent;
+
+  const executePreviewAction = useCallback(
+    async (action: { type: 'close' } | { type: 'open'; path: string; mode: 'view' | 'edit' }) => {
+      if (action.type === 'close') {
+        clearOpenedFileInUrl();
+        return;
+      }
+
+      setOpenedFileInUrl(action.path, action.mode);
+    },
+    [clearOpenedFileInUrl, setOpenedFileInUrl]
+  );
+
+  const runPreviewAction = useCallback(
+    async (action: { type: 'close' } | { type: 'open'; path: string; mode: 'view' | 'edit' }) => {
+      if (hasUnsavedPreviewChanges) {
+        setPendingDiscardAction(action);
+        return;
+      }
+
+      await executePreviewAction(action);
+    },
+    [executePreviewAction, hasUnsavedPreviewChanges]
+  );
+
+  useEffect(() => {
+    if (!canView) {
+      return;
+    }
+
+    if (!openedFilePath) {
+      lastOpenedPreviewKeyRef.current = '';
+      if (browser.filePreviewModal) {
+        browser.closeFilePreview();
+      }
+      return;
+    }
+
+    if (openedFileMode === 'edit' && !canWrite) {
+      setOpenedFileInUrl(openedFilePath, 'view');
+      return;
+    }
+
+    const desiredMode: 'view' | 'edit' = openedFileMode === 'edit' && canWrite ? 'edit' : 'view';
+    const previewKey = `${openedFilePath}|${desiredMode}`;
+
+    if (browser.filePreviewModal?.path === openedFilePath) {
+      if (browser.filePreviewModal.mode === 'text') {
+        browser.setFilePreviewEditable(desiredMode === 'edit');
+      }
+      lastOpenedPreviewKeyRef.current = previewKey;
+      return;
+    }
+
+    if (lastOpenedPreviewKeyRef.current === previewKey) {
+      return;
+    }
+
+    lastOpenedPreviewKeyRef.current = previewKey;
+    void browser.openFilePreview(openedFilePath, desiredMode).then((opened) => {
+      if (opened) {
+        return;
+      }
+
+      clearOpenedFileInUrl();
+      lastOpenedPreviewKeyRef.current = '';
+    });
+  }, [
+    browser,
+    canView,
+    canWrite,
+    clearOpenedFileInUrl,
+    openedFileMode,
+    openedFilePath,
+    setOpenedFileInUrl,
+  ]);
+
   if (showSignInOnly) {
     return <SignInGate />;
   }
@@ -238,6 +367,12 @@ export const App = () => {
                     onCalculateFolderSize={browser.calculateFolderSize}
                     onOpenProperties={browser.openProperties}
                     onDeletePathItems={browser.deletePathItems}
+                    onViewFile={async (path) => {
+                      await runPreviewAction({ type: 'open', path, mode: 'view' });
+                    }}
+                    onEditFile={async (path) => {
+                      await runPreviewAction({ type: 'open', path, mode: 'edit' });
+                    }}
                   />
                 ) : (
                   <p className={styles.state}>No file browsing permission available.</p>
@@ -255,14 +390,39 @@ export const App = () => {
         moveModal={browser.moveModal}
         deleteModal={browser.deleteModal}
         propertiesModal={browser.propertiesModal}
+        filePreviewModal={browser.filePreviewModal}
+        showDiscardChangesModal={pendingDiscardAction !== null}
         modalError={browser.modalError}
         activeModalRef={browser.activeModalRef}
-        onClose={browser.closeModals}
+        onClose={() => void runPreviewAction({ type: 'close' })}
         onRenameNextNameChange={browser.setRenameNextName}
         onMoveDestinationPathChange={browser.setMoveDestinationPath}
         onSubmitRename={browser.submitRename}
         onSubmitMove={browser.submitMove}
         onSubmitDelete={browser.submitDelete}
+        onFilePreviewTextChange={browser.setFilePreviewTextContent}
+        onSubmitFilePreviewSave={browser.saveFilePreviewText}
+        onSwitchFilePreviewToEdit={() => {
+          if (!openedFilePath) {
+            return;
+          }
+
+          setOpenedFileInUrl(openedFilePath, 'edit');
+          browser.setFilePreviewEditable(true);
+        }}
+        onDownloadFilePreview={async (path) => browser.downloadFile(path, true)}
+        onConfirmDiscardChanges={() => {
+          if (!pendingDiscardAction) {
+            return;
+          }
+
+          const action = pendingDiscardAction;
+          setPendingDiscardAction(null);
+          void executePreviewAction(action);
+        }}
+        onCancelDiscardChanges={() => {
+          setPendingDiscardAction(null);
+        }}
         formatDate={formatDate}
       />
 

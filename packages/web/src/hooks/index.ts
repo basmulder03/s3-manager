@@ -8,6 +8,7 @@ export { useUploadTargetState } from './useUploadTargetState';
 export { useSnackbarQueue } from './useSnackbarQueue';
 export type {
   DeleteModalState,
+  FilePreviewModalState,
   MoveModalState,
   PropertiesModalState,
   RenameModalState,

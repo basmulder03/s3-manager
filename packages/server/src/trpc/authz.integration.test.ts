@@ -70,4 +70,31 @@ describe('tRPC auth boundaries', () => {
       expect(getErrorCode(error)).toBe('FORBIDDEN');
     }
   });
+
+  it('returns FORBIDDEN when user lacks write permission for text edits', async () => {
+    const caller = appRouter.createCaller({
+      req: new Request('http://localhost:3000/trpc/s3.updateObjectTextContent'),
+      actor: 'viewer@example.com',
+      user: {
+        id: 'user-1',
+        email: 'viewer@example.com',
+        name: 'Viewer',
+        roles: ['S3-Viewer'],
+        permissions: ['view'],
+        provider: 'keycloak',
+        token: 'token',
+      },
+      permissions: ['view'],
+    } as Context);
+
+    try {
+      await caller.s3.updateObjectTextContent({
+        path: 'my-bucket/file.txt',
+        content: 'hello',
+      });
+      throw new Error('Expected s3.updateObjectTextContent to throw');
+    } catch (error) {
+      expect(getErrorCode(error)).toBe('FORBIDDEN');
+    }
+  });
 });

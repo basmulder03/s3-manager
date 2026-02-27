@@ -11,6 +11,23 @@ const renameMutate = vi.fn(async () => ({
 const deleteObjectMutate = vi.fn(async () => ({ success: true }));
 const deleteFolderMutate = vi.fn(async () => ({ deletedCount: 1 }));
 const deleteMultipleMutate = vi.fn(async () => ({ message: 'Deleted 2 item(s)', deletedCount: 2 }));
+const { getObjectTextContentQuery, updateObjectTextContentMutate } = vi.hoisted(() => ({
+  getObjectTextContentQuery: vi.fn(async () => ({
+    path: 'my-bucket/folder/report.txt',
+    content: 'hello world',
+    size: 11,
+    contentType: 'text/plain',
+    etag: 'etag-1',
+    lastModified: '2026-01-01T10:00:00.000Z',
+  })),
+  updateObjectTextContentMutate: vi.fn(async () => ({
+    path: 'my-bucket/folder/report.txt',
+    size: 12,
+    contentType: 'text/plain',
+    etag: 'etag-2',
+    lastModified: '2026-01-01T10:01:00.000Z',
+  })),
+}));
 const browseRefetch = vi.fn();
 let mockAuthRequired = false;
 let mockAuthenticated = false;
@@ -124,6 +141,12 @@ vi.mock('@web/trpc/client', () => ({
           metadata: {},
         })),
       },
+      getObjectTextContent: {
+        query: getObjectTextContentQuery,
+      },
+      updateObjectTextContent: {
+        mutate: updateObjectTextContentMutate,
+      },
     },
   },
 }));
@@ -138,6 +161,8 @@ describe('Browser parity interactions', () => {
     deleteObjectMutate.mockClear();
     deleteFolderMutate.mockClear();
     deleteMultipleMutate.mockClear();
+    getObjectTextContentQuery.mockClear();
+    updateObjectTextContentMutate.mockClear();
     browseRefetch.mockClear();
   });
 
@@ -196,5 +221,47 @@ describe('Browser parity interactions', () => {
     expect(screen.queryByRole('button', { name: 'Create Folder' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  });
+
+  it('shows View but hides Edit for view-only users on text files', async () => {
+    mockAuthRequired = true;
+    mockAuthenticated = true;
+    mockPermissions = ['view'];
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    const fileCell = screen.getAllByText('report.txt')[0]!;
+    fireEvent.contextMenu(fileCell);
+
+    expect(await screen.findByText('View')).toBeInTheDocument();
+    expect(screen.queryByText('Edit')).not.toBeInTheDocument();
+  });
+
+  it('opens and saves editable text files for writers', async () => {
+    mockAuthRequired = true;
+    mockAuthenticated = true;
+    mockPermissions = ['view', 'write'];
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    const fileCell = screen.getAllByText('report.txt')[0]!;
+    fireEvent.contextMenu(fileCell);
+    fireEvent.click(await screen.findByText('Edit'));
+
+    const textArea = await screen.findByRole('textbox', { name: 'Text file content' });
+    fireEvent.change(textArea, { target: { value: 'updated content' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(updateObjectTextContentMutate).toHaveBeenCalledTimes(1);
+    });
   });
 });

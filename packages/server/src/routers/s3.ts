@@ -25,6 +25,14 @@ export const mapS3ErrorToTrpc = (error: unknown): TRPCError => {
       });
     }
 
+    if (error.code === 'ETAG_MISMATCH') {
+      return new TRPCError({
+        code: 'CONFLICT',
+        message: error.message,
+        cause: error,
+      });
+    }
+
     return new TRPCError({
       code: 'INTERNAL_SERVER_ERROR',
       message: error.message,
@@ -55,13 +63,13 @@ export const s3Router = router({
     .input(z.object({}))
     .output(z.any())
     .query(async ({ ctx }) => {
-    try {
-      return {
-        buckets: await s3Service.listBuckets(actorFromContext(ctx)),
-      };
-    } catch (error) {
-      throw mapS3ErrorToTrpc(error);
-    }
+      try {
+        return {
+          buckets: await s3Service.listBuckets(actorFromContext(ctx)),
+        };
+      } catch (error) {
+        throw mapS3ErrorToTrpc(error);
+      }
     }),
 
   browse: viewProcedure
@@ -160,6 +168,56 @@ export const s3Router = router({
     .query(async ({ input, ctx }) => {
       try {
         return s3Service.getObjectProperties(input, actorFromContext(ctx));
+      } catch (error) {
+        throw mapS3ErrorToTrpc(error);
+      }
+    }),
+
+  getObjectTextContent: viewProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/s3/object/text',
+        tags: ['s3'],
+        summary: 'Get object text content',
+        protect: true,
+      },
+    })
+    .input(
+      z.object({
+        path: z.string().min(1),
+      })
+    )
+    .output(z.any())
+    .query(async ({ input, ctx }) => {
+      try {
+        return s3Service.getObjectTextContent(input, actorFromContext(ctx));
+      } catch (error) {
+        throw mapS3ErrorToTrpc(error);
+      }
+    }),
+
+  updateObjectTextContent: writeProcedure
+    .meta({
+      openapi: {
+        method: 'POST',
+        path: '/s3/object/text',
+        tags: ['s3'],
+        summary: 'Update object text content',
+        protect: true,
+      },
+    })
+    .input(
+      z.object({
+        path: z.string().min(1),
+        content: z.string(),
+        expectedEtag: z.string().optional(),
+      })
+    )
+    .output(z.any())
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return s3Service.updateObjectTextContent(input, actorFromContext(ctx));
       } catch (error) {
         throw mapS3ErrorToTrpc(error);
       }

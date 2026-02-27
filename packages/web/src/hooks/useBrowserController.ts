@@ -6,6 +6,7 @@ import { uploadObjectWithCookbook } from '@server/shared/upload/client';
 import { uploadObjectViaProxy } from '@web/upload/proxyUpload';
 import {
   type DeleteModalState,
+  type FilePreviewModalState,
   type MoveModalState,
   type PropertiesModalState,
   type RenameModalState,
@@ -14,9 +15,16 @@ import { useBrowserSelectionState } from '@web/hooks/useBrowserSelectionState';
 import { useBrowserShortcutsEffect } from '@web/hooks/useBrowserShortcutsEffect';
 import { useModalFocusTrapEffect } from '@web/hooks/useModalFocusTrapEffect';
 import { useSnackbarQueue } from '@web/hooks/useSnackbarQueue';
+import { resolveFileCapability } from '@web/utils/fileCapabilities';
 import { formatBytes } from '@web/utils/formatBytes';
 
-export type { DeleteModalState, MoveModalState, PropertiesModalState, RenameModalState };
+export type {
+  DeleteModalState,
+  FilePreviewModalState,
+  MoveModalState,
+  PropertiesModalState,
+  RenameModalState,
+};
 
 interface UseBrowserControllerOptions {
   selectedPath: string;
@@ -58,6 +66,7 @@ export const useBrowserController = ({
   const [moveModal, setMoveModal] = useState<MoveModalState | null>(null);
   const [deleteModal, setDeleteModal] = useState<DeleteModalState | null>(null);
   const [propertiesModal, setPropertiesModal] = useState<PropertiesModalState | null>(null);
+  const [filePreviewModal, setFilePreviewModal] = useState<FilePreviewModalState | null>(null);
   const [modalError, setModalError] = useState('');
   const [folderSizesByPath, setFolderSizesByPath] = useState<Record<string, number>>({});
   const [folderSizeLoadingPaths, setFolderSizeLoadingPaths] = useState<Set<string>>(new Set());
@@ -84,7 +93,11 @@ export const useBrowserController = ({
   });
 
   const isModalOpen =
-    renameModal !== null || moveModal !== null || deleteModal !== null || propertiesModal !== null;
+    renameModal !== null ||
+    moveModal !== null ||
+    deleteModal !== null ||
+    propertiesModal !== null ||
+    filePreviewModal !== null;
 
   useModalFocusTrapEffect(isModalOpen, activeModalRef);
 
@@ -93,7 +106,12 @@ export const useBrowserController = ({
     setMoveModal(null);
     setDeleteModal(null);
     setPropertiesModal(null);
+    setFilePreviewModal(null);
     setModalError('');
+  };
+
+  const closeFilePreview = () => {
+    setFilePreviewModal(null);
   };
 
   const splitObjectPath = (path: string): { bucketName: string; objectKey: string } => {
@@ -592,6 +610,175 @@ export const useBrowserController = ({
     }
   };
 
+  const openFilePreview = async (path: string, intent: 'view' | 'edit'): Promise<boolean> => {
+    if (intent === 'edit' && !canWrite) {
+      enqueueSnackbar({ message: 'You do not have write permission.', tone: 'error' });
+      return false;
+    }
+
+    closeContextMenu();
+    setFilePreviewModal({
+      mode: 'text',
+      path,
+      contentType: 'application/octet-stream',
+      etag: null,
+      loading: true,
+      error: '',
+      content: '',
+      originalContent: '',
+      editable: false,
+      canToggleEdit: false,
+    });
+
+    try {
+      const { bucketName, objectKey } = splitObjectPath(path);
+      const metadata = await trpcProxyClient.s3.getObjectMetadata.query({ bucketName, objectKey });
+      const capability = resolveFileCapability(path, metadata.contentType);
+
+      if (capability.previewKind === 'text') {
+        if (intent === 'edit' && !capability.canEditText) {
+          setFilePreviewModal(null);
+          enqueueSnackbar({
+            message: 'This text file type can be viewed but not edited.',
+            tone: 'info',
+          });
+          return false;
+        }
+
+        const textContent = await trpcProxyClient.s3.getObjectTextContent.query({ path });
+        setFilePreviewModal({
+          mode: 'text',
+          path,
+          contentType: textContent.contentType,
+          etag: textContent.etag,
+          loading: false,
+          error: '',
+          content: textContent.content,
+          originalContent: textContent.content,
+          editable: intent === 'edit' && canWrite && capability.canEditText,
+          canToggleEdit: canWrite && capability.canEditText,
+        });
+        return true;
+      }
+
+      if (
+        capability.previewKind === 'image' ||
+        capability.previewKind === 'audio' ||
+        capability.previewKind === 'video'
+      ) {
+        setFilePreviewModal({
+          mode: capability.previewKind,
+          path,
+          contentType: metadata.contentType,
+          etag: metadata.etag,
+          loading: false,
+          error: '',
+          mediaUrl: metadata.downloadUrl,
+        });
+        return true;
+      }
+
+      setFilePreviewModal(null);
+      window.open(metadata.downloadUrl, '_blank', 'noopener,noreferrer');
+      enqueueSnackbar({
+        message: 'Preview is not available for this file type. Download link opened.',
+        tone: 'info',
+      });
+      return false;
+    } catch (error) {
+      setFilePreviewModal((previous) => {
+        if (!previous || previous.path !== path) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          loading: false,
+          error: error instanceof Error ? error.message : 'Failed to open file preview.',
+        };
+      });
+      return false;
+    }
+  };
+
+  const saveFilePreviewText = async () => {
+    if (!canWrite) {
+      enqueueSnackbar({ message: 'You do not have write permission.', tone: 'error' });
+      return;
+    }
+
+    if (!filePreviewModal || filePreviewModal.mode !== 'text' || !filePreviewModal.editable) {
+      return;
+    }
+
+    setFilePreviewModal((previous) => {
+      if (!previous || previous.mode !== 'text') {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        loading: true,
+        error: '',
+      };
+    });
+
+    try {
+      const result = await trpcProxyClient.s3.updateObjectTextContent.mutate({
+        path: filePreviewModal.path,
+        content: filePreviewModal.content,
+        expectedEtag: filePreviewModal.etag ?? undefined,
+      });
+
+      setFilePreviewModal((previous) => {
+        if (!previous || previous.mode !== 'text') {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          loading: false,
+          error: '',
+          etag: result.etag,
+          contentType: result.contentType,
+          originalContent: previous.content,
+        };
+      });
+      enqueueSnackbar({ message: 'File saved successfully.', tone: 'success' });
+      refreshBrowse();
+    } catch (error) {
+      setFilePreviewModal((previous) => {
+        if (!previous || previous.mode !== 'text') {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          loading: false,
+          error: error instanceof Error ? error.message : 'Failed to save file.',
+        };
+      });
+    }
+  };
+
+  const setFilePreviewEditable = (editable: boolean) => {
+    setFilePreviewModal((previous) => {
+      if (!previous || previous.mode !== 'text') {
+        return previous;
+      }
+
+      if (editable && (!canWrite || !previous.canToggleEdit)) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        editable,
+        error: '',
+      };
+    });
+  };
+
   const submitRename = async () => {
     if (!canWrite) {
       closeModals();
@@ -753,9 +940,11 @@ export const useBrowserController = ({
     moveModal,
     deleteModal,
     propertiesModal,
+    filePreviewModal,
     modalError,
     activeModalRef,
     closeModals,
+    closeFilePreview,
     setRenameNextName: (value: string) => {
       setRenameModal((previous) => (previous ? { ...previous, nextName: value } : previous));
       setModalError('');
@@ -781,6 +970,22 @@ export const useBrowserController = ({
     downloadFile,
     calculateFolderSize,
     openProperties,
+    openFilePreview,
+    saveFilePreviewText,
+    setFilePreviewEditable,
+    setFilePreviewTextContent: (value: string) => {
+      setFilePreviewModal((previous) => {
+        if (!previous || previous.mode !== 'text') {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          content: value,
+          error: '',
+        };
+      });
+    },
     deletePathItems,
     submitRename,
     submitMove,

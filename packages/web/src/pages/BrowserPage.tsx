@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Button, Input } from '@web/components/ui';
 import type { BrowseItem } from '@server/services/s3/types';
+import { resolveFileCapability } from '@web/utils/fileCapabilities';
 import { formatBytes } from '@web/utils/formatBytes';
 import styles from '@web/App.module.css';
 
@@ -53,6 +54,8 @@ interface BrowserPageProps {
   onCalculateFolderSize: (path: string) => Promise<void>;
   onOpenProperties: (path: string) => Promise<void>;
   onDeletePathItems: (items: BrowseItem[]) => void;
+  onViewFile: (path: string) => Promise<void>;
+  onEditFile: (path: string) => Promise<void>;
 }
 
 type SortKey = 'name' | 'size' | 'modified' | 'type';
@@ -108,11 +111,14 @@ export const BrowserPage = ({
   onCalculateFolderSize,
   onOpenProperties,
   onDeletePathItems,
+  onViewFile,
+  onEditFile,
 }: BrowserPageProps) => {
   const [isBreadcrumbEditing, setIsBreadcrumbEditing] = useState(false);
   const [breadcrumbDraft, setBreadcrumbDraft] = useState(selectedPath ? `/${selectedPath}` : '/');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filterQuery, setFilterQuery] = useState('');
+  const [pendingFolderUploadFiles, setPendingFolderUploadFiles] = useState<File[]>([]);
   const [sortRules, setSortRules] = useState<SortRule[]>([
     { key: 'type', direction: 'asc' },
     { key: 'name', direction: 'asc' },
@@ -376,6 +382,14 @@ export const BrowserPage = ({
     return formatBytes(item.size);
   };
 
+  const contextItemCapability = useMemo(() => {
+    if (!contextMenu || contextMenu.item.type !== 'file') {
+      return null;
+    }
+
+    return resolveFileCapability(contextMenu.item.path);
+  }, [contextMenu]);
+
   const openFilter = () => {
     if (isFilterOpen) {
       filterInputRef.current?.focus();
@@ -608,10 +622,45 @@ export const BrowserPage = ({
                 return;
               }
 
-              void onUploadFolder(files);
+              setPendingFolderUploadFiles(Array.from(files));
               event.target.value = '';
             }}
           />
+          {pendingFolderUploadFiles.length > 0 ? (
+            <div
+              className={styles.modalOverlay}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="folder-upload-modal-title"
+              aria-describedby="folder-upload-modal-description"
+              aria-label="Confirm folder upload"
+            >
+              <div className={styles.modalCard}>
+                <h3 id="folder-upload-modal-title">Upload selected folder?</h3>
+                <p id="folder-upload-modal-description">
+                  Upload {pendingFolderUploadFiles.length} file(s) from the selected folder.
+                </p>
+                <div className={styles.modalActions}>
+                  <Button
+                    variant="muted"
+                    onClick={() => {
+                      setPendingFolderUploadFiles([]);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      void onUploadFolder(pendingFolderUploadFiles);
+                      setPendingFolderUploadFiles([]);
+                    }}
+                  >
+                    Upload Folder
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
           {renderedItems.length === 0 ? (
             <div className={styles.emptyItemsState}>
               <p>No items in this location.</p>
@@ -683,6 +732,11 @@ export const BrowserPage = ({
                           return;
                         }
 
+                        if (item.type === 'file') {
+                          void onViewFile(item.path);
+                          return;
+                        }
+
                         onRowDoubleClick(item);
                       }}
                       onContextMenu={(event) => {
@@ -741,6 +795,28 @@ export const BrowserPage = ({
                 </>
               ) : (
                 <>
+                  {contextItemCapability?.canView ? (
+                    <button
+                      className={styles.contextMenuItem}
+                      onClick={() => {
+                        onCloseContextMenu();
+                        void onViewFile(contextMenu.item.path);
+                      }}
+                    >
+                      <span>View</span>
+                    </button>
+                  ) : null}
+                  {canWrite && contextItemCapability?.canEditText ? (
+                    <button
+                      className={styles.contextMenuItem}
+                      onClick={() => {
+                        onCloseContextMenu();
+                        void onEditFile(contextMenu.item.path);
+                      }}
+                    >
+                      <span>Edit</span>
+                    </button>
+                  ) : null}
                   <button
                     className={styles.contextMenuItem}
                     onClick={() => {

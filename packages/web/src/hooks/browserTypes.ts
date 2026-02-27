@@ -30,3 +30,26 @@ export type PropertiesModalState = {
     metadata: Record<string, string>;
   };
 };
+
+type FilePreviewBase = {
+  path: string;
+  contentType: string;
+  etag: string | null;
+  loading: boolean;
+  error: string;
+};
+
+type TextFilePreview = FilePreviewBase & {
+  mode: 'text';
+  content: string;
+  originalContent: string;
+  editable: boolean;
+  canToggleEdit: boolean;
+};
+
+type MediaFilePreview = FilePreviewBase & {
+  mode: 'image' | 'audio' | 'video';
+  mediaUrl: string;
+};
+
+export type FilePreviewModalState = TextFilePreview | MediaFilePreview;

@@ -655,6 +655,76 @@
   padding-right: 0.2rem;
 }
 
+.filePreviewModalCard {
+  width: min(960px, 100%);
+}
+
+.filePreviewTextLayout {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  max-height: 62vh;
+}
+
+.filePreviewLineNumbers {
+  margin: 0;
+  padding: 0.7rem 0.6rem;
+  background: color-mix(in srgb, var(--surface-soft) 88%, var(--surface));
+  color: var(--muted);
+  border-right: 1px solid var(--line);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  text-align: right;
+  min-width: 3.2rem;
+  overflow: hidden;
+  user-select: none;
+}
+
+.filePreviewTextarea {
+  width: 100%;
+  min-height: 48vh;
+  resize: vertical;
+  border: 0;
+  background: var(--surface-soft);
+  color: var(--text);
+  padding: 0.7rem 0.75rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.filePreviewTextContent {
+  margin: 0;
+  padding: 0.7rem 0.75rem;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  white-space: pre;
+  overflow: auto;
+}
+
+.filePreviewImage {
+  max-width: 100%;
+  max-height: 62vh;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.filePreviewMedia {
+  width: 100%;
+  max-height: 62vh;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #000;
+}
+
 .propertiesMetadata {
   display: grid;
   gap: 0.35rem;

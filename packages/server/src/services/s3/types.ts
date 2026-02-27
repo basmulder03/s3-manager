@@ -81,6 +81,33 @@ export interface ObjectPropertiesResult {
   serverSideEncryption?: string;
 }
 
+export interface ObjectTextContentInput {
+  path: string;
+}
+
+export interface ObjectTextContentResult {
+  path: string;
+  content: string;
+  size: number;
+  contentType: string;
+  etag: string | null;
+  lastModified: string | null;
+}
+
+export interface UpdateObjectTextContentInput {
+  path: string;
+  content: string;
+  expectedEtag?: string;
+}
+
+export interface UpdateObjectTextContentResult {
+  path: string;
+  size: number;
+  contentType: string;
+  etag: string | null;
+  lastModified: string | null;
+}
+
 export interface PresignedUploadInput {
   bucketName: string;
   objectKey: string;

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import type { BrowseItem } from '@server/services/s3/types';
 import { BrowserPage } from '@web/pages/BrowserPage';
 
@@ -46,6 +46,8 @@ const createProps = () => {
       onCalculateFolderSize: vi.fn(async () => {}),
       onOpenProperties: vi.fn(async () => {}),
       onDeletePathItems: vi.fn(),
+      onViewFile: vi.fn(async () => {}),
+      onEditFile: vi.fn(async () => {}),
     },
   };
 };
@@ -200,6 +202,9 @@ describe('BrowserPage sorting and filtering', () => {
       target: { files: [folderFile] },
     });
 
+    const dialog = screen.getByRole('dialog', { name: 'Upload selected folder?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Upload Folder' }));
+
     expect(props.onUploadFiles).toHaveBeenCalledTimes(1);
     expect(props.onUploadFolder).toHaveBeenCalledTimes(1);
   });
@@ -210,5 +215,30 @@ describe('BrowserPage sorting and filtering', () => {
 
     expect(screen.getByRole('button', { name: 'Upload Files' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Upload Folder' })).toBeDisabled();
+  });
+
+  it('opens files in view mode on double click', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'notes.txt',
+        type: 'file',
+        path: 'my-bucket/notes.txt',
+        size: 10,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    fireEvent.doubleClick(screen.getByText('notes.txt'));
+
+    expect(props.onViewFile).toHaveBeenCalledWith('my-bucket/notes.txt');
   });
 });
