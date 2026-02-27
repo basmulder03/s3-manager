@@ -308,11 +308,12 @@ export const BrowserPage = ({
   };
 
   const getSortIndicator = (key: SortKey): ReactNode => {
-    const index = sortRules.findIndex((rule) => rule.key === key);
-    if (index === -1) {
+    const visibleSortRules = sortRules.filter((rule) => rule.key !== 'type');
+    const visibleIndex = visibleSortRules.findIndex((rule) => rule.key === key);
+    if (visibleIndex === -1) {
       return null;
     }
-    const direction = sortRules[index]?.direction;
+    const direction = visibleSortRules[visibleIndex]?.direction;
     return (
       <>
         {direction === 'asc' ? (
@@ -320,7 +321,7 @@ export const BrowserPage = ({
         ) : (
           <ChevronDown size={13} className={styles.sortIndicatorIcon} />
         )}
-        {sortRules.length > 1 ? <span>{index + 1}</span> : null}
+        {visibleSortRules.length > 1 ? <span>{visibleIndex + 1}</span> : null}
       </>
     );
   };
@@ -339,19 +340,20 @@ export const BrowserPage = ({
   };
 
   const getSortTooltip = (key: SortKey): string => {
-    const index = sortRules.findIndex((rule) => rule.key === key);
-    if (index === -1) {
+    const visibleSortRules = sortRules.filter((rule) => rule.key !== 'type');
+    const visibleIndex = visibleSortRules.findIndex((rule) => rule.key === key);
+    if (visibleIndex === -1) {
       return 'Click to sort. Shift+click to add this column as an extra compare level.';
     }
 
-    const sequence = sortRules
+    const sequence = visibleSortRules
       .map((rule, ruleIndex) => {
         const directionLabel = rule.direction === 'asc' ? 'ascending' : 'descending';
         return `${ruleIndex + 1}. ${getSortLabel(rule.key)} (${directionLabel})`;
       })
       .join(' -> ');
 
-    return `Number ${index + 1} means compare priority. Current order: ${sequence}.`;
+    return `Number ${visibleIndex + 1} means compare priority. Current order: ${sequence}.`;
   };
 
   const selectedRecordsCount = selectedItems.size;
