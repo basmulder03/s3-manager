@@ -116,7 +116,6 @@ export const App = () => {
 
   return (
     <main className={styles.appShell}>
-      <div className={styles.heroGlow} />
       <FinderHeader
         theme={theme}
         setTheme={setTheme}
