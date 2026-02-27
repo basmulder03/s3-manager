@@ -140,6 +140,109 @@ code,
   color: var(--brand);
 }
 
+.finder-window {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.finder-sidebar {
+  background: linear-gradient(180deg, var(--surface-alt) 0%, var(--surface-soft) 100%);
+  border-right: 1px solid var(--line);
+  padding: 0.78rem;
+  display: grid;
+  gap: 0.95rem;
+  align-content: start;
+}
+
+.finder-sidebar section {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.finder-sidebar-title {
+  margin: 0;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.finder-nav {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.finder-nav a {
+  text-decoration: none;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.88rem;
+}
+
+.finder-nav a.active {
+  border-color: color-mix(in srgb, var(--brand) 38%, var(--line));
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.finder-meta {
+  display: grid;
+  gap: 0.14rem;
+}
+
+.finder-meta span {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.finder-meta strong {
+  font-size: 0.85rem;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.permission-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.permission-chip {
+  border: 1px solid color-mix(in srgb, var(--brand) 40%, var(--line));
+  background: var(--brand-soft);
+  color: var(--brand);
+  border-radius: 999px;
+  padding: 0.12rem 0.52rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
+.permission-chip-empty {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.finder-content {
+  background: var(--surface);
+  padding: 0.8rem;
+}
+
 .grid.two {
   display: grid;
   gap: 1rem;
@@ -361,7 +464,7 @@ label {
 
 .items li {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--surface);
 }
 
@@ -376,6 +479,10 @@ label {
   gap: 0.55rem;
   align-items: center;
   padding: 0.3rem;
+}
+
+.item-row:hover {
+  background: color-mix(in srgb, var(--surface) 78%, var(--surface-alt));
 }
 
 .row-checkbox {
@@ -567,6 +674,15 @@ label {
 }
 
 @media (max-width: 900px) {
+  .finder-window {
+    grid-template-columns: 1fr;
+  }
+
+  .finder-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
   .grid.two {
     grid-template-columns: 1fr;
   }

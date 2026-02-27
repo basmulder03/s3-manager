@@ -708,302 +708,353 @@ export const App = () => {
         </nav>
       </header>
 
-      <Routes>
-        <Route
-          path="/overview"
-          element={
-            <section className="grid two">
-              <Panel
-                title="Server Status"
-                subtitle="From `trpc.health.info` and `trpc.auth.status`"
-              >
-                <KeyValue label="App" value={healthInfo.data?.app ?? 'Loading...'} />
-                <KeyValue label="Version" value={healthInfo.data?.version ?? '-'} />
-                <KeyValue label="Environment" value={healthInfo.data?.env ?? '-'} />
-                <KeyValue
-                  label="Auth Required"
-                  value={String(authStatus.data?.authRequired ?? false)}
-                />
-                <KeyValue label="Provider" value={authStatus.data?.provider ?? '-'} />
-              </Panel>
+      <div className="finder-window">
+        <aside className="finder-sidebar" aria-label="Workspace sidebar">
+          <section>
+            <p className="finder-sidebar-title">Favorites</p>
+            <nav className="finder-nav">
+              <NavLink to="/overview">Overview</NavLink>
+              {canView ? <NavLink to="/browser">All Files</NavLink> : null}
+              {canWrite ? <NavLink to="/upload">Uploads</NavLink> : null}
+            </nav>
+          </section>
 
-              <Panel title="Current User" subtitle="From `trpc.auth.me` (protected)">
-                {authMe.isError ? (
-                  <p className="state warn">Not authenticated yet. Use Login to start OIDC flow.</p>
-                ) : (
-                  <>
-                    <KeyValue label="Name" value={authMe.data?.name ?? '-'} />
-                    <KeyValue label="Email" value={authMe.data?.email ?? '-'} />
-                    <KeyValue label="Roles" value={authMe.data?.roles?.join(', ') ?? '-'} />
+          <section>
+            <p className="finder-sidebar-title">Session</p>
+            <div className="finder-meta">
+              <span>Provider</span>
+              <strong>{authStatus.data?.provider ?? '-'}</strong>
+            </div>
+            <div className="finder-meta">
+              <span>User</span>
+              <strong>{authMe.data?.email ?? 'Not signed in'}</strong>
+            </div>
+            <div className="finder-meta">
+              <span>Path</span>
+              <strong>{selectedPath || '/'}</strong>
+            </div>
+          </section>
+
+          <section>
+            <p className="finder-sidebar-title">Permissions</p>
+            <div className="permission-chips">
+              {permissions.length > 0 ? (
+                permissions.map((permission) => (
+                  <span key={permission} className="permission-chip">
+                    {permission}
+                  </span>
+                ))
+              ) : (
+                <span className="permission-chip permission-chip-empty">none</span>
+              )}
+            </div>
+          </section>
+        </aside>
+
+        <section className="finder-content">
+          <Routes>
+            <Route
+              path="/overview"
+              element={
+                <section className="grid two">
+                  <Panel
+                    title="Server Status"
+                    subtitle="From `trpc.health.info` and `trpc.auth.status`"
+                  >
+                    <KeyValue label="App" value={healthInfo.data?.app ?? 'Loading...'} />
+                    <KeyValue label="Version" value={healthInfo.data?.version ?? '-'} />
+                    <KeyValue label="Environment" value={healthInfo.data?.env ?? '-'} />
                     <KeyValue
-                      label="Permissions"
-                      value={authMe.data?.permissions?.join(', ') ?? '-'}
+                      label="Auth Required"
+                      value={String(authStatus.data?.authRequired ?? false)}
                     />
-                  </>
-                )}
-              </Panel>
-            </section>
-          }
-        />
+                    <KeyValue label="Provider" value={authStatus.data?.provider ?? '-'} />
+                  </Panel>
 
-        <Route
-          path="/browser"
-          element={
-            canView ? (
-              <Panel title="S3 Browser" subtitle="From `trpc.s3.browse`">
-                <div className="browser-toolbar">
-                  <div className="browser-controls">
-                    <Input
-                      className="path-input"
-                      value={selectedPath}
-                      onChange={(event) => setSelectedPath(event.target.value)}
-                      placeholder="Path example: my-bucket/folder"
-                    />
-                    <Button variant="muted" onClick={() => browse.refetch()}>
-                      Refresh
-                    </Button>
-                    <Button variant="muted" onClick={() => setSelectedPath('')}>
-                      Root
-                    </Button>
-                  </div>
-                  {canWrite ? (
-                    <div className="browser-controls">
-                      <Input
-                        className="folder-input"
-                        value={newFolderName}
-                        onChange={(event) => setNewFolderName(event.target.value)}
-                        placeholder="New folder name"
-                      />
-                      <Button onClick={() => void createFolderInCurrentPath()}>
-                        Create Folder
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
+                  <Panel title="Current User" subtitle="From `trpc.auth.me` (protected)">
+                    {authMe.isError ? (
+                      <p className="state warn">
+                        Not authenticated yet. Use Login to start OIDC flow.
+                      </p>
+                    ) : (
+                      <>
+                        <KeyValue label="Name" value={authMe.data?.name ?? '-'} />
+                        <KeyValue label="Email" value={authMe.data?.email ?? '-'} />
+                        <KeyValue label="Roles" value={authMe.data?.roles?.join(', ') ?? '-'} />
+                        <KeyValue
+                          label="Permissions"
+                          value={authMe.data?.permissions?.join(', ') ?? '-'}
+                        />
+                      </>
+                    )}
+                  </Panel>
+                </section>
+              }
+            />
 
-                <p className="hotkeys-hint">
-                  Shortcuts: Ctrl/Cmd+A select all, Delete remove, Ctrl/Cmd+D download, F2 rename,
-                  Ctrl/Cmd+Shift+M move.
-                </p>
-
-                {selectedItems.size > 0 ? (
-                  <div className="selection-bar">
-                    <span>{selectedItems.size} selected</span>
-                    <Button
-                      variant="muted"
-                      onClick={() => void bulkDownload()}
-                      disabled={selectedFiles.length === 0}
-                      title={
-                        selectedFiles.length === 0
-                          ? 'Select at least one file'
-                          : 'Download selected files'
-                      }
-                    >
-                      Download Selected
-                    </Button>
-                    {canDelete ? (
-                      <Button variant="danger" onClick={() => void bulkDelete()}>
-                        Delete Selected
-                      </Button>
-                    ) : null}
-                    <Button variant="muted" onClick={clearSelection}>
-                      Clear
-                    </Button>
-                  </div>
-                ) : null}
-
-                {browse.isLoading ? <p className="state">Loading objects...</p> : null}
-                {browse.isError ? (
-                  <p className="state error">Failed to load S3 path data.</p>
-                ) : null}
-                {browserMessage ? <p className="state">{browserMessage}</p> : null}
-
-                {browse.data ? (
-                  <>
-                    <div className="breadcrumbs">
-                      {browse.data.breadcrumbs.map((crumb) => (
-                        <Button
-                          key={crumb.path || 'home'}
-                          variant="muted"
-                          onClick={() => setSelectedPath(crumb.path)}
-                        >
-                          {crumb.name}
+            <Route
+              path="/browser"
+              element={
+                canView ? (
+                  <Panel title="S3 Browser" subtitle="From `trpc.s3.browse`">
+                    <div className="browser-toolbar">
+                      <div className="browser-controls">
+                        <Input
+                          className="path-input"
+                          value={selectedPath}
+                          onChange={(event) => setSelectedPath(event.target.value)}
+                          placeholder="Path example: my-bucket/folder"
+                        />
+                        <Button variant="muted" onClick={() => browse.refetch()}>
+                          Refresh
                         </Button>
-                      ))}
+                        <Button variant="muted" onClick={() => setSelectedPath('')}>
+                          Root
+                        </Button>
+                      </div>
+                      {canWrite ? (
+                        <div className="browser-controls">
+                          <Input
+                            className="folder-input"
+                            value={newFolderName}
+                            onChange={(event) => setNewFolderName(event.target.value)}
+                            placeholder="New folder name"
+                          />
+                          <Button onClick={() => void createFolderInCurrentPath()}>
+                            Create Folder
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
 
-                    <div className="items-head" aria-hidden>
-                      <span>Type</span>
-                      <span>Name</span>
-                      <span>Path</span>
-                      <span>Size</span>
-                      <span>Modified</span>
-                      <span>Actions</span>
-                    </div>
+                    <p className="hotkeys-hint">
+                      Shortcuts: Ctrl/Cmd+A select all, Delete remove, Ctrl/Cmd+D download, F2
+                      rename, Ctrl/Cmd+Shift+M move.
+                    </p>
 
-                    <ul className="items">
-                      {browse.data.items.map((item, index) => (
-                        <li
-                          key={`${item.type}:${item.path}`}
-                          className={selectedItems.has(item.path) ? 'is-selected' : ''}
+                    {selectedItems.size > 0 ? (
+                      <div className="selection-bar">
+                        <span>{selectedItems.size} selected</span>
+                        <Button
+                          variant="muted"
+                          onClick={() => void bulkDownload()}
+                          disabled={selectedFiles.length === 0}
+                          title={
+                            selectedFiles.length === 0
+                              ? 'Select at least one file'
+                              : 'Download selected files'
+                          }
                         >
-                          <div
-                            className="item-row"
-                            onContextMenu={(event) => openContextMenu(item, event)}
-                          >
-                            <label className="row-checkbox">
-                              <input
-                                type="checkbox"
-                                checked={selectedItems.has(item.path)}
-                                onChange={(event) => {
-                                  toggleSelection(item.path, event.target.checked);
-                                  setLastSelectedIndex(index);
-                                }}
-                              />
-                            </label>
+                          Download Selected
+                        </Button>
+                        {canDelete ? (
+                          <Button variant="danger" onClick={() => void bulkDelete()}>
+                            Delete Selected
+                          </Button>
+                        ) : null}
+                        <Button variant="muted" onClick={clearSelection}>
+                          Clear
+                        </Button>
+                      </div>
+                    ) : null}
+
+                    {browse.isLoading ? <p className="state">Loading objects...</p> : null}
+                    {browse.isError ? (
+                      <p className="state error">Failed to load S3 path data.</p>
+                    ) : null}
+                    {browserMessage ? <p className="state">{browserMessage}</p> : null}
+
+                    {browse.data ? (
+                      <>
+                        <div className="breadcrumbs">
+                          {browse.data.breadcrumbs.map((crumb) => (
                             <Button
-                              className="item-main"
-                              onClick={(event) => handleRowClick(item, index, event)}
+                              key={crumb.path || 'home'}
+                              variant="muted"
+                              onClick={() => setSelectedPath(crumb.path)}
                             >
-                              <span className="tag">{item.type}</span>
-                              <strong>{item.name}</strong>
-                              <span className="item-path">{item.path}</span>
-                              <span>{item.size === null ? '-' : `${item.size} bytes`}</span>
-                              <span>{formatDate(item.lastModified)}</span>
+                              {crumb.name}
                             </Button>
-                            <div className="item-actions">
-                              {canWrite ? (
+                          ))}
+                        </div>
+
+                        <div className="items-head" aria-hidden>
+                          <span>Type</span>
+                          <span>Name</span>
+                          <span>Path</span>
+                          <span>Size</span>
+                          <span>Modified</span>
+                          <span>Actions</span>
+                        </div>
+
+                        <ul className="items">
+                          {browse.data.items.map((item, index) => (
+                            <li
+                              key={`${item.type}:${item.path}`}
+                              className={selectedItems.has(item.path) ? 'is-selected' : ''}
+                            >
+                              <div
+                                className="item-row"
+                                onContextMenu={(event) => openContextMenu(item, event)}
+                              >
+                                <label className="row-checkbox">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedItems.has(item.path)}
+                                    onChange={(event) => {
+                                      toggleSelection(item.path, event.target.checked);
+                                      setLastSelectedIndex(index);
+                                    }}
+                                  />
+                                </label>
                                 <Button
-                                  variant="muted"
-                                  onClick={() => void renamePathItem(item.path, item.name)}
+                                  className="item-main"
+                                  onClick={(event) => handleRowClick(item, index, event)}
                                 >
-                                  Rename
+                                  <span className="tag">{item.type}</span>
+                                  <strong>{item.name}</strong>
+                                  <span className="item-path">{item.path}</span>
+                                  <span>{item.size === null ? '-' : `${item.size} bytes`}</span>
+                                  <span>{formatDate(item.lastModified)}</span>
                                 </Button>
-                              ) : null}
-                              {canWrite ? (
+                                <div className="item-actions">
+                                  {canWrite ? (
+                                    <Button
+                                      variant="muted"
+                                      onClick={() => void renamePathItem(item.path, item.name)}
+                                    >
+                                      Rename
+                                    </Button>
+                                  ) : null}
+                                  {canWrite ? (
+                                    <Button
+                                      variant="muted"
+                                      onClick={() => void movePathItem(item.path)}
+                                    >
+                                      Move
+                                    </Button>
+                                  ) : null}
+                                  {item.type === 'file' ? (
+                                    <Button
+                                      variant="muted"
+                                      onClick={() => void downloadFile(item.path)}
+                                    >
+                                      Download
+                                    </Button>
+                                  ) : null}
+                                  {item.type === 'file' ? (
+                                    <Button
+                                      variant="muted"
+                                      onClick={() => void openProperties(item.path)}
+                                    >
+                                      Properties
+                                    </Button>
+                                  ) : null}
+                                  {canDelete ? (
+                                    <Button
+                                      variant="danger"
+                                      onClick={() => deletePathItems([item])}
+                                    >
+                                      Delete
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+
+                        {contextMenu ? (
+                          <div
+                            className="context-menu"
+                            style={{ left: contextMenu.x, top: contextMenu.y }}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <p className="context-group-title">Quick Actions</p>
+                            {contextMenu.item.type === 'directory' ? (
+                              <Button
+                                variant="muted"
+                                onClick={() => setSelectedPath(contextMenu.item.path)}
+                              >
+                                Open
+                              </Button>
+                            ) : (
+                              <>
                                 <Button
                                   variant="muted"
-                                  onClick={() => void movePathItem(item.path)}
-                                >
-                                  Move
-                                </Button>
-                              ) : null}
-                              {item.type === 'file' ? (
-                                <Button
-                                  variant="muted"
-                                  onClick={() => void downloadFile(item.path)}
+                                  onClick={() => void downloadFile(contextMenu.item.path)}
                                 >
                                   Download
                                 </Button>
-                              ) : null}
-                              {item.type === 'file' ? (
                                 <Button
                                   variant="muted"
-                                  onClick={() => void openProperties(item.path)}
+                                  onClick={() => void openProperties(contextMenu.item.path)}
                                 >
                                   Properties
                                 </Button>
-                              ) : null}
-                              {canDelete ? (
-                                <Button variant="danger" onClick={() => deletePathItems([item])}>
-                                  Delete
-                                </Button>
-                              ) : null}
-                            </div>
+                              </>
+                            )}
+
+                            {canWrite ? <p className="context-group-title">Edit</p> : null}
+                            {canWrite ? (
+                              <Button
+                                variant="muted"
+                                onClick={() =>
+                                  void renamePathItem(contextMenu.item.path, contextMenu.item.name)
+                                }
+                              >
+                                Rename
+                              </Button>
+                            ) : null}
+                            {canWrite ? (
+                              <Button
+                                variant="muted"
+                                onClick={() => void movePathItem(contextMenu.item.path)}
+                              >
+                                Move
+                              </Button>
+                            ) : null}
+
+                            {canDelete ? <p className="context-group-title">Danger</p> : null}
+                            {canDelete ? (
+                              <Button
+                                variant="danger"
+                                onClick={() => deletePathItems([contextMenu.item])}
+                              >
+                                Delete
+                              </Button>
+                            ) : null}
                           </div>
-                        </li>
-                      ))}
-                    </ul>
-
-                    {contextMenu ? (
-                      <div
-                        className="context-menu"
-                        style={{ left: contextMenu.x, top: contextMenu.y }}
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <p className="context-group-title">Quick Actions</p>
-                        {contextMenu.item.type === 'directory' ? (
-                          <Button
-                            variant="muted"
-                            onClick={() => setSelectedPath(contextMenu.item.path)}
-                          >
-                            Open
-                          </Button>
-                        ) : (
-                          <>
-                            <Button
-                              variant="muted"
-                              onClick={() => void downloadFile(contextMenu.item.path)}
-                            >
-                              Download
-                            </Button>
-                            <Button
-                              variant="muted"
-                              onClick={() => void openProperties(contextMenu.item.path)}
-                            >
-                              Properties
-                            </Button>
-                          </>
-                        )}
-
-                        {canWrite ? <p className="context-group-title">Edit</p> : null}
-                        {canWrite ? (
-                          <Button
-                            variant="muted"
-                            onClick={() =>
-                              void renamePathItem(contextMenu.item.path, contextMenu.item.name)
-                            }
-                          >
-                            Rename
-                          </Button>
                         ) : null}
-                        {canWrite ? (
-                          <Button
-                            variant="muted"
-                            onClick={() => void movePathItem(contextMenu.item.path)}
-                          >
-                            Move
-                          </Button>
-                        ) : null}
-
-                        {canDelete ? <p className="context-group-title">Danger</p> : null}
-                        {canDelete ? (
-                          <Button
-                            variant="danger"
-                            onClick={() => deletePathItems([contextMenu.item])}
-                          >
-                            Delete
-                          </Button>
-                        ) : null}
-                      </div>
+                      </>
                     ) : null}
-                  </>
-                ) : null}
-              </Panel>
-            ) : (
-              <Navigate to="/overview" replace />
-            )
-          }
-        />
+                  </Panel>
+                ) : (
+                  <Navigate to="/overview" replace />
+                )
+              }
+            />
 
-        <Route
-          path="/upload"
-          element={
-            canWrite ? (
-              <Panel
-                title="Uploader"
-                subtitle="Uses typed upload cookbook with direct/multipart fallback"
-              >
-                <UploadPanel selectedPath={selectedPath} onUploadComplete={refreshBrowse} />
-              </Panel>
-            ) : (
-              <Navigate to="/overview" replace />
-            )
-          }
-        />
+            <Route
+              path="/upload"
+              element={
+                canWrite ? (
+                  <Panel
+                    title="Uploader"
+                    subtitle="Uses typed upload cookbook with direct/multipart fallback"
+                  >
+                    <UploadPanel selectedPath={selectedPath} onUploadComplete={refreshBrowse} />
+                  </Panel>
+                ) : (
+                  <Navigate to="/overview" replace />
+                )
+              }
+            />
 
-        <Route path="*" element={<Navigate to="/overview" replace />} />
-      </Routes>
+            <Route path="*" element={<Navigate to="/overview" replace />} />
+          </Routes>
+        </section>
+      </div>
 
       {renameModal ? (
         <div
