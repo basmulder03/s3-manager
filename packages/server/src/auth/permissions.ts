@@ -1,7 +1,7 @@
 import type { Permission } from '@/trpc';
 import { config } from '@/config';
 
-const VALID_PERMISSIONS: Permission[] = ['view', 'write', 'delete'];
+const VALID_PERMISSIONS: Permission[] = ['view', 'write', 'delete', 'manage_properties'];
 
 const dedupePermissions = (values: Permission[]): Permission[] => {
   return Array.from(new Set(values));

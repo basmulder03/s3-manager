@@ -59,6 +59,7 @@ This guide shows how to set up a **complete local testing environment** with:
 - **S3 Manager** with gateway-level OIDC authentication
 
 This setup simulates a production environment locally, perfect for:
+
 - Development and testing
 - Learning Kubernetes, Gateway API, and S3
 - CI/CD pipeline testing
@@ -67,6 +68,7 @@ This setup simulates a production environment locally, perfect for:
 ### Architecture
 
 The local setup uses **Envoy Gateway** instead of traditional NGINX Ingress for several advantages:
+
 - **Native OIDC support** via SecurityPolicy (no external oauth2-proxy needed)
 - **Gateway API** - modern, Kubernetes-native networking standard
 - **Built-in rate limiting, timeouts, and security headers**
@@ -162,12 +164,12 @@ helm version
 
 Choose one of the following local Kubernetes distributions based on your needs:
 
-| Distribution | Best For | Pros | Cons |
-|--------------|----------|------|------|
-| **minikube** | Beginners, GUI users | Easy setup, addons, dashboard | Higher resource usage |
-| **kind** | CI/CD, multi-node testing | Fast, multi-node clusters | Docker required |
-| **k3d** | Lightweight, fast setup | Very fast, low resources | Limited to k3s features |
-| **MicroK8s** | Ubuntu users, IoT | Native installation, snap-based | Linux/WSL only |
+| Distribution | Best For                  | Pros                            | Cons                    |
+| ------------ | ------------------------- | ------------------------------- | ----------------------- |
+| **minikube** | Beginners, GUI users      | Easy setup, addons, dashboard   | Higher resource usage   |
+| **kind**     | CI/CD, multi-node testing | Fast, multi-node clusters       | Docker required         |
+| **k3d**      | Lightweight, fast setup   | Very fast, low resources        | Limited to k3s features |
+| **MicroK8s** | Ubuntu users, IoT         | Native installation, snap-based | Linux/WSL only          |
 
 ---
 
@@ -452,9 +454,11 @@ kubectl -n keycloak port-forward svc/keycloak 8081:8080
 ```
 
 **Test Users:**
+
 - `admin/admin123` - Full access
 - `editor/editor123` - View + write
 - `viewer/viewer123` - View only
+- `propertyadmin/propertyadmin123` - View + write + manage_properties
 
 ### Step-by-Step Deployment
 
@@ -494,6 +498,7 @@ After setting up your cluster, install Envoy Gateway for modern, Gateway API-bas
 ### Why Envoy Gateway?
 
 Envoy Gateway provides several advantages over traditional NGINX Ingress:
+
 - **Native OIDC support** via SecurityPolicy (no external oauth2-proxy needed)
 - **Gateway API** - Kubernetes-native networking standard
 - **Better observability** and control
@@ -551,6 +556,7 @@ kubectl get pods -n envoy-gateway-system
 ```
 
 Expected output:
+
 ```
 NAME   CLASS   ADDRESS        PROGRAMMED   AGE
 eg     eg      10.96.xxx.xxx  True         1m
@@ -599,6 +605,7 @@ Open http://keycloak.local in your browser to verify Keycloak is accessible.
 ### Pre-configured Settings
 
 The deployment includes:
+
 - **Realm**: `s3-manager`
 - **OIDC Client**: `s3-manager-client`
   - Client ID: `s3-manager-client`
@@ -608,6 +615,7 @@ The deployment includes:
   - `admin / admin123` - S3-Admin role (full access)
   - `editor / editor123` - S3-Editor role (view + write)
   - `viewer / viewer123` - S3-Viewer role (view only)
+  - `propertyadmin / propertyadmin123` - S3-Property-Admin role (view + write + manage_properties)
 
 ### Manual Configuration (Optional)
 
@@ -711,6 +719,7 @@ kubectl get httproute s3-manager -n s3-manager-test -o yaml
 ### Architecture
 
 The deployment uses:
+
 - **Envoy Gateway HTTPRoute** for routing traffic to S3 Manager
 - **SecurityPolicy** for OIDC authentication at the gateway level
 - **BackendTrafficPolicy** for rate limiting (100 requests/minute)
@@ -788,6 +797,7 @@ When using Envoy Gateway with SecurityPolicy:
    - **Admin**: `admin` / `admin123` (full access)
    - **Editor**: `editor` / `editor123` (view + write)
    - **Viewer**: `viewer` / `viewer123` (view only)
+   - **Property Admin**: `propertyadmin` / `propertyadmin123` (view + write + manage_properties)
 4. **Automatic redirect back** - After successful authentication, you're redirected to S3 Manager
 
 > **Note**: The OIDC authentication happens at the Envoy Gateway level using SecurityPolicy, so all requests to `http://s3-manager.local` require authentication before reaching the application.
@@ -874,19 +884,20 @@ kubectl get events -A --sort-by='.lastTimestamp' | tail -20
 ```
 
 **💡 TIP**: Use the automated diagnostic script for comprehensive health checks and troubleshooting recommendations!
+
 - **Linux/macOS**: `./scripts/diagnose-envoy-gateway.sh`
 - **Windows**: `.\scripts\diagnose-envoy-gateway.ps1`
 
 **Common Status Checks:**
 
-| Component | Check Command | Expected Result |
-|-----------|--------------|-----------------|
-| Gateway | `kubectl get gateway eg -n envoy-gateway-system` | `PROGRAMMED=True` |
-| GatewayClass | `kubectl get gatewayclass eg` | `ACCEPTED=True` |
-| HTTPRoutes | `kubectl get httproute -A` | Routes listed |
-| Keycloak | `kubectl get pods -n keycloak` | `STATUS=Running` |
-| S3 Manager | `kubectl get pods -n s3-manager-test` | `STATUS=Running` |
-| Rook-Ceph | `kubectl get cephcluster -n rook-ceph` | `HEALTH=HEALTH_OK` |
+| Component    | Check Command                                    | Expected Result    |
+| ------------ | ------------------------------------------------ | ------------------ |
+| Gateway      | `kubectl get gateway eg -n envoy-gateway-system` | `PROGRAMMED=True`  |
+| GatewayClass | `kubectl get gatewayclass eg`                    | `ACCEPTED=True`    |
+| HTTPRoutes   | `kubectl get httproute -A`                       | Routes listed      |
+| Keycloak     | `kubectl get pods -n keycloak`                   | `STATUS=Running`   |
+| S3 Manager   | `kubectl get pods -n s3-manager-test`            | `STATUS=Running`   |
+| Rook-Ceph    | `kubectl get cephcluster -n rook-ceph`           | `HEALTH=HEALTH_OK` |
 
 ---
 

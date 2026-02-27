@@ -22,14 +22,18 @@ class MockS3Client {
 
       if (!token) {
         return {
-          Contents: Array.from({ length: 1000 }, (_, index) => ({ Key: `folder/file-${index}.txt` })),
+          Contents: Array.from({ length: 1000 }, (_, index) => ({
+            Key: `folder/file-${index}.txt`,
+          })),
           IsTruncated: true,
           NextContinuationToken: 'page-2',
         };
       }
 
       return {
-        Contents: Array.from({ length: 120 }, (_, index) => ({ Key: `folder/file-2-${index}.txt` })),
+        Contents: Array.from({ length: 120 }, (_, index) => ({
+          Key: `folder/file-2-${index}.txt`,
+        })),
         IsTruncated: false,
       };
     }
@@ -68,10 +72,7 @@ class RenameFolderMockS3Client {
 
     if (command instanceof ListObjectsV2Command) {
       return {
-        Contents: [
-          { Key: 'folder/sub/file-a.txt' },
-          { Key: 'folder/sub/file-b.txt' },
-        ],
+        Contents: [{ Key: 'folder/sub/file-a.txt' }, { Key: 'folder/sub/file-b.txt' }],
         IsTruncated: false,
       };
     }
@@ -103,6 +104,50 @@ class PropertiesMockS3Client {
     }
 
     throw new Error('Unexpected command sent to properties mock client');
+  }
+}
+
+class UpdatePropertiesMockS3Client {
+  readonly calls: unknown[] = [];
+  private readonly responses = [
+    {
+      ContentLength: 42,
+      ContentType: 'text/plain',
+      LastModified: new Date('2026-01-01T10:00:00.000Z'),
+      ETag: '"abc123"',
+      StorageClass: 'STANDARD',
+      Metadata: { owner: 'alice' },
+      CacheControl: 'no-cache',
+    },
+    {
+      ContentLength: 42,
+      ContentType: 'application/json',
+      LastModified: new Date('2026-01-01T10:01:00.000Z'),
+      ETag: '"def456"',
+      StorageClass: 'STANDARD_IA',
+      Metadata: { owner: 'alice', environment: 'prod' },
+      CacheControl: 'max-age=3600',
+      ContentLanguage: 'en-US',
+      Expires: new Date('2026-02-01T00:00:00.000Z'),
+    },
+  ];
+
+  async send(command: unknown): Promise<unknown> {
+    this.calls.push(command);
+
+    if (command instanceof HeadObjectCommand) {
+      const response = this.responses.shift();
+      if (!response) {
+        throw new Error('Unexpected extra HeadObjectCommand');
+      }
+      return response;
+    }
+
+    if (command instanceof CopyObjectCommand) {
+      return {};
+    }
+
+    throw new Error('Unexpected command sent to update-properties mock client');
   }
 }
 
@@ -150,7 +195,9 @@ describe('S3Service deleteFolder', () => {
 
     expect(result.deletedCount).toBe(1120);
 
-    const deleteCalls = client.calls.filter((call) => call instanceof DeleteObjectsCommand) as CommandInput[];
+    const deleteCalls = client.calls.filter(
+      (call) => call instanceof DeleteObjectsCommand
+    ) as CommandInput[];
     expect(deleteCalls).toHaveLength(2);
 
     const firstBatch = deleteCalls[0].input.Delete as { Objects: Array<{ Key: string }> };
@@ -227,7 +274,10 @@ describe('S3Service getObjectProperties', () => {
   it('returns rich object properties metadata', async () => {
     const service = new S3Service(() => new PropertiesMockS3Client() as never);
 
-    const result = await service.getObjectProperties({ path: 'my-bucket/folder/report.txt' }, 'tester@example.com');
+    const result = await service.getObjectProperties(
+      { path: 'my-bucket/folder/report.txt' },
+      'tester@example.com'
+    );
 
     expect(result.name).toBe('report.txt');
     expect(result.key).toBe('folder/report.txt');
@@ -236,6 +286,37 @@ describe('S3Service getObjectProperties', () => {
     expect(result.etag).toBe('abc123');
     expect(result.metadata.owner).toBe('alice');
     expect(result.cacheControl).toBe('no-cache');
+  });
+});
+
+describe('S3Service updateObjectProperties', () => {
+  it('updates mutable object properties via copy-to-self', async () => {
+    const client = new UpdatePropertiesMockS3Client();
+    const service = new S3Service(() => client as never);
+
+    const result = await service.updateObjectProperties(
+      {
+        path: 'my-bucket/folder/report.txt',
+        contentType: 'application/json',
+        storageClass: 'STANDARD_IA',
+        cacheControl: 'max-age=3600',
+        contentLanguage: 'en-US',
+        expires: '2026-02-01T00:00:00.000Z',
+        metadata: { owner: 'alice', environment: 'prod' },
+      },
+      'tester@example.com'
+    );
+
+    expect(result.contentType).toBe('application/json');
+    expect(result.storageClass).toBe('STANDARD_IA');
+    expect(result.cacheControl).toBe('max-age=3600');
+    expect(result.contentLanguage).toBe('en-US');
+    expect(result.metadata.environment).toBe('prod');
+
+    const copyCall = client.calls.find((call) => call instanceof CopyObjectCommand) as CommandInput;
+    expect(copyCall).toBeTruthy();
+    expect(copyCall.input.MetadataDirective).toBe('REPLACE');
+    expect(copyCall.input.ContentType).toBe('application/json');
   });
 });
 

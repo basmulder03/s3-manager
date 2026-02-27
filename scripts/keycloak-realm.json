@@ -40,6 +40,12 @@
         "description": "Read-only access to S3 resources",
         "composite": false,
         "clientRole": false
+      },
+      {
+        "name": "S3-Property-Admin",
+        "description": "Elevated access to update S3 object properties and metadata",
+        "composite": false,
+        "clientRole": false
       }
     ]
   },
@@ -90,6 +96,22 @@
         }
       ],
       "realmRoles": ["S3-Viewer"],
+      "emailVerified": true
+    },
+    {
+      "username": "propertyadmin",
+      "enabled": true,
+      "email": "propertyadmin@s3manager.local",
+      "firstName": "Property",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "propertyadmin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["S3-Property-Admin"],
       "emailVerified": true
     }
   ],

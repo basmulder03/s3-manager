@@ -108,6 +108,18 @@ export interface UpdateObjectTextContentResult {
   lastModified: string | null;
 }
 
+export interface UpdateObjectPropertiesInput {
+  path: string;
+  contentType?: string;
+  storageClass?: string;
+  cacheControl?: string | null;
+  contentDisposition?: string | null;
+  contentEncoding?: string | null;
+  contentLanguage?: string | null;
+  expires?: string | null;
+  metadata?: Record<string, string>;
+}
+
 export interface PresignedUploadInput {
   bucketName: string;
   objectKey: string;

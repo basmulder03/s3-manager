@@ -97,4 +97,31 @@ describe('tRPC auth boundaries', () => {
       expect(getErrorCode(error)).toBe('FORBIDDEN');
     }
   });
+
+  it('returns FORBIDDEN when user lacks manage_properties permission for property edits', async () => {
+    const caller = appRouter.createCaller({
+      req: new Request('http://localhost:3000/trpc/s3.updateProperties'),
+      actor: 'editor@example.com',
+      user: {
+        id: 'user-2',
+        email: 'editor@example.com',
+        name: 'Editor',
+        roles: ['S3-Editor'],
+        permissions: ['view', 'write'],
+        provider: 'keycloak',
+        token: 'token',
+      },
+      permissions: ['view', 'write'],
+    } as Context);
+
+    try {
+      await caller.s3.updateProperties({
+        path: 'my-bucket/file.txt',
+        contentType: 'text/plain',
+      });
+      throw new Error('Expected s3.updateProperties to throw');
+    } catch (error) {
+      expect(getErrorCode(error)).toBe('FORBIDDEN');
+    }
+  });
 });

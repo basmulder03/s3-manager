@@ -90,11 +90,14 @@ const configSchema = z.object({
   }),
 
   // Role-Based Permissions
-  rolePermissions: z.record(z.string(), z.array(z.enum(['view', 'write', 'delete']))).default({
-    'S3-Viewer': ['view'],
-    'S3-Editor': ['view', 'write'],
-    'S3-Admin': ['view', 'write', 'delete'],
-  }),
+  rolePermissions: z
+    .record(z.string(), z.array(z.enum(['view', 'write', 'delete', 'manage_properties'])))
+    .default({
+      'S3-Viewer': ['view'],
+      'S3-Editor': ['view', 'write'],
+      'S3-Admin': ['view', 'write', 'delete'],
+      'S3-Property-Admin': ['view', 'write', 'manage_properties'],
+    }),
 
   defaultRole: z.string().default('S3-Viewer'),
 

@@ -102,6 +102,10 @@ data:
           {
             "name": "S3-Viewer",
             "description": "Read-only access to S3 Manager"
+          },
+          {
+            "name": "S3-Property-Admin",
+            "description": "Elevated access to edit object properties and metadata"
           }
         ]
       },
@@ -150,6 +154,21 @@ data:
             }
           ],
           "realmRoles": ["S3-Viewer"]
+        },
+        {
+          "username": "propertyadmin",
+          "enabled": true,
+          "email": "propertyadmin@example.com",
+          "firstName": "Property",
+          "lastName": "Admin",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "propertyadmin123",
+              "temporary": false
+            }
+          ],
+          "realmRoles": ["S3-Property-Admin"]
         }
       ]
     }
@@ -174,72 +193,72 @@ spec:
         app: keycloak
     spec:
       containers:
-      - name: keycloak
-        image: quay.io/keycloak/keycloak:23.0
-        args:
-        - start-dev
-        - --import-realm
-        env:
-        # Admin credentials
-        - name: KEYCLOAK_ADMIN
-          value: admin
-        - name: KEYCLOAK_ADMIN_PASSWORD
-          value: admin
-        
-        # Proxy settings for ingress
-        - name: KC_PROXY
-          value: edge
-        - name: KC_HOSTNAME_STRICT
-          value: "false"
-        - name: KC_HTTP_ENABLED
-          value: "true"
-        
-        # Health checks
-        - name: KC_HEALTH_ENABLED
-          value: "true"
-        - name: KC_METRICS_ENABLED
-          value: "true"
-        
-        ports:
-        - name: http
-          containerPort: 8080
-          protocol: TCP
-        
-        resources:
-          limits:
-            cpu: 1000m
-            memory: 1Gi
-          requests:
-            cpu: 500m
-            memory: 512Mi
-        
-        volumeMounts:
-        - name: realm-config
-          mountPath: /opt/keycloak/data/import
-          readOnly: true
-        
-        livenessProbe:
-          httpGet:
-            path: /health/live
-            port: 8080
-          initialDelaySeconds: 60
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        
-        readinessProbe:
-          httpGet:
-            path: /health/ready
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 3
-      
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:23.0
+          args:
+            - start-dev
+            - --import-realm
+          env:
+            # Admin credentials
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              value: admin
+
+            # Proxy settings for ingress
+            - name: KC_PROXY
+              value: edge
+            - name: KC_HOSTNAME_STRICT
+              value: 'false'
+            - name: KC_HTTP_ENABLED
+              value: 'true'
+
+            # Health checks
+            - name: KC_HEALTH_ENABLED
+              value: 'true'
+            - name: KC_METRICS_ENABLED
+              value: 'true'
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+            requests:
+              cpu: 500m
+              memory: 512Mi
+
+          volumeMounts:
+            - name: realm-config
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
       volumes:
-      - name: realm-config
-        configMap:
-          name: keycloak-realm
+        - name: realm-config
+          configMap:
+            name: keycloak-realm
 
 ---
 # Service
@@ -253,10 +272,10 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - name: http
-    port: 80
-    targetPort: 8080
-    protocol: TCP
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
   selector:
     app: keycloak
 
@@ -270,18 +289,18 @@ metadata:
   namespace: keycloak
 spec:
   parentRefs:
-  - name: eg
-    namespace: envoy-gateway-system
+    - name: eg
+      namespace: envoy-gateway-system
   hostnames:
-  - "keycloak.local"
+    - 'keycloak.local'
   rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /
-    backendRefs:
-    - name: keycloak
-      port: 80
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: keycloak
+          port: 80
 
 ---
 # Envoy Gateway ClientTrafficPolicy for timeouts
@@ -317,7 +336,7 @@ spec:
 #     # Increase buffer size for large headers (JWT tokens)
 #     nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
 #     nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
-#     
+#
 #     # Timeouts
 #     nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
 #     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"

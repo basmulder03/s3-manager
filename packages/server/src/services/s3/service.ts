@@ -11,6 +11,7 @@ import {
   ListObjectsV2Command,
   PutObjectCommand,
   S3ServiceException,
+  StorageClass,
   UploadPartCommand,
   type CompletedPart,
   type S3Client,
@@ -58,6 +59,7 @@ import type {
   RenameItemResult,
   S3BucketSummary,
   S3ObjectSummary,
+  UpdateObjectPropertiesInput,
   UpdateObjectTextContentInput,
   UpdateObjectTextContentResult,
 } from '@/services/s3/types';
@@ -215,6 +217,38 @@ const normalizeEtag = (etag: string | null | undefined): string | null => {
   }
 
   return etag.replace(/^"|"$/g, '').trim();
+};
+
+const normalizeMetadataEntries = (metadata: Record<string, string>): Record<string, string> => {
+  const normalized: Record<string, string> = {};
+
+  for (const [rawKey, rawValue] of Object.entries(metadata)) {
+    const key = rawKey.trim().toLowerCase();
+    const value = rawValue.trim();
+    if (key.length === 0 || value.length === 0) {
+      continue;
+    }
+
+    normalized[key] = value;
+  }
+
+  return normalized;
+};
+
+const resolveOptionalHeaderValue = (
+  requested: string | null | undefined,
+  existing: string | undefined
+): string | undefined => {
+  if (requested === undefined) {
+    return existing;
+  }
+
+  if (requested === null) {
+    return undefined;
+  }
+
+  const trimmed = requested.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 };
 
 const hasAllowedTextExtension = (objectKey: string): boolean => {
@@ -524,6 +558,129 @@ export class S3Service {
         Date.now() - startedAt
       );
       throw mapError(error, `Failed to fetch object properties for '${input.path}'`);
+    }
+  }
+
+  async updateObjectProperties(
+    input: UpdateObjectPropertiesInput,
+    actor?: string
+  ): Promise<ObjectPropertiesResult> {
+    const startedAt = Date.now();
+    const safeActor = metricActor(actor);
+
+    try {
+      const { bucketName, objectKey } = parsePathToBucketAndKey(input.path);
+      const client = this.clientProvider();
+      const current = await client.send(
+        new HeadObjectCommand({
+          Bucket: bucketName,
+          Key: objectKey,
+        })
+      );
+
+      const metadata =
+        input.metadata === undefined
+          ? (current.Metadata ?? {})
+          : normalizeMetadataEntries(input.metadata);
+
+      const requestedExpires = input.expires;
+      let expires: Date | undefined;
+      if (requestedExpires === undefined) {
+        expires = current.Expires;
+      } else if (requestedExpires !== null) {
+        const parsed = new Date(requestedExpires);
+        if (Number.isNaN(parsed.getTime())) {
+          throw new S3ServiceError('expires must be a valid ISO datetime', 'ValidationError');
+        }
+        expires = parsed;
+      }
+
+      const contentType =
+        input.contentType?.trim() || current.ContentType || 'application/octet-stream';
+      const storageClass = input.storageClass?.trim() || current.StorageClass;
+      if (storageClass && !Object.values(StorageClass).includes(storageClass as StorageClass)) {
+        throw new S3ServiceError('storageClass is not valid', 'ValidationError');
+      }
+      const cacheControl = resolveOptionalHeaderValue(input.cacheControl, current.CacheControl);
+      const contentDisposition = resolveOptionalHeaderValue(
+        input.contentDisposition,
+        current.ContentDisposition
+      );
+      const contentEncoding = resolveOptionalHeaderValue(
+        input.contentEncoding,
+        current.ContentEncoding
+      );
+      const contentLanguage = resolveOptionalHeaderValue(
+        input.contentLanguage,
+        current.ContentLanguage
+      );
+
+      await client.send(
+        new CopyObjectCommand({
+          Bucket: bucketName,
+          CopySource: toCopySource(bucketName, objectKey),
+          Key: objectKey,
+          MetadataDirective: 'REPLACE',
+          Metadata: metadata,
+          ContentType: contentType,
+          ...(storageClass ? { StorageClass: storageClass as StorageClass } : {}),
+          ...(cacheControl ? { CacheControl: cacheControl } : {}),
+          ...(contentDisposition ? { ContentDisposition: contentDisposition } : {}),
+          ...(contentEncoding ? { ContentEncoding: contentEncoding } : {}),
+          ...(contentLanguage ? { ContentLanguage: contentLanguage } : {}),
+          ...(expires ? { Expires: expires } : {}),
+        })
+      );
+
+      const updated = await client.send(
+        new HeadObjectCommand({
+          Bucket: bucketName,
+          Key: objectKey,
+        })
+      );
+
+      recordS3FileAccess(
+        {
+          operation: 'write',
+          actor: safeActor,
+          bucket: bucketName,
+          objectKey,
+          result: 'success',
+        },
+        Date.now() - startedAt
+      );
+
+      return {
+        name: objectKey.split('/').pop() ?? objectKey,
+        key: objectKey,
+        size: updated.ContentLength ?? 0,
+        contentType: updated.ContentType ?? 'application/octet-stream',
+        lastModified: toIso(updated.LastModified),
+        etag: updated.ETag ? updated.ETag.replace(/^"|"$/g, '') : null,
+        storageClass: updated.StorageClass ?? 'STANDARD',
+        metadata: updated.Metadata ?? {},
+        ...(updated.VersionId ? { versionId: updated.VersionId } : {}),
+        ...(updated.CacheControl ? { cacheControl: updated.CacheControl } : {}),
+        ...(updated.ContentDisposition ? { contentDisposition: updated.ContentDisposition } : {}),
+        ...(updated.ContentEncoding ? { contentEncoding: updated.ContentEncoding } : {}),
+        ...(updated.ContentLanguage ? { contentLanguage: updated.ContentLanguage } : {}),
+        ...(updated.Expires ? { expires: updated.Expires.toISOString() } : {}),
+        ...(updated.ServerSideEncryption
+          ? { serverSideEncryption: updated.ServerSideEncryption }
+          : {}),
+      };
+    } catch (error) {
+      recordS3FileAccess(
+        {
+          operation: 'write',
+          actor: safeActor,
+          bucket: '*',
+          objectKey: input.path,
+          result: 'failure',
+        },
+        Date.now() - startedAt
+      );
+      throw mapError(error, `Failed to update object properties for '${input.path}'`);
     }
   }
 

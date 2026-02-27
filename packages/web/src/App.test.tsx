@@ -9,7 +9,7 @@ vi.mock('@web/components/UploadPanel', () => ({
 
 let mockAuthRequired = false;
 let mockAuthenticated = false;
-let mockPermissions: Array<'view' | 'write' | 'delete'> = [];
+let mockPermissions: Array<'view' | 'write' | 'delete' | 'manage_properties'> = [];
 const mockAuthStatusRefetch = vi.fn();
 const mockAuthMeRefetch = vi.fn();
 const { mockGetObjectMetadataQuery, mockGetObjectTextContentQuery } = vi.hoisted(() => ({
@@ -84,6 +84,9 @@ vi.mock('@web/trpc/client', () => ({
       },
       getProperties: {
         query: vi.fn(),
+      },
+      updateProperties: {
+        mutate: vi.fn(),
       },
     },
   },

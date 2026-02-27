@@ -16,17 +16,20 @@ This guide explains all configuration options available in S3 Manager.
 ### Environment Variables
 
 #### SECRET_KEY
+
 **Required**: Yes  
 **Type**: String  
 **Description**: Secret key used for session encryption  
 **Example**: `SECRET_KEY=your-super-secret-key-change-this-in-production`
 
 Generate a secure secret key:
+
 ```bash
 python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
 #### SESSION_COOKIE_SECURE
+
 **Required**: No  
 **Type**: Boolean  
 **Default**: `false`  
@@ -40,17 +43,20 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 ### Microsoft Entra ID (Azure AD)
 
 #### AZURE_AD_TENANT_ID
+
 **Required**: Yes  
 **Type**: String (UUID)  
 **Description**: Azure AD tenant ID  
 **Example**: `AZURE_AD_TENANT_ID=12345678-1234-1234-1234-123456789012`
 
 Find your tenant ID:
+
 ```bash
 az account show --query tenantId -o tsv
 ```
 
 #### AZURE_AD_CLIENT_ID
+
 **Required**: Yes  
 **Type**: String (UUID)  
 **Description**: Azure AD application (client) ID  
@@ -59,6 +65,7 @@ az account show --query tenantId -o tsv
 Get from Azure Portal → App registrations → Your app → Overview
 
 #### AZURE_AD_CLIENT_SECRET
+
 **Required**: Yes  
 **Type**: String  
 **Description**: Azure AD client secret  
@@ -77,12 +84,14 @@ Generate from Azure Portal → App registrations → Your app → Certificates &
 ## S3/Rook-Ceph Configuration
 
 #### S3_ENDPOINT
+
 **Required**: Yes  
 **Type**: String (URL)  
 **Description**: S3 endpoint URL  
 **Example**: `S3_ENDPOINT=http://rook-ceph-rgw.rook-ceph.svc.cluster.local:8080`
 
 For external access:
+
 ```bash
 # Port-forward (dev/test)
 kubectl port-forward -n rook-ceph svc/rook-ceph-rgw-my-store 8080:8080
@@ -90,30 +99,35 @@ kubectl port-forward -n rook-ceph svc/rook-ceph-rgw-my-store 8080:8080
 ```
 
 #### S3_ACCESS_KEY
+
 **Required**: Yes  
 **Type**: String  
 **Description**: S3 access key ID  
 **Example**: `S3_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE`
 
 Get from Rook-Ceph secret:
+
 ```bash
 kubectl get secret -n rook-ceph rook-ceph-object-user-my-store-my-user \
   -o jsonpath='{.data.AccessKey}' | base64 -d
 ```
 
 #### S3_SECRET_KEY
+
 **Required**: Yes  
 **Type**: String  
 **Description**: S3 secret access key  
 **Example**: `S3_SECRET_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`
 
 Get from Rook-Ceph secret:
+
 ```bash
 kubectl get secret -n rook-ceph rook-ceph-object-user-my-store-my-user \
   -o jsonpath='{.data.SecretKey}' | base64 -d
 ```
 
 #### S3_REGION
+
 **Required**: No  
 **Type**: String  
 **Default**: `us-east-1`  
@@ -121,6 +135,7 @@ kubectl get secret -n rook-ceph rook-ceph-object-user-my-store-my-user \
 **Example**: `S3_REGION=us-east-1`
 
 #### S3_USE_SSL
+
 **Required**: No  
 **Type**: Boolean  
 **Default**: `false`  
@@ -128,6 +143,7 @@ kubectl get secret -n rook-ceph rook-ceph-object-user-my-store-my-user \
 **Example**: `S3_USE_SSL=false`
 
 #### S3_VERIFY_SSL
+
 **Required**: No  
 **Type**: Boolean  
 **Default**: `false`  
@@ -141,6 +157,7 @@ Set to `false` for self-signed certificates.
 ### Default Role
 
 #### DEFAULT_ROLE
+
 **Required**: No  
 **Type**: String  
 **Default**: `S3-Viewer`  
@@ -156,6 +173,7 @@ Roles are mapped to Azure AD security groups. The group display name must match 
 - `view`: Read-only access (list buckets, list objects, download)
 - `write`: Upload objects
 - `delete`: Delete objects
+- `manage_properties`: Edit object properties and metadata (high impact; requires `write` and recommend elevated role only)
 
 #### Predefined Roles
 
@@ -171,6 +189,10 @@ Roles are mapped to Azure AD security groups. The group display name must match 
    - Permissions: `view`, `write`, `delete`
    - Use case: Administrators who need full access
 
+4. **S3-Property-Admin** (recommended as elevated role)
+   - Permissions: `view`, `write`, `manage_properties`
+   - Use case: Temporary elevated access for editing object headers/metadata
+
 ### Helm Configuration Example
 
 ```yaml
@@ -185,10 +207,14 @@ config:
       - view
       - write
       - delete
+    S3-Property-Admin:
+      - view
+      - write
+      - manage_properties
     Custom-Role:
       - view
       - write
-  defaultRole: "S3-Viewer"
+  defaultRole: 'S3-Viewer'
 ```
 
 ### Creating Azure AD Groups
@@ -206,17 +232,23 @@ az ad group create \
 az ad group create \
   --display-name "S3-Admin" \
   --mail-nickname "S3-Admin"
+
+az ad group create \
+  --display-name "S3-Property-Admin" \
+  --mail-nickname "S3-Property-Admin"
 ```
 
 ### Assigning Users to Groups
 
 Via Azure Portal:
+
 1. Go to Azure Active Directory → Groups
 2. Select the group
 3. Click Members → Add members
 4. Search and select users
 
 Via Azure CLI:
+
 ```bash
 az ad group member add \
   --group "S3-Viewer" \
@@ -228,6 +260,7 @@ az ad group member add \
 ### Enable PIM
 
 #### PIM_ENABLED
+
 **Required**: No  
 **Type**: Boolean  
 **Default**: `false`  
@@ -263,6 +296,7 @@ az ad group member add \
 ### PIM Activation Duration
 
 Configure in Azure AD PIM settings:
+
 - Minimum: 30 minutes
 - Maximum: 24 hours
 - Default: 8 hours
@@ -292,6 +326,7 @@ resources:
 ```
 
 Adjust based on usage:
+
 - Light usage: 100m CPU, 128Mi memory
 - Medium usage: 250m CPU, 256Mi memory
 - Heavy usage: 500m CPU, 512Mi memory
@@ -312,10 +347,10 @@ autoscaling:
 ```yaml
 ingress:
   enabled: true
-  className: "nginx"
+  className: 'nginx'
   annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: 'letsencrypt-prod'
+    nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
   hosts:
     - host: s3-manager.example.com
       paths:
@@ -338,7 +373,7 @@ podSecurityContext:
 securityContext:
   capabilities:
     drop:
-    - ALL
+      - ALL
   readOnlyRootFilesystem: false
   allowPrivilegeEscalation: false
 ```
@@ -371,16 +406,16 @@ replicaCount: 3
 
 image:
   repository: your-registry.azurecr.io/s3-manager
-  tag: "1.0.0"
+  tag: '1.0.0'
   pullPolicy: Always
 
 ingress:
   enabled: true
-  className: "nginx"
+  className: 'nginx'
   annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/rate-limit: "100"
+    cert-manager.io/cluster-issuer: 'letsencrypt-prod'
+    nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
+    nginx.ingress.kubernetes.io/rate-limit: '100'
   hosts:
     - host: s3.company.com
       paths:
@@ -407,17 +442,17 @@ autoscaling:
   targetMemoryUtilizationPercentage: 80
 
 config:
-  secretKey: "production-secret-key-use-external-secret"
+  secretKey: 'production-secret-key-use-external-secret'
   sessionCookieSecure: true
-  
+
   azureAd:
-    tenantId: "production-tenant-id"
-    clientId: "production-client-id"
-    clientSecret: "production-client-secret"
-  
+    tenantId: 'production-tenant-id'
+    clientId: 'production-client-id'
+    clientSecret: 'production-client-secret'
+
   pim:
     enabled: true
-  
+
   rolePermissions:
     S3-Viewer:
       - view
@@ -428,14 +463,14 @@ config:
       - view
       - write
       - delete
-  
-  defaultRole: "S3-Viewer"
-  
+
+  defaultRole: 'S3-Viewer'
+
   s3:
-    endpoint: "https://s3.internal.company.com"
-    accessKey: "production-access-key"
-    secretKey: "production-secret-key"
-    region: "us-east-1"
+    endpoint: 'https://s3.internal.company.com'
+    accessKey: 'production-access-key'
+    secretKey: 'production-secret-key'
+    region: 'us-east-1'
     useSSL: true
     verifySSL: true
 
@@ -489,6 +524,7 @@ aws s3 ls \
 ### Configuration Not Loading
 
 Check environment variables are set:
+
 ```bash
 kubectl exec -n s3-manager deployment/s3-manager -- env | grep -E "AZURE|S3"
 ```
@@ -496,6 +532,7 @@ kubectl exec -n s3-manager deployment/s3-manager -- env | grep -E "AZURE|S3"
 ### Authentication Issues
 
 Verify Azure AD configuration:
+
 ```bash
 # Check redirect URI
 kubectl get ingress -n s3-manager -o jsonpath='{.items[0].spec.rules[0].host}'
@@ -505,10 +542,11 @@ kubectl get ingress -n s3-manager -o jsonpath='{.items[0].spec.rules[0].host}'
 ### S3 Connection Issues
 
 Test from within pod:
+
 ```bash
 kubectl exec -n s3-manager -it deployment/s3-manager -- python3 -c "
 import boto3
-s3 = boto3.client('s3', 
+s3 = boto3.client('s3',
     endpoint_url='$S3_ENDPOINT',
     aws_access_key_id='$S3_ACCESS_KEY',
     aws_secret_access_key='$S3_SECRET_KEY')

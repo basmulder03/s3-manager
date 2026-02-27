@@ -91,6 +91,7 @@ export const App = () => {
   const canView = permissions.includes('view');
   const canWrite = permissions.includes('write');
   const canDelete = permissions.includes('delete');
+  const canManageProperties = permissions.includes('manage_properties');
   const showSignInOnly = authRequired && !authenticated;
 
   const refreshAuthState = useCallback(() => {
@@ -180,6 +181,7 @@ export const App = () => {
     refreshBrowse,
     canWrite,
     canDelete,
+    canManageProperties,
     locationPathname: location.pathname,
     createFolderAsync: createFolder.mutateAsync,
     renameItemAsync: renameItem.mutateAsync,
@@ -402,6 +404,7 @@ export const App = () => {
         moveModal={browser.moveModal}
         deleteModal={browser.deleteModal}
         propertiesModal={browser.propertiesModal}
+        canEditProperties={canWrite && canManageProperties}
         filePreviewModal={browser.filePreviewModal}
         showDiscardChangesModal={pendingDiscardAction !== null}
         modalError={browser.modalError}
@@ -412,6 +415,12 @@ export const App = () => {
         onSubmitRename={browser.submitRename}
         onSubmitMove={browser.submitMove}
         onSubmitDelete={browser.submitDelete}
+        onSubmitPropertiesSave={browser.saveProperties}
+        onResetPropertiesDraft={browser.resetPropertiesDraft}
+        onPropertiesFieldChange={browser.setPropertiesField}
+        onAddPropertiesMetadataRow={browser.addPropertiesMetadataRow}
+        onUpdatePropertiesMetadataRow={browser.updatePropertiesMetadataRow}
+        onRemovePropertiesMetadataRow={browser.removePropertiesMetadataRow}
         onFilePreviewTextChange={browser.setFilePreviewTextContent}
         onSubmitFilePreviewSave={browser.saveFilePreviewText}
         onSwitchFilePreviewToEdit={() => {

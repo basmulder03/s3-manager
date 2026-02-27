@@ -11,27 +11,38 @@ const renameMutate = vi.fn(async () => ({
 const deleteObjectMutate = vi.fn(async () => ({ success: true }));
 const deleteFolderMutate = vi.fn(async () => ({ deletedCount: 1 }));
 const deleteMultipleMutate = vi.fn(async () => ({ message: 'Deleted 2 item(s)', deletedCount: 2 }));
-const { getObjectTextContentQuery, updateObjectTextContentMutate } = vi.hoisted(() => ({
-  getObjectTextContentQuery: vi.fn(async () => ({
-    path: 'my-bucket/folder/report.txt',
-    content: 'hello world',
-    size: 11,
-    contentType: 'text/plain',
-    etag: 'etag-1',
-    lastModified: '2026-01-01T10:00:00.000Z',
-  })),
-  updateObjectTextContentMutate: vi.fn(async () => ({
-    path: 'my-bucket/folder/report.txt',
-    size: 12,
-    contentType: 'text/plain',
-    etag: 'etag-2',
-    lastModified: '2026-01-01T10:01:00.000Z',
-  })),
-}));
+const { getObjectTextContentQuery, updateObjectTextContentMutate, updatePropertiesMutate } =
+  vi.hoisted(() => ({
+    getObjectTextContentQuery: vi.fn(async () => ({
+      path: 'my-bucket/folder/report.txt',
+      content: 'hello world',
+      size: 11,
+      contentType: 'text/plain',
+      etag: 'etag-1',
+      lastModified: '2026-01-01T10:00:00.000Z',
+    })),
+    updateObjectTextContentMutate: vi.fn(async () => ({
+      path: 'my-bucket/folder/report.txt',
+      size: 12,
+      contentType: 'text/plain',
+      etag: 'etag-2',
+      lastModified: '2026-01-01T10:01:00.000Z',
+    })),
+    updatePropertiesMutate: vi.fn(async () => ({
+      name: 'report.txt',
+      key: 'folder/report.txt',
+      size: 42,
+      contentType: 'application/json',
+      lastModified: '2026-01-01T10:01:00.000Z',
+      etag: 'abc456',
+      storageClass: 'STANDARD',
+      metadata: { owner: 'alice' },
+    })),
+  }));
 const browseRefetch = vi.fn();
 let mockAuthRequired = false;
 let mockAuthenticated = false;
-let mockPermissions: Array<'view' | 'write' | 'delete'> = [];
+let mockPermissions: Array<'view' | 'write' | 'delete' | 'manage_properties'> = [];
 
 vi.mock('@web/components/UploadPanel', () => ({
   UploadPanel: () => <div>Upload Panel Mock</div>,
@@ -147,6 +158,9 @@ vi.mock('@web/trpc/client', () => ({
       updateObjectTextContent: {
         mutate: updateObjectTextContentMutate,
       },
+      updateProperties: {
+        mutate: updatePropertiesMutate,
+      },
     },
   },
 }));
@@ -163,6 +177,7 @@ describe('Browser parity interactions', () => {
     deleteMultipleMutate.mockClear();
     getObjectTextContentQuery.mockClear();
     updateObjectTextContentMutate.mockClear();
+    updatePropertiesMutate.mockClear();
     browseRefetch.mockClear();
   });
 
@@ -262,6 +277,50 @@ describe('Browser parity interactions', () => {
 
     await waitFor(() => {
       expect(updateObjectTextContentMutate).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('shows read-only file properties editor for non-elevated users', async () => {
+    mockAuthRequired = true;
+    mockAuthenticated = true;
+    mockPermissions = ['view', 'write'];
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    const fileCell = screen.getAllByText('report.txt')[0]!;
+    fireEvent.contextMenu(fileCell);
+    fireEvent.click(await screen.findByText('Properties'));
+
+    await screen.findByText('File Properties');
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+  });
+
+  it('allows elevated users to edit and save file properties', async () => {
+    mockAuthRequired = true;
+    mockAuthenticated = true;
+    mockPermissions = ['view', 'write', 'manage_properties'];
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    const fileCell = screen.getAllByText('report.txt')[0]!;
+    fireEvent.contextMenu(fileCell);
+    fireEvent.click(await screen.findByText('Properties'));
+
+    await screen.findByText('File Properties');
+    const contentTypeInput = screen.getByLabelText('Content Type');
+    fireEvent.change(contentTypeInput, { target: { value: 'application/json' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(updatePropertiesMutate).toHaveBeenCalledTimes(1);
     });
   });
 });

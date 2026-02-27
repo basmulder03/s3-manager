@@ -658,6 +658,36 @@
   max-height: 46vh;
   overflow: auto;
   padding-right: 0.2rem;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--line-strong) 70%, var(--brand))
+    color-mix(in srgb, var(--surface-soft) 85%, var(--surface));
+}
+
+.propertiesGrid::-webkit-scrollbar {
+  width: 10px;
+}
+
+.propertiesGrid::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--surface-soft) 85%, var(--surface));
+  border-radius: 999px;
+}
+
+.propertiesGrid::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--line-strong) 82%, var(--brand)),
+    color-mix(in srgb, var(--line-strong) 62%, var(--brand))
+  );
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--surface-soft) 85%, var(--surface));
+}
+
+.propertiesGrid::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--line-strong) 64%, var(--brand)),
+    color-mix(in srgb, var(--line-strong) 46%, var(--brand))
+  );
 }
 
 .filePreviewModalCard {
@@ -739,6 +769,26 @@
   padding: 0.55rem 0.65rem;
 }
 
+.propertiesEditor {
+  display: grid;
+  gap: 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  padding: 0.55rem 0.65rem;
+}
+
+.propertiesEditor p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.propertiesEditor label {
+  display: grid;
+  gap: 0.3rem;
+}
+
 .propertiesMetadata p {
   margin: 0;
   font-size: 0.8rem;
@@ -755,6 +805,26 @@
   gap: 0.25rem;
   padding-top: 0.35rem;
   border-top: 1px solid var(--line);
+}
+
+.metadataEditorRow {
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--line);
+}
+
+.metadataEditorRow:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+@media (max-width: 720px) {
+  .metadataEditorRow {
+    grid-template-columns: 1fr;
+  }
 }
 
 .metadataRow:first-child {

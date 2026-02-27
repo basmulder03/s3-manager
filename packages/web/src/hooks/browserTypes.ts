@@ -18,7 +18,9 @@ export type DeleteModalState = {
 export type PropertiesModalState = {
   path: string;
   loading: boolean;
+  saving: boolean;
   error: string;
+  dirty: boolean;
   details: null | {
     name: string;
     key: string;
@@ -28,6 +30,27 @@ export type PropertiesModalState = {
     etag: string | null;
     storageClass: string;
     metadata: Record<string, string>;
+    cacheControl?: string;
+    contentDisposition?: string;
+    contentEncoding?: string;
+    contentLanguage?: string;
+    expires?: string;
+    versionId?: string;
+    serverSideEncryption?: string;
+  };
+  draft: null | {
+    contentType: string;
+    storageClass: string;
+    cacheControl: string;
+    contentDisposition: string;
+    contentEncoding: string;
+    contentLanguage: string;
+    expires: string;
+    metadata: Array<{
+      id: string;
+      key: string;
+      value: string;
+    }>;
   };
 };
 

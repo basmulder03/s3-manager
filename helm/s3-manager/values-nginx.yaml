@@ -9,7 +9,7 @@ replicaCount: 2
 image:
   repository: your-registry/s3-manager
   pullPolicy: IfNotPresent
-  tag: "latest"
+  tag: 'latest'
 
 service:
   type: ClusterIP
@@ -19,11 +19,11 @@ service:
 # Ingress Configuration - NGINX Ingress (Alternative)
 ingress:
   enabled: true
-  type: nginx  # Use NGINX Ingress
-  
-  className: nginx  # IngressClass name
+  type: nginx # Use NGINX Ingress
+
+  className: nginx # IngressClass name
   hostname: s3-manager.example.com
-  
+
   tls:
     enabled: true
     secretName: s3-manager-tls
@@ -39,13 +39,13 @@ ingress:
       enabled: true
       url: http://oauth2-proxy.auth-system.svc.cluster.local
       signInUrl: https://s3-manager.example.com/oauth2/start
-      
+
     # Additional annotations for NGINX Ingress
     annotations:
       # Rate limiting
-      nginx.ingress.kubernetes.io/limit-rps: "100"
-      nginx.ingress.kubernetes.io/limit-connections: "10"
-      
+      nginx.ingress.kubernetes.io/limit-rps: '100'
+      nginx.ingress.kubernetes.io/limit-connections: '10'
+
       # Security headers
       nginx.ingress.kubernetes.io/configuration-snippet: |
         more_set_headers "X-Frame-Options: SAMEORIGIN";
@@ -53,15 +53,15 @@ ingress:
         more_set_headers "X-XSS-Protection: 1; mode=block";
         more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains";
         more_set_headers "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';";
-      
+
       # Timeouts
-      nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
-      nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
-      nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
-      
+      nginx.ingress.kubernetes.io/proxy-connect-timeout: '60'
+      nginx.ingress.kubernetes.io/proxy-send-timeout: '60'
+      nginx.ingress.kubernetes.io/proxy-read-timeout: '60'
+
       # Body size limit
-      nginx.ingress.kubernetes.io/proxy-body-size: "100m"
-      
+      nginx.ingress.kubernetes.io/proxy-body-size: '100m'
+
       # CORS (if needed)
       # nginx.ingress.kubernetes.io/enable-cors: "true"
       # nginx.ingress.kubernetes.io/cors-allow-origin: "https://s3-manager.example.com"
@@ -73,21 +73,21 @@ oidcSecret:
   create: true
   name: s3-manager-oidc-secret
   # Set these values via --set flags or use external-secrets
-  clientSecret: ""  # REQUIRED: Set via --set oidcSecret.clientSecret=<value>
+  clientSecret: '' # REQUIRED: Set via --set oidcSecret.clientSecret=<value>
 
 # Application Configuration
 # When using oauth2-proxy, the application still needs OIDC config for token validation
 config:
-  oidcProvider: keycloak  # or azure, google
-  
+  oidcProvider: keycloak # or azure, google
+
   # Keycloak settings (example)
   keycloak:
     authority: https://keycloak.example.com/realms/s3-manager
     clientId: s3-manager-client
     redirectUri: https://s3-manager.example.com/auth/callback
     logoutUri: https://s3-manager.example.com/auth/logout
-    scope: "openid profile email roles"
-    
+    scope: 'openid profile email roles'
+
     # Role mapping from Keycloak roles to app permissions
     roleMapping:
       S3-Admin:
@@ -99,7 +99,11 @@ config:
         - write
       S3-Viewer:
         - view
-  
+      S3-Property-Admin:
+        - view
+        - write
+        - manage_properties
+
   # S3/LocalStack Configuration
   s3:
     endpoint: http://localstack:4566

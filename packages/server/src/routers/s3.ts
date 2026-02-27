@@ -173,6 +173,45 @@ export const s3Router = router({
       }
     }),
 
+  updateProperties: writeProcedure
+    .meta({
+      openapi: {
+        method: 'POST',
+        path: '/s3/object/properties',
+        tags: ['s3'],
+        summary: 'Update object properties',
+        protect: true,
+      },
+    })
+    .input(
+      z.object({
+        path: z.string().min(1),
+        contentType: z.string().min(1).optional(),
+        storageClass: z.string().min(1).optional(),
+        cacheControl: z.string().nullable().optional(),
+        contentDisposition: z.string().nullable().optional(),
+        contentEncoding: z.string().nullable().optional(),
+        contentLanguage: z.string().nullable().optional(),
+        expires: z.string().nullable().optional(),
+        metadata: z.record(z.string(), z.string()).optional(),
+      })
+    )
+    .output(z.any())
+    .mutation(async ({ input, ctx }) => {
+      if (!ctx.permissions.includes('manage_properties')) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: "Missing 'manage_properties' permission",
+        });
+      }
+
+      try {
+        return s3Service.updateObjectProperties(input, actorFromContext(ctx));
+      } catch (error) {
+        throw mapS3ErrorToTrpc(error);
+      }
+    }),
+
   getObjectTextContent: viewProcedure
     .meta({
       openapi: {

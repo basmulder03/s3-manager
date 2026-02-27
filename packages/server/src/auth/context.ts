@@ -115,7 +115,13 @@ export const resolvePermissions = (user: AuthUser | null, req: Request): Permiss
     const values = fromHeader
       .split(',')
       .map((value) => value.trim().toLowerCase())
-      .filter((value): value is Permission => value === 'view' || value === 'write' || value === 'delete');
+      .filter(
+        (value): value is Permission =>
+          value === 'view' ||
+          value === 'write' ||
+          value === 'delete' ||
+          value === 'manage_properties'
+      );
 
     if (values.length > 0) {
       return Array.from(new Set(values));

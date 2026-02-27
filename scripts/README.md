@@ -10,8 +10,8 @@ Pre-configured Keycloak realm for S3 Manager with:
 
 - Realm: `s3-manager`
 - Client: `s3-manager-client` (secret: `dev-client-secret-12345`)
-- Users: admin, editor, viewer (all with password matching username + "123")
-- Roles: S3-Admin, S3-Editor, S3-Viewer
+- Users: admin, editor, viewer, propertyadmin (all with password matching username + "123")
+- Roles: S3-Admin, S3-Editor, S3-Viewer, S3-Property-Admin
 - Protocol mappers for realm roles and groups
 
 Used by:

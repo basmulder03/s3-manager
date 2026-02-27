@@ -4,7 +4,7 @@ import { TRPCError } from '@trpc/server';
 import { resolveAuthUser, resolvePermissions, shouldRequireAuth } from '@/auth/context';
 import type { AuthUser } from '@/auth/types';
 
-export type Permission = 'view' | 'write' | 'delete';
+export type Permission = 'view' | 'write' | 'delete' | 'manage_properties';
 
 /**
  * Create tRPC context
@@ -12,12 +12,14 @@ export type Permission = 'view' | 'write' | 'delete';
  */
 export const createContext = async (opts: FetchCreateContextFnOptions) => {
   const user = await resolveAuthUser(opts.req);
-  const actorHeader = opts.req.headers.get('x-user-email')
-    ?? opts.req.headers.get('x-user-id')
-    ?? opts.req.headers.get('x-forwarded-user');
+  const actorHeader =
+    opts.req.headers.get('x-user-email') ??
+    opts.req.headers.get('x-user-id') ??
+    opts.req.headers.get('x-forwarded-user');
 
-  const actor = user?.email
-    || (actorHeader && actorHeader.trim().length > 0 ? actorHeader.trim() : 'anonymous');
+  const actor =
+    user?.email ||
+    (actorHeader && actorHeader.trim().length > 0 ? actorHeader.trim() : 'anonymous');
 
   return {
     req: opts.req,
@@ -63,6 +65,9 @@ const requirePermission = (permission: Permission) =>
 export const viewProcedure = publicProcedure.use(requirePermission('view'));
 export const writeProcedure = publicProcedure.use(requirePermission('write'));
 export const deleteProcedure = publicProcedure.use(requirePermission('delete'));
+export const managePropertiesProcedure = publicProcedure.use(
+  requirePermission('manage_properties')
+);
 
 const requireAuthentication = t.middleware(({ ctx, next }) => {
   if (!shouldRequireAuth()) {
