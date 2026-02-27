@@ -40,7 +40,7 @@ export const useBrowserShortcutsEffect = ({
 }: UseBrowserShortcutsOptions) => {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (locationPathname !== '/browser') {
+      if (locationPathname !== '/') {
         return;
       }
 

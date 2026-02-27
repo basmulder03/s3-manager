@@ -91,18 +91,17 @@ describe('App routes', () => {
     mockPermissions = [];
   });
 
-  it('renders overview by default redirect', () => {
+  it('renders file browser by default route', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Server Status')).toBeInTheDocument();
-    expect(screen.getByText('Current User')).toBeInTheDocument();
+    expect(screen.getByText('Files')).toBeInTheDocument();
   });
 
-  it('renders upload page route', () => {
+  it('redirects unknown page routes to file browser', () => {
     mockAuthenticated = true;
     mockPermissions = ['view', 'write', 'delete'];
 
@@ -112,20 +111,19 @@ describe('App routes', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Uploader')).toBeInTheDocument();
-    expect(screen.getByText('Upload Panel Mock')).toBeInTheDocument();
+    expect(screen.getByText('Files')).toBeInTheDocument();
   });
 
   it('shows sign-in screen only when auth is required and user is signed out', () => {
     mockAuthRequired = true;
     render(
-      <MemoryRouter initialEntries={['/browser']}>
+      <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>
     );
 
     expect(screen.getByText('Sign in to continue')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument();
-    expect(screen.queryByText('S3 Browser')).not.toBeInTheDocument();
+    expect(screen.queryByText('Files')).not.toBeInTheDocument();
   });
 });

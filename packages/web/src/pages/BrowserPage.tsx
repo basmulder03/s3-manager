@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { Button, Input } from '@web/components/ui';
 import { Panel } from '@web/components';
@@ -80,15 +81,57 @@ export const BrowserPage = ({
   onOpenProperties,
   onDeletePathItems,
 }: BrowserPageProps) => {
+  const [pathDraft, setPathDraft] = useState(selectedPath);
+
+  useEffect(() => {
+    setPathDraft(selectedPath);
+  }, [selectedPath]);
+
+  const commitPath = (rawPath: string) => {
+    const normalized = rawPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    if (normalized !== selectedPath) {
+      setSelectedPath(normalized);
+    }
+  };
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      commitPath(pathDraft);
+    }, 320);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [pathDraft, selectedPath]);
+
+  const breadcrumbSegments = useMemo(() => {
+    const normalized = selectedPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!normalized) {
+      return [] as Array<{ label: string; path: string }>;
+    }
+
+    const segments = normalized.split('/');
+    return segments.map((segment, index) => ({
+      label: segment,
+      path: segments.slice(0, index + 1).join('/'),
+    }));
+  }, [selectedPath]);
+
   return (
-    <Panel title="S3 Browser" subtitle="From `trpc.s3.browse`">
+    <Panel title="Files" subtitle="Browse and manage items">
       <div className={styles.browserToolbar}>
         <div className={styles.browserControls}>
           <Input
             className={styles.pathInput}
-            value={selectedPath}
-            onChange={(event) => setSelectedPath(event.target.value)}
-            placeholder="Path example: my-bucket/folder"
+            value={pathDraft}
+            onChange={(event) => setPathDraft(event.target.value)}
+            onBlur={(event) => commitPath(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                commitPath((event.target as HTMLInputElement).value);
+              }
+            }}
+            placeholder="bucket/folder"
           />
           <Button variant="muted" onClick={browse.refetch}>
             Refresh
@@ -108,6 +151,20 @@ export const BrowserPage = ({
             <Button onClick={() => void onCreateFolder()}>Create Folder</Button>
           </div>
         ) : null}
+      </div>
+
+      <div className={styles.breadcrumbTrail}>
+        <button className={styles.breadcrumbLink} onClick={() => setSelectedPath('')}>
+          root
+        </button>
+        {breadcrumbSegments.map((segment) => (
+          <span key={segment.path} className={styles.breadcrumbPart}>
+            <span className={styles.breadcrumbDivider}>/</span>
+            <button className={styles.breadcrumbLink} onClick={() => setSelectedPath(segment.path)}>
+              {segment.label}
+            </button>
+          </span>
+        ))}
       </div>
 
       <p className={styles.hotkeysHint}>
@@ -147,20 +204,8 @@ export const BrowserPage = ({
 
       {browse.data ? (
         <>
-          <div className={styles.breadcrumbs}>
-            {browse.data.breadcrumbs.map((crumb) => (
-              <Button
-                key={crumb.path || 'home'}
-                variant="muted"
-                onClick={() => setSelectedPath(crumb.path)}
-              >
-                {crumb.name}
-              </Button>
-            ))}
-          </div>
-
           <div className={styles.itemsHead} aria-hidden>
-            <span>Type</span>
+            <span />
             <span>Name</span>
             <span>Path</span>
             <span>Size</span>
@@ -188,41 +233,59 @@ export const BrowserPage = ({
                       }}
                     />
                   </label>
-                  <Button
-                    className={styles.itemMain}
+
+                  <button
+                    className={styles.itemMainButton}
                     onClick={(event) => onRowClick(item, index, event)}
                   >
-                    <span className={styles.tag}>{item.type}</span>
-                    <strong>{item.name}</strong>
-                    <span className={styles.itemPath}>{item.path}</span>
-                    <span>{item.size === null ? '-' : `${item.size} bytes`}</span>
-                    <span>{formatDate(item.lastModified)}</span>
-                  </Button>
+                    <div className={styles.itemMain}>
+                      <span className={styles.itemIcon} aria-hidden>
+                        {item.type === 'directory' ? '📁' : '📄'}
+                      </span>
+                      <strong>{item.name}</strong>
+                      <span className={styles.itemPath}>{item.path}</span>
+                      <span>{item.size === null ? '-' : `${item.size} bytes`}</span>
+                      <span>{formatDate(item.lastModified)}</span>
+                    </div>
+                  </button>
+
                   <div className={styles.itemActions}>
                     {canWrite ? (
-                      <Button variant="muted" onClick={() => onRename(item.path, item.name)}>
+                      <button
+                        className={styles.rowAction}
+                        onClick={() => onRename(item.path, item.name)}
+                      >
                         Rename
-                      </Button>
+                      </button>
                     ) : null}
                     {canWrite ? (
-                      <Button variant="muted" onClick={() => onMove(item.path)}>
+                      <button className={styles.rowAction} onClick={() => onMove(item.path)}>
                         Move
-                      </Button>
+                      </button>
                     ) : null}
                     {item.type === 'file' ? (
-                      <Button variant="muted" onClick={() => void onDownload(item.path)}>
+                      <button
+                        className={styles.rowAction}
+                        onClick={() => void onDownload(item.path)}
+                      >
                         Download
-                      </Button>
+                      </button>
                     ) : null}
                     {item.type === 'file' ? (
-                      <Button variant="muted" onClick={() => void onOpenProperties(item.path)}>
+                      <button
+                        className={styles.rowAction}
+                        onClick={() => void onOpenProperties(item.path)}
+                      >
                         Properties
-                      </Button>
+                      </button>
                     ) : null}
                     {canDelete ? (
-                      <Button variant="danger" onClick={() => onDeletePathItems([item])}>
+                      <button
+                        className={`${styles.rowAction} ${styles.rowActionDanger}`}
+                        onClick={() => onDeletePathItems([item])}
+                      >
                         Delete
-                      </Button>
+                      </button>
                     ) : null}
                   </div>
                 </div>

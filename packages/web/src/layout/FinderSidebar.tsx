@@ -1,9 +1,6 @@
-import { NavLink } from 'react-router-dom';
 import styles from '@web/App.module.css';
 
 interface FinderSidebarProps {
-  canView: boolean;
-  canWrite: boolean;
   provider: string | undefined;
   userEmail: string | undefined;
   selectedPath: string;
@@ -11,8 +8,6 @@ interface FinderSidebarProps {
 }
 
 export const FinderSidebar = ({
-  canView,
-  canWrite,
   provider,
   userEmail,
   selectedPath,
@@ -20,15 +15,6 @@ export const FinderSidebar = ({
 }: FinderSidebarProps) => {
   return (
     <aside className={styles.finderSidebar} aria-label="Workspace sidebar">
-      <section>
-        <p className={styles.finderSidebarTitle}>Favorites</p>
-        <nav className={styles.finderNav}>
-          <NavLink to="/overview">Overview</NavLink>
-          {canView ? <NavLink to="/browser">All Files</NavLink> : null}
-          {canWrite ? <NavLink to="/upload">Uploads</NavLink> : null}
-        </nav>
-      </section>
-
       <section>
         <p className={styles.finderSidebarTitle}>Session</p>
         <div className={styles.finderMeta}>

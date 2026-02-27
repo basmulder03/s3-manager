@@ -1,4 +1,3 @@
-import { NavLink } from 'react-router-dom';
 import { AuthActions } from '@web/components';
 import { Button } from '@web/components/ui';
 import styles from '@web/App.module.css';
@@ -8,8 +7,6 @@ interface FinderHeaderProps {
   setTheme: (theme: 'light' | 'dark') => void;
   authenticated: boolean;
   onAfterRefresh: () => void;
-  canView: boolean;
-  canWrite: boolean;
 }
 
 export const FinderHeader = ({
@@ -17,8 +14,6 @@ export const FinderHeader = ({
   setTheme,
   authenticated,
   onAfterRefresh,
-  canView,
-  canWrite,
 }: FinderHeaderProps) => {
   return (
     <header className={styles.hero}>
@@ -31,13 +26,8 @@ export const FinderHeader = ({
           <AuthActions authenticated={authenticated} onAfterRefresh={onAfterRefresh} />
         </div>
       </div>
-      <h1>Finder-style S3 workspace</h1>
-      <p>Browse, manage, and upload objects with permission-aware actions.</p>
-      <nav className={styles.tabs} aria-label="Primary">
-        <NavLink to="/overview">Overview</NavLink>
-        {canView ? <NavLink to="/browser">Browser</NavLink> : null}
-        {canWrite ? <NavLink to="/upload">Upload</NavLink> : null}
-      </nav>
+      <h1>File Manager</h1>
+      <p>Browse and manage your files.</p>
     </header>
   );
 };

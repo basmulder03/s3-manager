@@ -256,11 +256,46 @@
   gap: 0.45rem;
 }
 
+.breadcrumbTrail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.36rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.breadcrumbPart {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+}
+
+.breadcrumbDivider {
+  color: var(--muted);
+}
+
+.breadcrumbLink {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.86rem;
+  padding: 0.1rem 0.22rem;
+  border-radius: 5px;
+}
+
+.breadcrumbLink:hover {
+  background: var(--surface-alt);
+}
+
 .itemsHead {
   display: grid;
-  grid-template-columns: 70px minmax(110px, 1fr) 2fr 1.2fr 1.5fr 240px;
+  grid-template-columns: 28px minmax(120px, 1.3fr) 2fr 1fr 1.2fr 220px;
   gap: 0.6rem;
-  padding: 0 0.7rem 0.35rem 2.4rem;
+  padding: 0.1rem 0.7rem 0.35rem;
   color: var(--muted);
   font-size: 0.76rem;
   text-transform: uppercase;
@@ -278,21 +313,21 @@
 
 .items li {
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--surface);
 }
 
 .isSelected {
-  border-color: color-mix(in srgb, var(--brand) 50%, var(--line));
-  background: var(--brand-soft);
+  border-color: color-mix(in srgb, var(--brand) 24%, var(--line));
+  background: color-mix(in srgb, var(--surface-soft) 70%, var(--brand-soft));
 }
 
 .itemRow {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   gap: 0.55rem;
   align-items: center;
-  padding: 0.3rem;
+  padding: 0.22rem 0.38rem;
 }
 
 .itemRow:hover {
@@ -306,17 +341,46 @@
 }
 
 .rowCheckbox input {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
+  appearance: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  position: relative;
+  cursor: pointer;
+}
+
+.rowCheckbox input:checked {
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--line));
+  background: color-mix(in srgb, var(--brand) 75%, #0a4ca8);
+}
+
+.rowCheckbox input:checked::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  color: #fff;
+  font-size: 12px;
+  line-height: 15px;
+  text-align: center;
 }
 
 .itemMain {
-  width: 100%;
-  text-align: left;
   display: grid;
-  grid-template-columns: 70px minmax(110px, 1fr) 2fr 1.2fr 1.5fr;
+  grid-template-columns: 28px minmax(120px, 1.3fr) 2fr 1fr 1.2fr;
   gap: 0.6rem;
   align-items: center;
+}
+
+.itemMainButton {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
 }
 
 .itemMain strong {
@@ -340,14 +404,38 @@
   font-weight: 700;
 }
 
+.itemIcon {
+  font-size: 0.95rem;
+}
+
 .itemPath {
   font-family: 'IBM Plex Mono', monospace;
 }
 
 .itemActions {
   display: flex;
-  gap: 0.35rem;
+  gap: 0.22rem;
   align-items: center;
+  justify-content: flex-end;
+}
+
+.rowAction {
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.2rem 0.42rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.rowAction:hover {
+  background: var(--surface-alt);
+}
+
+.rowActionDanger {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  color: var(--danger);
 }
 
 .contextMenu {
@@ -489,7 +577,7 @@
   }
 
   .itemMain {
-    grid-template-columns: 70px minmax(120px, 1fr);
+    grid-template-columns: 28px minmax(120px, 1fr);
     grid-auto-flow: row;
   }
 

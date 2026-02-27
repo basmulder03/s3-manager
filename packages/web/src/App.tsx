@@ -1,11 +1,11 @@
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom';
 import { trpc } from '@web/trpc/client';
 import { useUiStore } from '@web/state/ui';
 import { useEffect } from 'react';
 import { FileModals, SignInGate } from '@web/components';
 import { useBrowserController } from '@web/hooks';
 import { FinderHeader, FinderSidebar } from '@web/layout';
-import { BrowserPage, OverviewPage, UploadPage } from '@web/pages';
+import { BrowserPage } from '@web/pages';
 import styles from '@web/App.module.css';
 
 const formatDate = (value: string | null): string => {
@@ -27,8 +27,8 @@ export const App = () => {
   const theme = useUiStore((state) => state.theme);
   const setTheme = useUiStore((state) => state.setTheme);
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const healthInfo = trpc.health.info.useQuery({});
   const authStatus = trpc.auth.status.useQuery({});
   const authMe = trpc.auth.me.useQuery({}, { retry: false });
   const browse = trpc.s3.browse.useQuery({ virtualPath: selectedPath });
@@ -58,6 +58,37 @@ export const App = () => {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  const urlPath = searchParams.get('path') ?? '';
+
+  useEffect(() => {
+    if (location.pathname !== '/') {
+      return;
+    }
+
+    if (urlPath !== selectedPath) {
+      setSelectedPath(urlPath);
+    }
+  }, [location.pathname, selectedPath, setSelectedPath, urlPath]);
+
+  useEffect(() => {
+    if (location.pathname !== '/') {
+      return;
+    }
+
+    if (selectedPath === urlPath) {
+      return;
+    }
+
+    const next = new URLSearchParams(searchParams);
+    if (selectedPath) {
+      next.set('path', selectedPath);
+    } else {
+      next.delete('path');
+    }
+
+    setSearchParams(next, { replace: true });
+  }, [location.pathname, searchParams, selectedPath, setSearchParams, urlPath]);
 
   const browser = useBrowserController({
     selectedPath,
@@ -92,14 +123,10 @@ export const App = () => {
         setTheme={setTheme}
         authenticated={authenticated}
         onAfterRefresh={refreshAuthState}
-        canView={canView}
-        canWrite={canWrite}
       />
 
       <div className={styles.finderWindow}>
         <FinderSidebar
-          canView={canView}
-          canWrite={canWrite}
           provider={authStatus.data?.provider}
           userEmail={authMe.data?.email}
           selectedPath={selectedPath}
@@ -109,31 +136,7 @@ export const App = () => {
         <section className={styles.finderContent}>
           <Routes>
             <Route
-              path="/overview"
-              element={
-                <OverviewPage
-                  app={healthInfo.data?.app ?? 'Loading...'}
-                  version={healthInfo.data?.version ?? '-'}
-                  env={healthInfo.data?.env ?? '-'}
-                  authRequired={authStatus.data?.authRequired ?? false}
-                  provider={authStatus.data?.provider ?? '-'}
-                  authError={authMe.isError}
-                  user={
-                    authMe.data
-                      ? {
-                          name: authMe.data.name,
-                          email: authMe.data.email,
-                          roles: authMe.data.roles,
-                          permissions: authMe.data.permissions,
-                        }
-                      : undefined
-                  }
-                />
-              }
-            />
-
-            <Route
-              path="/browser"
+              path="/"
               element={
                 canView ? (
                   <BrowserPage
@@ -163,23 +166,12 @@ export const App = () => {
                     onDeletePathItems={browser.deletePathItems}
                   />
                 ) : (
-                  <Navigate to="/overview" replace />
+                  <p className={styles.state}>No file browsing permission available.</p>
                 )
               }
             />
 
-            <Route
-              path="/upload"
-              element={
-                canWrite ? (
-                  <UploadPage selectedPath={selectedPath} onUploadComplete={refreshBrowse} />
-                ) : (
-                  <Navigate to="/overview" replace />
-                )
-              }
-            />
-
-            <Route path="*" element={<Navigate to="/overview" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </section>
       </div>

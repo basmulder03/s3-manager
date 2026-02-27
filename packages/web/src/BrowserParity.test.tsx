@@ -148,7 +148,7 @@ describe('Browser parity interactions', () => {
 
   it('supports ctrl/cmd+a selection and Delete shortcut bulk delete', async () => {
     render(
-      <MemoryRouter initialEntries={['/browser']}>
+      <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>
     );
@@ -169,7 +169,7 @@ describe('Browser parity interactions', () => {
 
   it('opens grouped context menu on right click', async () => {
     render(
-      <MemoryRouter initialEntries={['/browser']}>
+      <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>
     );
@@ -189,7 +189,7 @@ describe('Browser parity interactions', () => {
     mockPermissions = ['view'];
 
     render(
-      <MemoryRouter initialEntries={['/browser']}>
+      <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>
     );
