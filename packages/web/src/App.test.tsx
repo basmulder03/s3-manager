@@ -12,6 +12,10 @@ let mockAuthenticated = false;
 let mockPermissions: Array<'view' | 'write' | 'delete'> = [];
 const mockAuthStatusRefetch = vi.fn();
 const mockAuthMeRefetch = vi.fn();
+const { mockGetObjectMetadataQuery, mockGetObjectTextContentQuery } = vi.hoisted(() => ({
+  mockGetObjectMetadataQuery: vi.fn(),
+  mockGetObjectTextContentQuery: vi.fn(),
+}));
 
 vi.mock('@web/trpc/client', () => ({
   trpc: {
@@ -73,7 +77,10 @@ vi.mock('@web/trpc/client', () => ({
   trpcProxyClient: {
     s3: {
       getObjectMetadata: {
-        query: vi.fn(),
+        query: mockGetObjectMetadataQuery,
+      },
+      getObjectTextContent: {
+        query: mockGetObjectTextContentQuery,
       },
       getProperties: {
         query: vi.fn(),
@@ -95,6 +102,19 @@ describe('App routes', () => {
     mockPermissions = [];
     mockAuthStatusRefetch.mockReset();
     mockAuthMeRefetch.mockReset();
+    mockGetObjectMetadataQuery.mockReset();
+    mockGetObjectTextContentQuery.mockReset();
+
+    mockGetObjectMetadataQuery.mockResolvedValue({
+      contentType: 'text/plain',
+      etag: 'etag-1',
+      downloadUrl: 'https://example.com/test.txt',
+    });
+    mockGetObjectTextContentQuery.mockResolvedValue({
+      contentType: 'text/plain',
+      etag: 'etag-1',
+      content: 'hello world',
+    });
   });
 
   it('renders file browser by default route', () => {
@@ -190,5 +210,44 @@ describe('App routes', () => {
     await vi.waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('closes file preview modal when close button is pressed', async () => {
+    mockAuthenticated = true;
+    mockPermissions = ['view', 'write', 'delete'];
+
+    render(
+      <MemoryRouter initialEntries={['/?path=my-bucket&file=my-bucket/test.txt&mode=view']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    await screen.findByRole('heading', { name: 'View File' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'View File' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Edit File' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('switches text preview from view to edit mode when edit button is clicked', async () => {
+    mockAuthenticated = true;
+    mockPermissions = ['view', 'write', 'delete'];
+
+    render(
+      <MemoryRouter initialEntries={['/?path=my-bucket&file=my-bucket/test.txt&mode=view']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    await screen.findByRole('heading', { name: 'View File' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+    await screen.findByRole('heading', { name: 'Edit File' });
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
   });
 });

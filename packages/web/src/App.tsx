@@ -256,6 +256,15 @@ export const App = () => {
     [executePreviewAction, hasUnsavedPreviewChanges]
   );
 
+  const closeActiveModal = useCallback(() => {
+    if (browser.filePreviewModal) {
+      void runPreviewAction({ type: 'close' });
+      return;
+    }
+
+    browser.closeModals();
+  }, [browser, runPreviewAction]);
+
   useEffect(() => {
     if (!canView) {
       return;
@@ -279,7 +288,10 @@ export const App = () => {
 
     if (browser.filePreviewModal?.path === openedFilePath) {
       if (browser.filePreviewModal.mode === 'text') {
-        browser.setFilePreviewEditable(desiredMode === 'edit');
+        const shouldBeEditable = desiredMode === 'edit';
+        if (browser.filePreviewModal.editable !== shouldBeEditable) {
+          browser.setFilePreviewEditable(shouldBeEditable);
+        }
       }
       lastOpenedPreviewKeyRef.current = previewKey;
       return;
@@ -394,7 +406,7 @@ export const App = () => {
         showDiscardChangesModal={pendingDiscardAction !== null}
         modalError={browser.modalError}
         activeModalRef={browser.activeModalRef}
-        onClose={() => void runPreviewAction({ type: 'close' })}
+        onClose={closeActiveModal}
         onRenameNextNameChange={browser.setRenameNextName}
         onMoveDestinationPathChange={browser.setMoveDestinationPath}
         onSubmitRename={browser.submitRename}
@@ -408,7 +420,6 @@ export const App = () => {
           }
 
           setOpenedFileInUrl(openedFilePath, 'edit');
-          browser.setFilePreviewEditable(true);
         }}
         onDownloadFilePreview={async (path) => browser.downloadFile(path, true)}
         onConfirmDiscardChanges={() => {
