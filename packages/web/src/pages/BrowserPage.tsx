@@ -21,19 +21,15 @@ interface BrowserPageProps {
     isError: boolean;
     refetch: () => void;
   };
-  newFolderName: string;
-  setNewFolderName: (value: string) => void;
   selectedItems: Set<string>;
   selectedFiles: BrowseItem[];
   browserMessage: string;
   contextMenu: { x: number; y: number; item: BrowseItem } | null;
-  onCreateFolder: () => Promise<void>;
   onBulkDownload: () => Promise<void>;
   onBulkDelete: () => Promise<void>;
   onClearSelection: () => void;
-  onToggleSelection: (path: string, checked: boolean) => void;
-  onSetLastSelectedIndex: (index: number) => void;
-  onRowClick: (item: BrowseItem, index: number, event: MouseEvent<HTMLButtonElement>) => void;
+  onRowClick: (item: BrowseItem, index: number, event: MouseEvent<HTMLElement>) => void;
+  onRowDoubleClick: (item: BrowseItem) => void;
   onOpenContextMenu: (item: BrowseItem, event: MouseEvent) => void;
   onRename: (path: string, currentName: string) => void;
   onMove: (path: string) => void;
@@ -61,19 +57,15 @@ export const BrowserPage = ({
   canWrite,
   canDelete,
   browse,
-  newFolderName,
-  setNewFolderName,
   selectedItems,
   selectedFiles,
   browserMessage,
   contextMenu,
-  onCreateFolder,
   onBulkDownload,
   onBulkDelete,
   onClearSelection,
-  onToggleSelection,
-  onSetLastSelectedIndex,
   onRowClick,
+  onRowDoubleClick,
   onOpenContextMenu,
   onRename,
   onMove,
@@ -136,113 +128,158 @@ export const BrowserPage = ({
     }));
   }, [selectedPath]);
 
+  const parentPath = useMemo(() => {
+    const normalized = selectedPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!normalized) {
+      return '';
+    }
+
+    const parts = normalized.split('/');
+    return parts.slice(0, -1).join('/');
+  }, [selectedPath]);
+
+  const renderedItems = useMemo(() => {
+    const items = browse.data?.items ?? [];
+    if (!selectedPath) {
+      return items.map((item) => ({ item, isParentNavigation: false }));
+    }
+
+    return [
+      {
+        item: {
+          name: '..',
+          type: 'directory' as const,
+          path: parentPath,
+          size: null,
+          lastModified: null,
+        },
+        isParentNavigation: true,
+      },
+      ...items.map((item) => ({ item, isParentNavigation: false })),
+    ];
+  }, [browse.data?.items, parentPath, selectedPath]);
+
+  const selectedRecordsCount = selectedItems.size;
+
   return (
     <Panel title="Files" subtitle="Browse and manage items">
       <div className={styles.browserToolbar}>
-        <div className={styles.browserControls}>
-          <Button variant="muted" onClick={browse.refetch}>
-            Refresh
-          </Button>
-          <Button variant="muted" onClick={() => setSelectedPath('')}>
-            Root
-          </Button>
-        </div>
-        {canWrite ? (
+        <div className={styles.explorerChrome}>
           <div className={styles.browserControls}>
-            <Input
-              className={styles.folderInput}
-              value={newFolderName}
-              onChange={(event) => setNewFolderName(event.target.value)}
-              placeholder="New folder name"
-            />
-            <Button onClick={() => void onCreateFolder()}>Create Folder</Button>
-          </div>
-        ) : null}
-      </div>
-
-      <div
-        className={styles.breadcrumbTrail}
-        data-testid="breadcrumb-trail"
-        onDoubleClick={() => setIsBreadcrumbEditing(true)}
-        onClick={(event) => {
-          if (event.target === event.currentTarget) {
-            setIsBreadcrumbEditing(true);
-          }
-        }}
-      >
-        {isBreadcrumbEditing ? (
-          <Input
-            ref={breadcrumbInputRef}
-            className={styles.breadcrumbInput}
-            value={breadcrumbDraft}
-            onChange={(event) => setBreadcrumbDraft(event.target.value)}
-            onBlur={(event) => {
-              commitBreadcrumbPath(event.target.value);
-              setIsBreadcrumbEditing(false);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                commitBreadcrumbPath((event.target as HTMLInputElement).value);
-                setIsBreadcrumbEditing(false);
-                return;
-              }
-
-              if (event.key === 'Escape') {
-                setBreadcrumbDraft(selectedPath ? `/${selectedPath}` : '/');
-                setIsBreadcrumbEditing(false);
-              }
-            }}
-            aria-label="Breadcrumb path"
-            placeholder="/bucket/folder"
-          />
-        ) : (
-          <>
-            <button className={styles.breadcrumbLink} onClick={() => setSelectedPath('')}>
-              root
-            </button>
-            {breadcrumbSegments.map((segment) => (
-              <span key={segment.path} className={styles.breadcrumbPart}>
-                <span className={styles.breadcrumbDivider}>/</span>
-                <button
-                  className={styles.breadcrumbLink}
-                  onClick={() => setSelectedPath(segment.path)}
-                >
-                  {segment.label}
-                </button>
-              </span>
-            ))}
-          </>
-        )}
-      </div>
-
-      <p className={styles.hotkeysHint}>
-        Shortcuts: Ctrl/Cmd+A select all, Delete remove, Ctrl/Cmd+D download, F2 rename,
-        Ctrl/Cmd+Shift+M move.
-      </p>
-
-      {selectedItems.size > 0 ? (
-        <div className={styles.selectionBar}>
-          <span>{selectedItems.size} selected</span>
-          <Button
-            variant="muted"
-            onClick={() => void onBulkDownload()}
-            disabled={selectedFiles.length === 0}
-            title={
-              selectedFiles.length === 0 ? 'Select at least one file' : 'Download selected files'
-            }
-          >
-            Download Selected
-          </Button>
-          {canDelete ? (
-            <Button variant="danger" onClick={() => void onBulkDelete()}>
-              Delete Selected
+            <Button
+              variant="muted"
+              className={styles.iconButton}
+              onClick={() => setSelectedPath(parentPath)}
+              aria-label="Go back"
+              title="Back"
+              disabled={!selectedPath}
+            >
+              ←
             </Button>
-          ) : null}
-          <Button variant="muted" onClick={onClearSelection}>
-            Clear
-          </Button>
+            <Button
+              variant="muted"
+              className={styles.iconButton}
+              onClick={() => setSelectedPath('')}
+              aria-label="Go to root"
+              title="Go to root"
+              disabled={!selectedPath}
+            >
+              ⌂
+            </Button>
+
+            <div
+              className={styles.breadcrumbTrail}
+              data-testid="breadcrumb-trail"
+              onDoubleClick={() => setIsBreadcrumbEditing(true)}
+              onClick={(event) => {
+                if (event.target === event.currentTarget) {
+                  setIsBreadcrumbEditing(true);
+                }
+              }}
+            >
+              {isBreadcrumbEditing ? (
+                <Input
+                  ref={breadcrumbInputRef}
+                  className={styles.breadcrumbInput}
+                  value={breadcrumbDraft}
+                  onChange={(event) => setBreadcrumbDraft(event.target.value)}
+                  onBlur={(event) => {
+                    commitBreadcrumbPath(event.target.value);
+                    setIsBreadcrumbEditing(false);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      commitBreadcrumbPath((event.target as HTMLInputElement).value);
+                      setIsBreadcrumbEditing(false);
+                      return;
+                    }
+
+                    if (event.key === 'Escape') {
+                      setBreadcrumbDraft(selectedPath ? `/${selectedPath}` : '/');
+                      setIsBreadcrumbEditing(false);
+                    }
+                  }}
+                  aria-label="Breadcrumb path"
+                  placeholder="/bucket/folder"
+                />
+              ) : (
+                <>
+                  <button className={styles.breadcrumbLink} onClick={() => setSelectedPath('')}>
+                    root
+                  </button>
+                  {breadcrumbSegments.map((segment) => (
+                    <span key={segment.path} className={styles.breadcrumbPart}>
+                      <span className={styles.breadcrumbDivider}>/</span>
+                      <button
+                        className={styles.breadcrumbLink}
+                        onClick={() => setSelectedPath(segment.path)}
+                      >
+                        {segment.label}
+                      </button>
+                    </span>
+                  ))}
+                </>
+              )}
+            </div>
+
+            {selectedRecordsCount > 0 ? (
+              <>
+                <span className={styles.selectionCount}>{selectedRecordsCount} selected</span>
+                <Button
+                  variant="muted"
+                  onClick={() => void onBulkDownload()}
+                  disabled={selectedFiles.length === 0}
+                  title={
+                    selectedFiles.length === 0
+                      ? 'Select at least one file'
+                      : 'Download selected files'
+                  }
+                >
+                  Download
+                </Button>
+                {canDelete ? (
+                  <Button variant="danger" onClick={() => void onBulkDelete()}>
+                    Delete
+                  </Button>
+                ) : null}
+                <Button variant="muted" onClick={onClearSelection}>
+                  Clear
+                </Button>
+              </>
+            ) : null}
+
+            <Button
+              variant="muted"
+              className={`${styles.iconButton} ${styles.refreshButton}`}
+              onClick={browse.refetch}
+              aria-label="Refresh current location"
+              title="Refresh"
+            >
+              ↻
+            </Button>
+          </div>
         </div>
-      ) : null}
+      </div>
 
       {browse.isLoading ? <p className={styles.state}>Loading objects...</p> : null}
       {browse.isError ? (
@@ -252,65 +289,84 @@ export const BrowserPage = ({
 
       {browse.data ? (
         <>
-          <div className={styles.itemsHead} aria-hidden>
-            <span />
-            <span>Name</span>
-            <span>Path</span>
-            <span>Size</span>
-            <span>Modified</span>
-            <span>Menu</span>
-          </div>
+          {renderedItems.length === 0 ? (
+            <div className={styles.emptyItemsState}>
+              <p>No items in this location.</p>
+              <span>Upload files to this path or navigate to another folder.</span>
+            </div>
+          ) : (
+            <div className={styles.itemsTableWrap}>
+              <table className={styles.itemsTable}>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Path</th>
+                    <th>Size</th>
+                    <th>Modified</th>
+                    <th>Menu</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {renderedItems.map(({ item, isParentNavigation }, index) => (
+                    <tr
+                      key={`${item.type}:${isParentNavigation ? '__parent__' : item.path}`}
+                      className={
+                        !isParentNavigation && selectedItems.has(item.path) ? styles.isSelected : ''
+                      }
+                      onClick={(event) => {
+                        if (isParentNavigation) {
+                          return;
+                        }
 
-          <ul className={styles.items}>
-            {browse.data.items.map((item, index) => (
-              <li
-                key={`${item.type}:${item.path}`}
-                className={selectedItems.has(item.path) ? styles.isSelected : ''}
-              >
-                <div
-                  className={styles.itemRow}
-                  onContextMenu={(event) => onOpenContextMenu(item, event)}
-                >
-                  <label className={styles.rowCheckbox}>
-                    <input
-                      type="checkbox"
-                      checked={selectedItems.has(item.path)}
-                      onChange={(event) => {
-                        onToggleSelection(item.path, event.target.checked);
-                        onSetLastSelectedIndex(index);
+                        onRowClick(item, index, event);
                       }}
-                    />
-                  </label>
+                      onDoubleClick={() => {
+                        if (isParentNavigation) {
+                          setSelectedPath(parentPath);
+                          return;
+                        }
 
-                  <button
-                    className={styles.itemMainButton}
-                    onClick={(event) => onRowClick(item, index, event)}
-                  >
-                    <div className={styles.itemMain}>
-                      <span className={styles.itemIcon} aria-hidden>
-                        {item.type === 'directory' ? '📁' : '📄'}
-                      </span>
-                      <strong>{item.name}</strong>
-                      <span className={styles.itemPath}>{item.path}</span>
-                      <span>{item.size === null ? '-' : `${item.size} bytes`}</span>
-                      <span>{formatDate(item.lastModified)}</span>
-                    </div>
-                  </button>
+                        onRowDoubleClick(item);
+                      }}
+                      onContextMenu={(event) => {
+                        if (isParentNavigation) {
+                          event.preventDefault();
+                          return;
+                        }
 
-                  <div className={styles.itemActions}>
-                    <button
-                      className={styles.rowMenuButton}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => onOpenContextMenu(item, event)}
-                      aria-label={`Open menu for ${item.name}`}
+                        onOpenContextMenu(item, event);
+                      }}
                     >
-                      ⋯
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+                      <td className={styles.nameCell}>
+                        <div className={styles.itemMainButton}>
+                          <span className={styles.itemIcon} aria-hidden>
+                            {item.type === 'directory' ? '📁' : '📄'}
+                          </span>
+                          <strong>{item.name}</strong>
+                        </div>
+                      </td>
+                      <td className={styles.itemPath}>{item.path || '/'}</td>
+                      <td>{item.size === null ? '-' : `${item.size} bytes`}</td>
+                      <td>{formatDate(item.lastModified)}</td>
+                      <td className={styles.menuCell}>
+                        {!isParentNavigation ? (
+                          <button
+                            className={styles.rowMenuButton}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onDoubleClick={(event) => event.stopPropagation()}
+                            onClick={(event) => onOpenContextMenu(item, event)}
+                            aria-label={`Open menu for ${item.name}`}
+                          >
+                            ⋯
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {contextMenu ? (
             <div

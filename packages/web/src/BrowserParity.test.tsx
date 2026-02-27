@@ -195,7 +195,6 @@ describe('Browser parity interactions', () => {
     );
 
     expect(screen.queryByRole('button', { name: 'Create Folder' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Delete Selected' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });

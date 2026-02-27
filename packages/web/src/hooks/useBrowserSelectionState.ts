@@ -111,11 +111,7 @@ export const useBrowserSelectionState = ({
     setSelectedItems(new Set([path]));
   };
 
-  const handleRowClick = (
-    item: BrowseItem,
-    index: number,
-    event: MouseEvent<HTMLButtonElement>
-  ) => {
+  const handleRowClick = (item: BrowseItem, index: number, event: MouseEvent<HTMLElement>) => {
     if (event.shiftKey) {
       event.preventDefault();
       selectRange(index);
@@ -137,13 +133,14 @@ export const useBrowserSelectionState = ({
       return;
     }
 
-    if (item.type === 'directory') {
-      setSelectedPath(item.path);
-      return;
-    }
-
     selectOnly(item.path);
     setLastSelectedIndex(index);
+  };
+
+  const handleRowDoubleClick = (item: BrowseItem) => {
+    if (item.type === 'directory') {
+      setSelectedPath(item.path);
+    }
   };
 
   const openContextMenu = (item: BrowseItem, event: MouseEvent) => {
@@ -179,6 +176,7 @@ export const useBrowserSelectionState = ({
     toggleSelection,
     clearSelection,
     handleRowClick,
+    handleRowDoubleClick,
     openContextMenu,
   };
 };

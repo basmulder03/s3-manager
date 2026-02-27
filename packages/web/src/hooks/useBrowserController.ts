@@ -363,6 +363,7 @@ export const useBrowserController = ({
     toggleSelection: selection.toggleSelection,
     clearSelection: selection.clearSelection,
     handleRowClick: selection.handleRowClick,
+    handleRowDoubleClick: selection.handleRowDoubleClick,
     openContextMenu: selection.openContextMenu,
     createFolderInCurrentPath,
     bulkDownload,
