@@ -26,7 +26,27 @@ export const SnackbarHost = ({ snackbars, onDismiss }: SnackbarHostProps) => {
           }`}
           role="status"
         >
-          <span>{snackbar.message}</span>
+          <div className={styles.snackbarBody}>
+            <span>{snackbar.message}</span>
+            {typeof snackbar.progress === 'number' ? (
+              <div className={styles.snackbarProgressTrack} aria-hidden>
+                <div
+                  className={styles.snackbarProgressBar}
+                  style={{ width: `${Math.max(0, Math.min(100, snackbar.progress))}%` }}
+                />
+              </div>
+            ) : null}
+          </div>
+          {snackbar.actionLabel && snackbar.onAction ? (
+            <Button
+              variant="muted"
+              className={styles.snackbarAction}
+              onClick={snackbar.onAction}
+              aria-label={snackbar.actionLabel}
+            >
+              {snackbar.actionLabel}
+            </Button>
+          ) : null}
           <Button
             variant="muted"
             className={styles.snackbarDismiss}

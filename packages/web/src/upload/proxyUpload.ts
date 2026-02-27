@@ -7,6 +7,7 @@ export const uploadObjectViaProxy = async (input: {
   file: BrowserFileLike;
   contentType?: string;
   metadata?: Record<string, string>;
+  signal?: AbortSignal;
 }): Promise<{ key: string; etag: string | null; location: string | null }> => {
   if (!(input.file instanceof File)) {
     throw new Error('Backend proxy upload requires a File object');
@@ -23,6 +24,7 @@ export const uploadObjectViaProxy = async (input: {
     method: 'POST',
     credentials: 'include',
     body: formData,
+    signal: input.signal,
   });
 
   if (!response.ok) {

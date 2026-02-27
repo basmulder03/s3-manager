@@ -62,7 +62,9 @@ export const useBrowserController = ({
   const [folderSizeLoadingPaths, setFolderSizeLoadingPaths] = useState<Set<string>>(new Set());
   const [isUploading, setIsUploading] = useState(false);
   const activeModalRef = useRef<HTMLDivElement>(null);
-  const { snackbars, enqueueSnackbar, dismissSnackbar } = useSnackbarQueue();
+  const uploadAbortControllerRef = useRef<AbortController | null>(null);
+  const uploadCancellationRequestedRef = useRef(false);
+  const { snackbars, enqueueSnackbar, updateSnackbar, dismissSnackbar } = useSnackbarQueue();
   const uploadProcedures = useMemo(() => createUploadProceduresFromTrpc(trpcProxyClient), []);
 
   const browseItemsByPath = useMemo(() => {
@@ -219,8 +221,28 @@ export const useBrowserController = ({
 
     let uploadedCount = 0;
     let failedCount = 0;
+    let cancelled = false;
     const failureReasons = new Map<string, number>();
     const failureExamples = new Map<string, string[]>();
+    const totalCount = uploadFiles.length;
+    uploadCancellationRequestedRef.current = false;
+    let progressSnackbarId = 0;
+    progressSnackbarId = enqueueSnackbar({
+      message: `Uploading 0/${totalCount} item(s)...`,
+      tone: 'info',
+      durationMs: 0,
+      progress: 0,
+      actionLabel: 'Cancel',
+      onAction: () => {
+        uploadCancellationRequestedRef.current = true;
+        uploadAbortControllerRef.current?.abort();
+        updateSnackbar(progressSnackbarId, {
+          message: 'Cancelling upload...',
+          actionLabel: null,
+          onAction: null,
+        });
+      },
+    });
 
     const getUploadFailureReason = (error: unknown): string => {
       const rawMessage =
@@ -230,20 +252,36 @@ export const useBrowserController = ({
       const normalized = rawMessage.toLowerCase();
 
       if (normalized.includes('failed to fetch')) {
-        return 'Upload request could not reach S3 (usually CORS or endpoint configuration).';
+        return 'Upload request could not reach the backend upload proxy.';
       }
 
       return rawMessage;
     };
+
+    const isAbortError = (error: unknown): boolean => {
+      if (error instanceof DOMException) {
+        return error.name === 'AbortError';
+      }
+
+      return error instanceof Error && error.name === 'AbortError';
+    };
+
     setIsUploading(true);
 
     try {
       for (const file of uploadFiles) {
+        if (uploadCancellationRequestedRef.current) {
+          cancelled = true;
+          break;
+        }
+
         const relativePath =
           mode === 'folder'
             ? (file.webkitRelativePath || file.name).replace(/\\/g, '/').replace(/^\/+/, '')
             : file.name;
         const objectKey = `${normalizedPrefix}${relativePath}`;
+        const fileAbortController = new AbortController();
+        uploadAbortControllerRef.current = fileAbortController;
 
         try {
           await uploadObjectWithCookbook({
@@ -256,10 +294,19 @@ export const useBrowserController = ({
               original_filename: file.name,
             },
             forceProxyUpload: true,
-            proxyUpload: uploadObjectViaProxy,
+            proxyUpload: (input) =>
+              uploadObjectViaProxy({
+                ...input,
+                signal: fileAbortController.signal,
+              }),
           });
           uploadedCount += 1;
         } catch (error) {
+          if (uploadCancellationRequestedRef.current && isAbortError(error)) {
+            cancelled = true;
+            break;
+          }
+
           failedCount += 1;
           const reason = getUploadFailureReason(error);
           failureReasons.set(reason, (failureReasons.get(reason) ?? 0) + 1);
@@ -268,11 +315,30 @@ export const useBrowserController = ({
             examples.push(relativePath);
             failureExamples.set(reason, examples);
           }
+        } finally {
+          if (uploadAbortControllerRef.current === fileAbortController) {
+            uploadAbortControllerRef.current = null;
+          }
         }
+
+        const processedCount = uploadedCount + failedCount;
+        const progress = Math.round((processedCount / totalCount) * 100);
+        updateSnackbar(progressSnackbarId, {
+          message: `Uploading ${processedCount}/${totalCount} item(s)...`,
+          progress,
+        });
       }
 
       if (uploadedCount > 0) {
         refreshBrowse();
+      }
+
+      if (cancelled) {
+        enqueueSnackbar({
+          message: `Upload cancelled after ${uploadedCount}/${totalCount} item(s).`,
+          tone: uploadedCount > 0 ? 'info' : 'error',
+        });
+        return;
       }
 
       const failureReasonSummary = Array.from(failureReasons.entries())
@@ -303,6 +369,9 @@ export const useBrowserController = ({
         tone: 'info',
       });
     } finally {
+      uploadCancellationRequestedRef.current = false;
+      uploadAbortControllerRef.current = null;
+      dismissSnackbar(progressSnackbarId);
       setIsUploading(false);
     }
   };
