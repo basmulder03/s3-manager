@@ -40,7 +40,7 @@ services:
       retries: 20
 
   keycloak:
-    image: quay.io/keycloak/keycloak:23.0
+    image: quay.io/keycloak/keycloak:26.5
     container_name: s3-manager-keycloak
     command: start-dev --import-realm
     ports:
