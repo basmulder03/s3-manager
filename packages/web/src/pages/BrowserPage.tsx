@@ -40,6 +40,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button, Input } from '@web/components/ui';
+import { useModalFocusTrapEffect } from '@web/hooks/useModalFocusTrapEffect';
 import { trpcProxyClient } from '@web/trpc/client';
 import type { BrowseItem, ObjectPropertiesResult } from '@server/services/s3/types';
 import { resolveFileCapability } from '@web/utils/fileCapabilities';
@@ -888,6 +889,7 @@ export const BrowserPage = ({
   const wasContextMenuOpenRef = useRef(false);
   const wasBreadcrumbEditingRef = useRef(false);
   const uploadDropEnterDepthRef = useRef(0);
+  const activeModalRef = useRef<HTMLDivElement>(null);
   const folderInputAttributes = {
     directory: '',
     webkitdirectory: '',
@@ -2737,6 +2739,8 @@ export const BrowserPage = ({
   const hasOpenModalDialog = () =>
     document.querySelector('[role="dialog"][aria-modal="true"]') !== null;
 
+  useModalFocusTrapEffect(isModalNavigationBlocked, activeModalRef);
+
   useEffect(() => {
     if (renderedItems.length === 0 || defaultRowIndex < 0) {
       setFocusedRowIndex(null);
@@ -3749,7 +3753,10 @@ export const BrowserPage = ({
               aria-describedby="shortcuts-modal-description"
               aria-label="Keyboard shortcuts"
             >
-              <div className={`${styles.modalCard} ${styles.shortcutsModalCard}`}>
+              <div
+                className={`${styles.modalCard} ${styles.shortcutsModalCard}`}
+                ref={activeModalRef}
+              >
                 <div className={styles.shortcutsModalHeader}>
                   <Keyboard size={16} aria-hidden />
                   <h3 id="shortcuts-modal-title">Keyboard shortcuts</h3>
@@ -3808,7 +3815,10 @@ export const BrowserPage = ({
               aria-describedby="filter-help-modal-description"
               aria-label="Filter query help"
             >
-              <div className={`${styles.modalCard} ${styles.shortcutsModalCard}`}>
+              <div
+                className={`${styles.modalCard} ${styles.shortcutsModalCard}`}
+                ref={activeModalRef}
+              >
                 <div className={styles.shortcutsModalHeader}>
                   <BookOpenText size={16} aria-hidden />
                   <h3 id="filter-help-modal-title">Filter query help</h3>
@@ -3893,7 +3903,7 @@ export const BrowserPage = ({
               aria-describedby="file-upload-modal-description"
               aria-label="Upload selected files?"
             >
-              <div className={styles.modalCard}>
+              <div className={styles.modalCard} ref={activeModalRef}>
                 <h3 id="file-upload-modal-title">Upload selected files?</h3>
                 <p id="file-upload-modal-description">
                   Upload {pendingFileUploadFiles.length} selected file(s) to this location.
@@ -3928,7 +3938,7 @@ export const BrowserPage = ({
               aria-describedby="folder-upload-modal-description"
               aria-label="Confirm folder upload"
             >
-              <div className={styles.modalCard}>
+              <div className={styles.modalCard} ref={activeModalRef}>
                 <h3 id="folder-upload-modal-title">Upload selected folder?</h3>
                 <p id="folder-upload-modal-description">
                   Upload {pendingFolderUploadFiles.length} file(s) from the selected folder.
@@ -3963,7 +3973,7 @@ export const BrowserPage = ({
               aria-describedby="create-entry-modal-description"
               aria-label={createEntryModal.kind === 'file' ? 'Create file' : 'Create folder'}
             >
-              <div className={styles.modalCard}>
+              <div className={styles.modalCard} ref={activeModalRef}>
                 <h3 id="create-entry-modal-title">
                   {createEntryModal.kind === 'file' ? 'Create file' : 'Create folder'}
                 </h3>

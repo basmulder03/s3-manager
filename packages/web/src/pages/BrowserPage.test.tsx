@@ -429,6 +429,48 @@ describe('BrowserPage sorting and filtering', () => {
     expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument();
   });
 
+  it('moves focus into shortcuts modal and traps keyboard tabbing', async () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'alpha.txt',
+        type: 'file',
+        path: 'my-bucket/alpha.txt',
+        size: 4,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    const firstDataRow = screen.getByText('alpha.txt').closest('tr');
+    expect(firstDataRow).not.toBeNull();
+    if (!firstDataRow) {
+      return;
+    }
+
+    firstDataRow.focus();
+    expect(firstDataRow).toHaveFocus();
+
+    fireEvent.keyDown(window, { key: '?' });
+
+    const dialog = screen.getByRole('dialog', { name: 'Keyboard shortcuts' });
+    const closeButton = within(dialog).getByRole('button', { name: 'Close' });
+    await waitFor(() => {
+      expect(closeButton).toHaveFocus();
+    });
+
+    fireEvent.keyDown(closeButton, { key: 'Tab' });
+    expect(closeButton).toHaveFocus();
+    expect(firstDataRow).not.toHaveFocus();
+  });
+
   it('blocks explorer navigation shortcuts while a modal is open', () => {
     const { props, setSelectedPath } = createProps();
     render(<BrowserPage {...props} />);
