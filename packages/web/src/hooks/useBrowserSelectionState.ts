@@ -181,7 +181,25 @@ export const useBrowserSelectionState = ({
   const openContextMenu = (item: BrowseItem, event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    openContextMenuAt(item, event.clientX, event.clientY);
+
+    let nextX = event.clientX;
+    let nextY = event.clientY;
+    const anchor = event.currentTarget;
+    if (anchor instanceof HTMLElement) {
+      const rect = anchor.getBoundingClientRect();
+      const pointerLooksMisaligned =
+        event.clientX < rect.left - 40 ||
+        event.clientX > rect.right + 40 ||
+        event.clientY < rect.top - 40 ||
+        event.clientY > rect.bottom + 40;
+
+      if (pointerLooksMisaligned) {
+        nextX = rect.left + Math.min(rect.width - 12, 20);
+        nextY = rect.top + Math.min(rect.height - 12, 20);
+      }
+    }
+
+    openContextMenuAt(item, nextX, nextY);
   };
 
   const openContextMenuForItem = (item: BrowseItem) => {

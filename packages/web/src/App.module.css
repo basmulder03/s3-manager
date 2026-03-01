@@ -1674,6 +1674,178 @@
   background: #000;
 }
 
+.filePreviewMediaPlayer {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.filePreviewMediaFrame {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.filePreviewMediaAudio {
+  max-height: unset;
+  min-height: 110px;
+  background:
+    radial-gradient(circle at 10% 16%, color-mix(in srgb, var(--brand) 28%, #000), transparent 38%),
+    linear-gradient(145deg, #111922, #0a1018);
+}
+
+.filePreviewMediaControls {
+  display: grid;
+  gap: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-soft) 82%, var(--surface));
+  padding: 0.65rem 0.7rem;
+}
+
+.filePreviewMediaControlsOverlay {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0.85rem 0.85rem 0.7rem;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.72) 36%, rgba(0, 0, 0, 0.86));
+}
+
+.filePreviewMediaControlsOverlay .filePreviewMediaLabel,
+.filePreviewMediaControlsOverlay .filePreviewMediaTimelineRow,
+.filePreviewMediaControlsOverlay .filePreviewMediaVolume {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.filePreviewMediaControlsOverlay .filePreviewMediaButton {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(12, 14, 18, 0.56);
+  color: #f5f7fb;
+}
+
+.filePreviewMediaControlsOverlay .filePreviewMediaButton:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.68);
+  background: rgba(24, 31, 41, 0.76);
+}
+
+.filePreviewMediaControlsOverlay .filePreviewMediaButtonPrimary {
+  border-color: color-mix(in srgb, var(--brand) 70%, rgba(255, 255, 255, 0.35));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--brand) 85%, #f4f9ff),
+    color-mix(in srgb, var(--brand) 72%, #021224)
+  );
+}
+
+.filePreviewMediaLabel {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
+.filePreviewMediaTimelineRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.filePreviewMediaTimeline,
+.filePreviewMediaVolumeInput {
+  width: 100%;
+  accent-color: var(--brand);
+}
+
+.filePreviewMediaControlsRow {
+  display: flex;
+  justify-content: space-between;
+  column-gap: 1rem;
+  row-gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filePreviewMediaControlGroup {
+  display: inline-flex;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.filePreviewMediaButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.42rem 0.7rem;
+  min-width: 2.4rem;
+  min-height: 2.2rem;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.filePreviewMediaButtonIcon {
+  width: 1rem;
+  height: 1rem;
+  stroke-width: 2.25;
+}
+
+.filePreviewMediaButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--line-strong) 58%, var(--brand));
+  background: color-mix(in srgb, var(--surface) 82%, var(--brand-soft));
+}
+
+.filePreviewMediaButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.filePreviewMediaButtonPrimary {
+  border-color: color-mix(in srgb, var(--brand) 62%, var(--line-strong));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--brand) 86%, #ffffff),
+    color-mix(in srgb, var(--brand) 78%, #001f44)
+  );
+  color: #f8fbff;
+}
+
+.filePreviewMediaButtonPrimary:hover:not(:disabled) {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--brand) 90%, #ffffff),
+    color-mix(in srgb, var(--brand) 82%, #001f44)
+  );
+}
+
+.filePreviewMediaVolume {
+  display: inline-flex;
+  gap: 0.45rem;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.filePreviewMediaVolumeInput {
+  width: 105px;
+}
+
 .propertiesMetadata {
   display: grid;
   gap: 0.35rem;
@@ -1736,6 +1908,29 @@
 }
 
 @media (max-width: 720px) {
+  .filePreviewMediaControlsRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filePreviewMediaControlGroup {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .filePreviewMediaButton {
+    min-width: 2.2rem;
+  }
+
+  .filePreviewMediaVolume {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .filePreviewMediaVolumeInput {
+    width: min(220px, 72vw);
+  }
+
   .metadataEditorRow {
     grid-template-columns: 1fr;
   }
