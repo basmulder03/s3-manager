@@ -430,6 +430,31 @@ export const s3Router = router({
       }
     }),
 
+  createFile: writeProcedure
+    .meta({
+      openapi: {
+        method: 'POST',
+        path: '/s3/file/create',
+        tags: ['s3'],
+        summary: 'Create empty file',
+        protect: true,
+      },
+    })
+    .input(
+      z.object({
+        path: z.string().min(1),
+        fileName: z.string().min(1),
+      })
+    )
+    .output(z.any())
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return s3Service.createFile(input, actorFromContext(ctx));
+      } catch (error) {
+        throw mapS3ErrorToTrpc(error);
+      }
+    }),
+
   renameItem: writeProcedure
     .meta({
       openapi: {

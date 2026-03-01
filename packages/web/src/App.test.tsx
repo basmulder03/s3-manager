@@ -77,7 +77,13 @@ vi.mock('@web/trpc/client', () => ({
       createFolder: {
         useMutation: () => ({ mutateAsync: vi.fn() }),
       },
+      createFile: {
+        useMutation: () => ({ mutateAsync: vi.fn() }),
+      },
       renameItem: {
+        useMutation: () => ({ mutateAsync: vi.fn() }),
+      },
+      copyItem: {
         useMutation: () => ({ mutateAsync: vi.fn() }),
       },
       deleteObject: {

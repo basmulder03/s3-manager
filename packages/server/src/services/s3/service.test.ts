@@ -5,6 +5,7 @@ import {
   DeleteObjectsCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
+  PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import { S3Service } from './service';
 
@@ -194,6 +195,58 @@ class DeleteMultipleMockS3Client {
     throw new Error('Unexpected command sent to delete-multiple mock client');
   }
 }
+
+class CreateItemMockS3Client {
+  readonly calls: unknown[] = [];
+
+  async send(command: unknown): Promise<unknown> {
+    this.calls.push(command);
+
+    if (command instanceof PutObjectCommand) {
+      return {};
+    }
+
+    throw new Error('Unexpected command sent to create-item mock client');
+  }
+}
+
+describe('S3Service create markers', () => {
+  it('creates folder marker objects with a trailing slash', async () => {
+    const client = new CreateItemMockS3Client();
+    const service = new S3Service(() => client as never);
+
+    const result = await service.createFolder(
+      { path: 'my-bucket/projects', folderName: 'assets' },
+      'tester@example.com'
+    );
+
+    expect(result.path).toBe('my-bucket/projects/assets/');
+
+    const putCalls = client.calls.filter(
+      (call) => call instanceof PutObjectCommand
+    ) as unknown as CommandInput[];
+    expect(putCalls).toHaveLength(1);
+    expect(putCalls[0].input.Key).toBe('projects/assets/');
+  });
+
+  it('creates empty file objects at the selected path', async () => {
+    const client = new CreateItemMockS3Client();
+    const service = new S3Service(() => client as never);
+
+    const result = await service.createFile(
+      { path: 'my-bucket/projects', fileName: 'notes.txt' },
+      'tester@example.com'
+    );
+
+    expect(result.path).toBe('my-bucket/projects/notes.txt');
+
+    const putCalls = client.calls.filter(
+      (call) => call instanceof PutObjectCommand
+    ) as unknown as CommandInput[];
+    expect(putCalls).toHaveLength(1);
+    expect(putCalls[0].input.Key).toBe('projects/notes.txt');
+  });
+});
 
 describe('S3Service deleteFolder', () => {
   it('deletes in batches of 1000', async () => {

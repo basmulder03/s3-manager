@@ -65,6 +65,8 @@ const createProps = () => {
       contextMenu: null,
       onBulkDownload: vi.fn(async () => {}),
       onBulkDelete: vi.fn(async () => {}),
+      onCreateFile: vi.fn(async () => {}),
+      onCreateFolder: vi.fn(async () => {}),
       onUploadFiles: vi.fn(async () => {}),
       onUploadFolder: vi.fn(async () => {}),
       onClearSelection: vi.fn(),
@@ -115,6 +117,38 @@ beforeEach(() => {
       metadata: {},
     })
   );
+});
+
+describe('BrowserPage create actions', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('creates a file from toolbar using modal input', () => {
+    const { props } = createProps();
+
+    render(<BrowserPage {...props} />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Create File' })[0]!);
+    fireEvent.change(screen.getByRole('textbox', { name: 'File name' }), {
+      target: { value: 'notes.txt' },
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Create File' })[1]!);
+
+    expect(props.onCreateFile).toHaveBeenCalledWith('notes.txt');
+  });
+
+  it('creates a folder from toolbar using modal input', () => {
+    const { props } = createProps();
+
+    render(<BrowserPage {...props} />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Create Folder' })[0]!);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Folder name' }), {
+      target: { value: 'assets' },
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Create Folder' })[1]!);
+
+    expect(props.onCreateFolder).toHaveBeenCalledWith('assets');
+  });
 });
 
 describe('BrowserPage breadcrumb editing', () => {

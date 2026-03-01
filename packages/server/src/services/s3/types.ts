@@ -209,6 +209,11 @@ export interface CreateFolderInput {
   folderName: string;
 }
 
+export interface CreateFileInput {
+  path: string;
+  fileName: string;
+}
+
 export interface DeleteFolderInput {
   path: string;
 }

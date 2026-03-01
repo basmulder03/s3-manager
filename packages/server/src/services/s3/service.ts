@@ -38,6 +38,7 @@ import type {
   BrowseResult,
   CompleteMultipartUploadInput,
   CompleteMultipartUploadResult,
+  CreateFileInput,
   CreateMultipartPartUrlInput,
   CreateMultipartPartUrlResult,
   CreateFolderInput,
@@ -1237,6 +1238,53 @@ export class S3Service {
         Date.now() - startedAt
       );
       throw mapError(error, 'Failed to create folder');
+    }
+  }
+
+  async createFile(input: CreateFileInput, actor?: string): Promise<{ path: string }> {
+    const startedAt = Date.now();
+    const safeActor = metricActor(actor);
+
+    try {
+      const { bucketName, prefix } = parseVirtualPath(input.path);
+      const target = resolveBucketReference(bucketName);
+      const objectKey = joinObjectKey(prefix, input.fileName);
+
+      const client = this.clientProvider(target.sourceId);
+      await client.send(
+        new PutObjectCommand({
+          Bucket: target.bucketName,
+          Key: objectKey,
+          Body: '',
+        })
+      );
+
+      recordS3FileAccess(
+        {
+          operation: 'write',
+          actor: safeActor,
+          bucket: target.bucketReference,
+          objectKey,
+          result: 'success',
+        },
+        Date.now() - startedAt
+      );
+
+      return {
+        path: `${target.bucketReference}/${objectKey}`,
+      };
+    } catch (error) {
+      recordS3FileAccess(
+        {
+          operation: 'write',
+          actor: safeActor,
+          bucket: '*',
+          objectKey: input.path,
+          result: 'failure',
+        },
+        Date.now() - startedAt
+      );
+      throw mapError(error, 'Failed to create file');
     }
   }
 

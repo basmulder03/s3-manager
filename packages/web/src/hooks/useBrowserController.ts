@@ -43,6 +43,7 @@ interface UseBrowserControllerOptions {
   canDelete: boolean;
   canManageProperties: boolean;
   locationPathname: string;
+  createFileAsync: (input: { path: string; fileName: string }) => Promise<unknown>;
   createFolderAsync: (input: { path: string; folderName: string }) => Promise<unknown>;
   renameItemAsync: (input: {
     sourcePath: string;
@@ -65,6 +66,7 @@ export const useBrowserController = ({
   canDelete,
   canManageProperties,
   locationPathname,
+  createFileAsync,
   createFolderAsync,
   renameItemAsync,
   copyItemAsync,
@@ -72,7 +74,6 @@ export const useBrowserController = ({
   deleteFolderAsync,
   deleteMultipleAsync,
 }: UseBrowserControllerOptions) => {
-  const [newFolderName, setNewFolderName] = useState('');
   const [renameModal, setRenameModal] = useState<RenameModalState | null>(null);
   const [moveModal, setMoveModal] = useState<MoveModalState | null>(null);
   const [deleteModal, setDeleteModal] = useState<DeleteModalState | null>(null);
@@ -496,7 +497,36 @@ export const useBrowserController = ({
     }
   };
 
-  const createFolderInCurrentPath = async () => {
+  const createFileInCurrentPath = async (fileName: string) => {
+    if (!canWrite) {
+      enqueueSnackbar({ message: 'You do not have write permission.', tone: 'error' });
+      return;
+    }
+
+    if (!selectedPath) {
+      enqueueSnackbar({
+        message: 'Navigate to a bucket path before creating files.',
+        tone: 'error',
+      });
+      return;
+    }
+
+    const trimmedFileName = fileName.trim();
+    if (!trimmedFileName) {
+      enqueueSnackbar({ message: 'File name is required.', tone: 'error' });
+      return;
+    }
+
+    try {
+      await createFileAsync({ path: selectedPath, fileName: trimmedFileName });
+      enqueueSnackbar({ message: 'File created successfully.', tone: 'success' });
+      refreshBrowse();
+    } catch {
+      enqueueSnackbar({ message: 'Failed to create file.', tone: 'error' });
+    }
+  };
+
+  const createFolderInCurrentPath = async (folderName: string) => {
     if (!canWrite) {
       enqueueSnackbar({ message: 'You do not have write permission.', tone: 'error' });
       return;
@@ -510,14 +540,14 @@ export const useBrowserController = ({
       return;
     }
 
-    if (!newFolderName.trim()) {
+    const trimmedFolderName = folderName.trim();
+    if (!trimmedFolderName) {
       enqueueSnackbar({ message: 'Folder name is required.', tone: 'error' });
       return;
     }
 
     try {
-      await createFolderAsync({ path: selectedPath, folderName: newFolderName.trim() });
-      setNewFolderName('');
+      await createFolderAsync({ path: selectedPath, folderName: trimmedFolderName });
       enqueueSnackbar({ message: 'Folder created successfully.', tone: 'success' });
       refreshBrowse();
     } catch {
@@ -1493,8 +1523,6 @@ export const useBrowserController = ({
   });
 
   return {
-    newFolderName,
-    setNewFolderName,
     snackbars,
     enqueueSnackbar,
     dismissSnackbar,
@@ -1534,6 +1562,7 @@ export const useBrowserController = ({
     openContextMenu: selection.openContextMenu,
     openContextMenuForItem: selection.openContextMenuForItem,
     closeContextMenu,
+    createFileInCurrentPath,
     createFolderInCurrentPath,
     uploadFiles: (files: FileList | File[]) => uploadFromSelection(files, 'files'),
     uploadFolder: (files: FileList | File[]) => uploadFromSelection(files, 'folder'),

@@ -3,7 +3,13 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter } from 'react-router';
 import { App } from '@web/App';
 
+const createFileMutate = vi.fn(async () => ({ path: 'my-bucket/new-file.txt' }));
 const createFolderMutate = vi.fn(async () => ({ path: 'my-bucket/new-folder/' }));
+const copyItemMutate = vi.fn(async () => ({
+  sourcePath: 'my-bucket/folder/report.txt',
+  destinationPath: 'my-bucket/folder/report-copy.txt',
+  copiedObjects: 1,
+}));
 const renameMutate = vi.fn(async () => ({
   destinationPath: 'my-bucket/new-name',
   movedObjects: 1,
@@ -119,8 +125,14 @@ vi.mock('@web/trpc/client', () => ({
       createFolder: {
         useMutation: () => ({ mutateAsync: createFolderMutate }),
       },
+      createFile: {
+        useMutation: () => ({ mutateAsync: createFileMutate }),
+      },
       renameItem: {
         useMutation: () => ({ mutateAsync: renameMutate }),
+      },
+      copyItem: {
+        useMutation: () => ({ mutateAsync: copyItemMutate }),
       },
       deleteObject: {
         useMutation: () => ({ mutateAsync: deleteObjectMutate }),
@@ -176,7 +188,9 @@ describe('Browser parity interactions', () => {
     mockAuthRequired = false;
     mockAuthenticated = false;
     mockPermissions = [];
+    createFileMutate.mockClear();
     createFolderMutate.mockClear();
+    copyItemMutate.mockClear();
     renameMutate.mockClear();
     deleteObjectMutate.mockClear();
     deleteFolderMutate.mockClear();

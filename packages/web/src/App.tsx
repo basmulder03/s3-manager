@@ -123,6 +123,7 @@ export const App = () => {
       retry: false,
     }
   );
+  const createFile = trpc.s3.createFile.useMutation();
   const createFolder = trpc.s3.createFolder.useMutation();
   const renameItem = trpc.s3.renameItem.useMutation();
   const copyItem = trpc.s3.copyItem.useMutation();
@@ -247,6 +248,7 @@ export const App = () => {
     canDelete,
     canManageProperties,
     locationPathname: location.pathname,
+    createFileAsync: createFile.mutateAsync,
     createFolderAsync: createFolder.mutateAsync,
     renameItemAsync: renameItem.mutateAsync,
     copyItemAsync: copyItem.mutateAsync,
@@ -531,6 +533,8 @@ export const App = () => {
                     contextMenu={browser.contextMenu}
                     onBulkDownload={browser.bulkDownload}
                     onBulkDelete={browser.bulkDelete}
+                    onCreateFile={browser.createFileInCurrentPath}
+                    onCreateFolder={browser.createFolderInCurrentPath}
                     onUploadFiles={browser.uploadFiles}
                     onUploadFolder={browser.uploadFolder}
                     onClearSelection={browser.clearSelection}

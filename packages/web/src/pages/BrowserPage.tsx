@@ -73,6 +73,8 @@ interface BrowserPageProps {
   contextMenu: { x: number; y: number; item: BrowseItem } | null;
   onBulkDownload: () => Promise<void>;
   onBulkDelete: () => Promise<void>;
+  onCreateFile: (fileName: string) => Promise<void>;
+  onCreateFolder: (folderName: string) => Promise<void>;
   onUploadFiles: (files: FileList | File[]) => Promise<void>;
   onUploadFolder: (files: FileList | File[]) => Promise<void>;
   onClearSelection: () => void;
@@ -647,6 +649,8 @@ export const BrowserPage = ({
   contextMenu,
   onBulkDownload,
   onBulkDelete,
+  onCreateFile,
+  onCreateFolder,
   onUploadFiles,
   onUploadFolder,
   onClearSelection,
@@ -698,6 +702,11 @@ export const BrowserPage = ({
   >({});
   const [propertiesLoadingPaths, setPropertiesLoadingPaths] = useState<Set<string>>(new Set());
   const [pendingFolderUploadFiles, setPendingFolderUploadFiles] = useState<File[]>([]);
+  const [createEntryModal, setCreateEntryModal] = useState<{
+    kind: 'file' | 'folder';
+    value: string;
+  } | null>(null);
+  const [createEntryError, setCreateEntryError] = useState('');
   const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
   const [sortRules, setSortRules] = useState<SortRule[]>([
     { key: 'type', direction: 'asc' },
@@ -1749,6 +1758,39 @@ export const BrowserPage = ({
   );
   const hasBucketContext = selectedPath.trim().replace(/^\/+/, '').length > 0;
   const uploadDisabled = isUploading || !hasBucketContext;
+
+  const openCreateEntryModal = (kind: 'file' | 'folder') => {
+    setCreateEntryError('');
+    setCreateEntryModal({ kind, value: '' });
+  };
+
+  const closeCreateEntryModal = () => {
+    setCreateEntryError('');
+    setCreateEntryModal(null);
+  };
+
+  const submitCreateEntryModal = async () => {
+    if (!createEntryModal) {
+      return;
+    }
+
+    const value = createEntryModal.value.trim();
+    if (!value) {
+      setCreateEntryError(
+        createEntryModal.kind === 'file' ? 'File name is required.' : 'Folder name is required.'
+      );
+      return;
+    }
+
+    if (createEntryModal.kind === 'file') {
+      await onCreateFile(value);
+    } else {
+      await onCreateFolder(value);
+    }
+
+    closeCreateEntryModal();
+  };
+
   const selectedBrowseItems = (browse.data?.items ?? []).filter((item) =>
     selectedItems.has(item.path)
   );
@@ -2196,6 +2238,85 @@ export const BrowserPage = ({
     setIsFilterOpen(false);
   };
 
+  const attachRelativePathToFile = (file: File, relativePath: string): File => {
+    try {
+      Object.defineProperty(file, 'webkitRelativePath', {
+        configurable: true,
+        value: relativePath,
+      });
+      return file;
+    } catch {
+      return file;
+    }
+  };
+
+  const collectFilesFromDirectoryHandle = async (
+    directoryHandle: { values: () => AsyncIterable<unknown> },
+    parentPath = ''
+  ): Promise<File[]> => {
+    const files: File[] = [];
+
+    for await (const entry of directoryHandle.values()) {
+      const entryRecord = entry as {
+        kind?: string;
+        name?: string;
+        getFile?: () => Promise<File>;
+        values?: () => AsyncIterable<unknown>;
+      };
+
+      if (entryRecord.kind === 'file' && typeof entryRecord.getFile === 'function') {
+        const file = await entryRecord.getFile();
+        const relativePath = parentPath
+          ? `${parentPath}/${entryRecord.name ?? file.name}`
+          : (entryRecord.name ?? file.name);
+        files.push(attachRelativePathToFile(file, relativePath));
+        continue;
+      }
+
+      if (entryRecord.kind === 'directory' && typeof entryRecord.values === 'function') {
+        const nextParentPath = parentPath
+          ? `${parentPath}/${entryRecord.name ?? ''}`
+          : (entryRecord.name ?? '');
+        const nestedFiles = await collectFilesFromDirectoryHandle(
+          { values: entryRecord.values.bind(entryRecord) },
+          nextParentPath
+        );
+        files.push(...nestedFiles);
+      }
+    }
+
+    return files;
+  };
+
+  const onSelectFolderForUpload = async () => {
+    const directoryPicker = (
+      window as Window & {
+        showDirectoryPicker?: () => Promise<{ values: () => AsyncIterable<unknown> }>;
+      }
+    ).showDirectoryPicker;
+
+    if (!directoryPicker) {
+      uploadFolderInputRef.current?.click();
+      return;
+    }
+
+    try {
+      const directoryHandle = await directoryPicker();
+      const files = await collectFilesFromDirectoryHandle(directoryHandle);
+      if (files.length === 0) {
+        return;
+      }
+
+      setPendingFolderUploadFiles(files);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+
+      uploadFolderInputRef.current?.click();
+    }
+  };
+
   const focusRowAtIndex = useCallback(
     (index: number) => {
       if (renderedItems.length === 0) {
@@ -2230,6 +2351,7 @@ export const BrowserPage = ({
       isFilterHelpModalOpen ||
       contextMenu !== null ||
       pendingFolderUploadFiles.length > 0 ||
+      createEntryModal !== null ||
       isBreadcrumbEditing ||
       isFilterOpen
     ) {
@@ -2263,6 +2385,7 @@ export const BrowserPage = ({
     isFilterHelpModalOpen,
     isShortcutsModalOpen,
     pendingFolderUploadFiles.length,
+    createEntryModal,
     selectedPath,
     renderedItems,
   ]);
@@ -3087,6 +3210,28 @@ export const BrowserPage = ({
               <>
                 <Button
                   variant="muted"
+                  disabled={!hasBucketContext}
+                  onClick={() => openCreateEntryModal('file')}
+                  title={
+                    !hasBucketContext ? 'Navigate to a bucket before creating files' : 'Create file'
+                  }
+                >
+                  Create File
+                </Button>
+                <Button
+                  variant="muted"
+                  disabled={!hasBucketContext}
+                  onClick={() => openCreateEntryModal('folder')}
+                  title={
+                    !hasBucketContext
+                      ? 'Navigate to a bucket before creating folders'
+                      : 'Create folder'
+                  }
+                >
+                  Create Folder
+                </Button>
+                <Button
+                  variant="muted"
                   disabled={uploadDisabled}
                   onClick={() => uploadFilesInputRef.current?.click()}
                   title={
@@ -3098,7 +3243,7 @@ export const BrowserPage = ({
                 <Button
                   variant="muted"
                   disabled={uploadDisabled}
-                  onClick={() => uploadFolderInputRef.current?.click()}
+                  onClick={() => void onSelectFolderForUpload()}
                   title={
                     !hasBucketContext ? 'Navigate to a bucket before uploading' : 'Upload folder'
                   }
@@ -3305,6 +3450,57 @@ export const BrowserPage = ({
                     }}
                   >
                     Upload Folder
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {createEntryModal ? (
+            <div
+              className={styles.modalOverlay}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="create-entry-modal-title"
+              aria-describedby="create-entry-modal-description"
+              aria-label={createEntryModal.kind === 'file' ? 'Create file' : 'Create folder'}
+            >
+              <div className={styles.modalCard}>
+                <h3 id="create-entry-modal-title">
+                  {createEntryModal.kind === 'file' ? 'Create file' : 'Create folder'}
+                </h3>
+                <p id="create-entry-modal-description">
+                  {createEntryModal.kind === 'file'
+                    ? 'Enter a file name to create an empty object in this location.'
+                    : 'Enter a folder name to create a virtual folder in this location.'}
+                </p>
+                <Input
+                  autoFocus
+                  value={createEntryModal.value}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setCreateEntryModal((previous) =>
+                      previous ? { ...previous, value: nextValue } : previous
+                    );
+                    if (createEntryError) {
+                      setCreateEntryError('');
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void submitCreateEntryModal();
+                    }
+                  }}
+                  placeholder={createEntryModal.kind === 'file' ? 'notes.txt' : 'assets'}
+                  aria-label={createEntryModal.kind === 'file' ? 'File name' : 'Folder name'}
+                />
+                {createEntryError ? <p className={styles.modalError}>{createEntryError}</p> : null}
+                <div className={styles.modalActions}>
+                  <Button variant="muted" onClick={closeCreateEntryModal}>
+                    Cancel
+                  </Button>
+                  <Button onClick={() => void submitCreateEntryModal()}>
+                    {createEntryModal.kind === 'file' ? 'Create File' : 'Create Folder'}
                   </Button>
                 </div>
               </div>
