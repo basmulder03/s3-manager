@@ -10,6 +10,12 @@ vi.mock('@web/components/UploadPanel', () => ({
 let mockAuthRequired = false;
 let mockAuthenticated = false;
 let mockPermissions: Array<'view' | 'write' | 'delete' | 'manage_properties'> = [];
+let mockElevationSources: Array<{
+  entitlementKey: string;
+  provider: 'azure' | 'google';
+  target: string;
+  permissions: string[];
+}> = [];
 const mockAuthStatusRefetch = vi.fn();
 const mockAuthMeRefetch = vi.fn();
 const { mockGetObjectMetadataQuery, mockGetObjectTextContentQuery } = vi.hoisted(() => ({
@@ -41,6 +47,7 @@ vi.mock('@web/trpc/client', () => ({
                 email: 'alice@example.com',
                 roles: ['S3-Admin'],
                 permissions: mockPermissions,
+                elevationSources: mockElevationSources,
               }
             : undefined,
           refetch: mockAuthMeRefetch,
@@ -103,6 +110,7 @@ describe('App routes', () => {
     mockAuthRequired = false;
     mockAuthenticated = false;
     mockPermissions = [];
+    mockElevationSources = [];
     mockAuthStatusRefetch.mockReset();
     mockAuthMeRefetch.mockReset();
     mockGetObjectMetadataQuery.mockReset();
@@ -213,6 +221,31 @@ describe('App routes', () => {
     await vi.waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('shows active elevation source details in session panel', async () => {
+    mockAuthenticated = true;
+    mockPermissions = ['view', 'write', 'manage_properties'];
+    mockElevationSources = [
+      {
+        entitlementKey: 'property-admin-temp',
+        provider: 'azure',
+        target: 'group-123',
+        permissions: ['manage_properties'],
+      },
+    ];
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show session panel' }));
+
+    expect(screen.getByText('Active Elevation')).toBeInTheDocument();
+    expect(screen.getByText('property-admin-temp')).toBeInTheDocument();
+    expect(screen.getByText('azure · group-123')).toBeInTheDocument();
   });
 
   it('closes file preview modal when close button is pressed', async () => {

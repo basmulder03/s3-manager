@@ -8,6 +8,12 @@ interface FinderSidebarProps {
   userEmail: string | undefined;
   selectedPath: string;
   permissions: string[];
+  elevationSources: Array<{
+    entitlementKey: string;
+    provider: 'azure' | 'google';
+    target: string;
+    permissions: string[];
+  }>;
   authenticated: boolean;
   onElevationGranted?: () => void;
 }
@@ -36,6 +42,7 @@ export const FinderSidebar = ({
   userEmail,
   selectedPath,
   permissions,
+  elevationSources,
   authenticated,
   onElevationGranted,
 }: FinderSidebarProps) => {
@@ -233,6 +240,26 @@ export const FinderSidebar = ({
         <div className={styles.finderMeta}>
           <span>Path</span>
           <strong>{selectedPath || '/'}</strong>
+        </div>
+        <div className={styles.finderMeta}>
+          <span>Active Elevation</span>
+          {elevationSources.length === 0 ? (
+            <strong>none</strong>
+          ) : (
+            <div className={styles.elevationSourceList}>
+              {elevationSources.map((source) => (
+                <p
+                  key={`${source.entitlementKey}:${source.target}`}
+                  className={styles.elevationSourceItem}
+                >
+                  <strong>{source.entitlementKey}</strong>
+                  <span>
+                    {source.provider} · {source.target}
+                  </span>
+                </p>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

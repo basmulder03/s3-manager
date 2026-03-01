@@ -177,6 +177,30 @@
   white-space: nowrap;
 }
 
+.elevationSourceList {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.elevationSourceItem {
+  margin: 0;
+  display: grid;
+  gap: 0.1rem;
+}
+
+.elevationSourceItem strong {
+  font-size: 0.78rem;
+  color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.elevationSourceItem span {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .permissionChips {
   display: flex;
   flex-wrap: wrap;
