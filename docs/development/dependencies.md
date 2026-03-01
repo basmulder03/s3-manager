@@ -14,7 +14,7 @@ bun install
 ## Key Runtime Dependencies
 
 - Backend: `hono`, `@trpc/server`, `zod`, `jose`, `@aws-sdk/client-s3`
-- Frontend: `react`, `react-router-dom`, `@trpc/react-query`, `@tanstack/react-query`, `zustand`
+- Frontend: `react`, `react-router`, `@trpc/react-query`, `@tanstack/react-query`, `zustand`
 
 ## Key Dev Dependencies
 

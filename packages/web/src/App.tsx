@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { API_ORIGIN, trpc } from '@web/trpc/client';
 import { useUiStore } from '@web/state/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
