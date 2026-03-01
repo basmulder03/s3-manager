@@ -246,6 +246,7 @@ describe('App routes', () => {
     expect(screen.getByText('Active Elevation')).toBeInTheDocument();
     expect(screen.getByText('property-admin-temp')).toBeInTheDocument();
     expect(screen.getByText('azure · group-123')).toBeInTheDocument();
+    expect(screen.getByText('grants: manage_properties')).toBeInTheDocument();
   });
 
   it('closes file preview modal when close button is pressed', async () => {

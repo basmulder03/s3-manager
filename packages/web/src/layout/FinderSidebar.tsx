@@ -256,6 +256,7 @@ export const FinderSidebar = ({
                   <span>
                     {source.provider} · {source.target}
                   </span>
+                  <span>grants: {source.permissions.join(', ')}</span>
                 </p>
               ))}
             </div>
