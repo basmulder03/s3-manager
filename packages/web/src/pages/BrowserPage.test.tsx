@@ -13,6 +13,8 @@ const createProps = () => {
     props: {
       selectedPath: 'my-bucket/folder',
       setSelectedPath,
+      knownBucketNames: ['my-bucket', 'archive-bucket'],
+      breadcrumbValidationMessage: undefined,
       canWrite: true,
       canDelete: true,
       isUploading: false,
@@ -96,6 +98,177 @@ describe('BrowserPage breadcrumb editing', () => {
     fireEvent.keyDown(breadcrumbInput, { key: 'Enter' });
 
     expect(setSelectedPath).toHaveBeenCalledWith('my-bucket/next');
+  });
+
+  it('shows breadcrumb auto-complete hints while typing', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'docs',
+        type: 'directory',
+        path: 'my-bucket/folder/docs',
+        size: null,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('breadcrumb-trail'));
+    const breadcrumbInput = screen.getByRole('textbox', { name: 'Breadcrumb path' });
+    fireEvent.change(breadcrumbInput, { target: { value: '/my-bucket/folder/d' } });
+
+    const hints = screen.getByTestId('breadcrumb-hints');
+    expect(hints).toHaveTextContent('/my-bucket/folder/docs');
+  });
+
+  it('accepts highlighted breadcrumb hint with Tab', () => {
+    const { props, setSelectedPath } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'docs',
+        type: 'directory',
+        path: 'my-bucket/folder/docs',
+        size: null,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('breadcrumb-trail'));
+    const breadcrumbInput = screen.getByRole('textbox', { name: 'Breadcrumb path' });
+    fireEvent.change(breadcrumbInput, { target: { value: '/my-bucket/folder/d' } });
+    fireEvent.keyDown(breadcrumbInput, { key: 'ArrowDown' });
+    fireEvent.keyDown(breadcrumbInput, { key: 'Tab' });
+
+    expect(setSelectedPath).toHaveBeenCalledWith('my-bucket/folder/docs');
+  });
+
+  it('resets breadcrumb draft and hints when re-entering edit mode', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'docs',
+        type: 'directory',
+        path: 'my-bucket/folder/docs',
+        size: null,
+        lastModified: null,
+      },
+      {
+        name: 'images',
+        type: 'directory',
+        path: 'my-bucket/folder/images',
+        size: null,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('breadcrumb-trail'));
+    const breadcrumbInput = screen.getByRole('textbox', { name: 'Breadcrumb path' });
+    fireEvent.change(breadcrumbInput, { target: { value: '/my-bucket/folder/do' } });
+    fireEvent.blur(breadcrumbInput);
+
+    fireEvent.click(screen.getByTestId('breadcrumb-trail'));
+    const reopenedInput = screen.getByRole('textbox', { name: 'Breadcrumb path' });
+    expect(reopenedInput).toHaveValue('/my-bucket/folder');
+
+    const hints = screen.getByTestId('breadcrumb-hints');
+    expect(hints).toHaveTextContent('/my-bucket/folder/docs');
+    expect(hints).toHaveTextContent('/my-bucket/folder/images');
+  });
+
+  it('shows current directory options when typing only a folder fragment', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'assets',
+        type: 'directory',
+        path: 'my-bucket/folder/assets',
+        size: null,
+        lastModified: null,
+      },
+      {
+        name: 'archive',
+        type: 'directory',
+        path: 'my-bucket/folder/archive',
+        size: null,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('breadcrumb-trail'));
+    const breadcrumbInput = screen.getByRole('textbox', { name: 'Breadcrumb path' });
+    fireEvent.change(breadcrumbInput, { target: { value: 'ass' } });
+
+    const hints = screen.getByTestId('breadcrumb-hints');
+    expect(hints).toHaveTextContent('/my-bucket/folder/assets');
+    expect(hints).not.toHaveTextContent('/my-bucket/folder/archive');
+  });
+
+  it('keeps previously discovered directory hints after refocus', () => {
+    const { props } = createProps();
+    const firstItems: BrowseItem[] = [
+      {
+        name: 'assets',
+        type: 'directory',
+        path: 'my-bucket/assets',
+        size: null,
+        lastModified: null,
+      },
+    ];
+
+    const { rerender } = render(
+      <BrowserPage
+        {...props}
+        selectedPath="my-bucket"
+        browse={{ ...props.browse, data: { ...props.browse.data!, items: firstItems } }}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('breadcrumb-trail'));
+    const breadcrumbInput = screen.getByRole('textbox', { name: 'Breadcrumb path' });
+    fireEvent.change(breadcrumbInput, { target: { value: '/my-bucket/as' } });
+    fireEvent.blur(breadcrumbInput);
+
+    rerender(
+      <BrowserPage
+        {...props}
+        selectedPath="my-bucket/as"
+        browse={{ ...props.browse, data: { ...props.browse.data!, items: [] } }}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('breadcrumb-trail'));
+    const reopenedInput = screen.getByRole('textbox', { name: 'Breadcrumb path' });
+    fireEvent.change(reopenedInput, { target: { value: '/my-bucket/as' } });
+
+    const hints = screen.getByTestId('breadcrumb-hints');
+    expect(hints).toHaveTextContent('/my-bucket/assets');
   });
 });
 

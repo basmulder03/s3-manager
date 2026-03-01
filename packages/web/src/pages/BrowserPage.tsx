@@ -34,6 +34,8 @@ interface BrowseData {
 interface BrowserPageProps {
   selectedPath: string;
   setSelectedPath: (path: string) => void;
+  knownBucketNames: string[];
+  breadcrumbValidationMessage?: string;
   canWrite: boolean;
   canDelete: boolean;
   isUploading: boolean;
@@ -208,6 +210,7 @@ const nameCollator = new Intl.Collator(undefined, {
 });
 
 const OVERVIEW_COLUMNS_STORAGE_KEY = 'browser-overview-columns';
+const BREADCRUMB_HINTS_STORAGE_KEY = 'browser-breadcrumb-hints';
 
 const defaultOverviewColumnVisibility: OverviewColumnVisibility = {
   showName: true,
@@ -275,6 +278,42 @@ const resolveInitialOverviewColumnVisibility = (): OverviewColumnVisibility => {
   }
 };
 
+const resolveInitialBreadcrumbHintPaths = (): string[] => {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  const stored = window.sessionStorage.getItem(BREADCRUMB_HINTS_STORAGE_KEY);
+  if (!stored) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const unique = new Set<string>();
+    for (const entry of parsed) {
+      if (typeof entry !== 'string') {
+        continue;
+      }
+
+      const normalized = entry.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+      if (!normalized) {
+        continue;
+      }
+
+      unique.add(normalized);
+    }
+
+    return Array.from(unique).slice(-600);
+  } catch {
+    return [];
+  }
+};
+
 const formatDate = (value: string | null): string => {
   if (!value) {
     return '-';
@@ -291,6 +330,8 @@ const formatDate = (value: string | null): string => {
 export const BrowserPage = ({
   selectedPath,
   setSelectedPath,
+  knownBucketNames,
+  breadcrumbValidationMessage,
   canWrite,
   canDelete,
   isUploading,
@@ -323,8 +364,12 @@ export const BrowserPage = ({
 }: BrowserPageProps) => {
   const [isBreadcrumbEditing, setIsBreadcrumbEditing] = useState(false);
   const [breadcrumbDraft, setBreadcrumbDraft] = useState(selectedPath ? `/${selectedPath}` : '/');
+  const [cachedDirectoryHintPaths, setCachedDirectoryHintPaths] = useState<string[]>(
+    resolveInitialBreadcrumbHintPaths
+  );
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filterQuery, setFilterQuery] = useState('');
+  const [activeBreadcrumbHintIndex, setActiveBreadcrumbHintIndex] = useState(-1);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isOverviewFieldsMenuOpen, setIsOverviewFieldsMenuOpen] = useState(false);
   const [overviewFieldsFilterQuery, setOverviewFieldsFilterQuery] = useState('');
@@ -350,6 +395,7 @@ export const BrowserPage = ({
   const contextMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const contextMenuFocusRestoreRef = useRef<HTMLElement | null>(null);
   const wasContextMenuOpenRef = useRef(false);
+  const wasBreadcrumbEditingRef = useRef(false);
   const folderInputAttributes = {
     directory: '',
     webkitdirectory: '',
@@ -361,6 +407,23 @@ export const BrowserPage = ({
       setSelectedPath(normalized);
     }
   };
+
+  const isBreadcrumbPathCommitAllowed = useCallback(
+    (rawPath: string) => {
+      const normalized = rawPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+      if (!normalized) {
+        return true;
+      }
+
+      if (knownBucketNames.length === 0) {
+        return true;
+      }
+
+      const [bucketName = ''] = normalized.split('/');
+      return knownBucketNames.includes(bucketName);
+    },
+    [knownBucketNames]
+  );
 
   useEffect(() => {
     if (isBreadcrumbEditing) {
@@ -376,13 +439,21 @@ export const BrowserPage = ({
     }
 
     const timeoutId = window.setTimeout(() => {
-      commitBreadcrumbPath(breadcrumbDraft);
+      if (isBreadcrumbPathCommitAllowed(breadcrumbDraft)) {
+        commitBreadcrumbPath(breadcrumbDraft);
+      }
     }, 320);
 
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [breadcrumbDraft, isBreadcrumbEditing, selectedPath]);
+  }, [
+    breadcrumbDraft,
+    commitBreadcrumbPath,
+    isBreadcrumbEditing,
+    isBreadcrumbPathCommitAllowed,
+    selectedPath,
+  ]);
 
   useEffect(() => {
     if (!isBreadcrumbEditing) {
@@ -394,6 +465,51 @@ export const BrowserPage = ({
   }, [isBreadcrumbEditing]);
 
   useEffect(() => {
+    const wasEditing = wasBreadcrumbEditingRef.current;
+    if (isBreadcrumbEditing && !wasEditing) {
+      setBreadcrumbDraft(selectedPath ? `/${selectedPath}` : '/');
+      setActiveBreadcrumbHintIndex(-1);
+    }
+
+    wasBreadcrumbEditingRef.current = isBreadcrumbEditing;
+  }, [isBreadcrumbEditing, selectedPath]);
+
+  useEffect(() => {
+    setCachedDirectoryHintPaths((previous) => {
+      const next = new Set(previous);
+
+      const rememberPath = (value: string) => {
+        const normalized = value.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+        if (!normalized) {
+          return;
+        }
+
+        next.add(normalized);
+      };
+
+      rememberPath(selectedPath);
+
+      for (const crumb of browse.data?.breadcrumbs ?? []) {
+        rememberPath(crumb.path);
+      }
+
+      for (const item of browse.data?.items ?? []) {
+        if (item.type !== 'directory') {
+          continue;
+        }
+
+        rememberPath(item.path);
+      }
+
+      if (next.size === previous.length) {
+        return previous;
+      }
+
+      return Array.from(next).slice(-600);
+    });
+  }, [browse.data?.breadcrumbs, browse.data?.items, selectedPath]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
@@ -403,6 +519,17 @@ export const BrowserPage = ({
       JSON.stringify(overviewColumnVisibility)
     );
   }, [overviewColumnVisibility]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.sessionStorage.setItem(
+      BREADCRUMB_HINTS_STORAGE_KEY,
+      JSON.stringify(cachedDirectoryHintPaths)
+    );
+  }, [cachedDirectoryHintPaths]);
 
   useEffect(() => {
     if (!isOverviewFieldsMenuOpen) {
@@ -443,6 +570,108 @@ export const BrowserPage = ({
       path: segments.slice(0, index + 1).join('/'),
     }));
   }, [selectedPath]);
+
+  const breadcrumbHintOptions = useMemo(() => {
+    const draft = breadcrumbDraft.trim().replace(/^\/+/, '');
+    const normalizedSelectedPath = selectedPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    const suggestions = new Set<string>();
+
+    suggestions.add('/');
+
+    const addSuggestion = (value: string) => {
+      const normalized = value.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+      if (!normalized) {
+        suggestions.add('/');
+        return;
+      }
+
+      suggestions.add(`/${normalized}`);
+    };
+
+    for (const crumb of browse.data?.breadcrumbs ?? []) {
+      addSuggestion(crumb.path);
+    }
+
+    for (const bucketName of knownBucketNames) {
+      addSuggestion(bucketName);
+    }
+
+    for (const cachedPath of cachedDirectoryHintPaths) {
+      addSuggestion(cachedPath);
+    }
+
+    for (const item of browse.data?.items ?? []) {
+      if (item.type !== 'directory') {
+        continue;
+      }
+
+      addSuggestion(item.path);
+    }
+
+    const filtered = Array.from(suggestions).filter((value) => {
+      if (!draft) {
+        return true;
+      }
+
+      const normalizedValue = value.slice(1).toLowerCase();
+      const normalizedDraft = draft.toLowerCase();
+
+      if (normalizedValue.startsWith(normalizedDraft)) {
+        return true;
+      }
+
+      if (draft.includes('/')) {
+        return false;
+      }
+
+      const valueSegments = normalizedValue.split('/');
+      const leafSegment = valueSegments[valueSegments.length - 1] ?? '';
+      if (leafSegment.startsWith(normalizedDraft)) {
+        return true;
+      }
+
+      if (!normalizedSelectedPath) {
+        return false;
+      }
+
+      const selectedPrefix = `${normalizedSelectedPath.toLowerCase()}/`;
+      if (!normalizedValue.startsWith(selectedPrefix)) {
+        return false;
+      }
+
+      const relativeFromCurrent = normalizedValue.slice(selectedPrefix.length);
+      return relativeFromCurrent.startsWith(normalizedDraft);
+    });
+
+    filtered.sort((left, right) => left.localeCompare(right));
+    return filtered.slice(0, 12);
+  }, [
+    breadcrumbDraft,
+    browse.data?.breadcrumbs,
+    browse.data?.items,
+    cachedDirectoryHintPaths,
+    knownBucketNames,
+    selectedPath,
+  ]);
+
+  useEffect(() => {
+    if (!isBreadcrumbEditing) {
+      setActiveBreadcrumbHintIndex(-1);
+      return;
+    }
+
+    setActiveBreadcrumbHintIndex((previous) => {
+      if (breadcrumbHintOptions.length === 0) {
+        return -1;
+      }
+
+      if (previous < 0) {
+        return -1;
+      }
+
+      return Math.min(previous, breadcrumbHintOptions.length - 1);
+    });
+  }, [breadcrumbHintOptions, isBreadcrumbEditing]);
 
   const isAnyPropertyBackedColumnVisible = useMemo(
     () =>
@@ -1336,59 +1565,166 @@ export const BrowserPage = ({
               <House size={16} aria-hidden />
             </Button>
 
-            <div
-              className={styles.breadcrumbTrail}
-              data-testid="breadcrumb-trail"
-              onDoubleClick={() => setIsBreadcrumbEditing(true)}
-              onClick={(event) => {
-                if (event.target === event.currentTarget) {
-                  setIsBreadcrumbEditing(true);
-                }
-              }}
-            >
-              {isBreadcrumbEditing ? (
-                <Input
-                  ref={breadcrumbInputRef}
-                  className={styles.breadcrumbInput}
-                  value={breadcrumbDraft}
-                  onChange={(event) => setBreadcrumbDraft(event.target.value)}
-                  onBlur={(event) => {
-                    commitBreadcrumbPath(event.target.value);
-                    setIsBreadcrumbEditing(false);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      commitBreadcrumbPath((event.target as HTMLInputElement).value);
-                      setIsBreadcrumbEditing(false);
-                      return;
-                    }
+            <div className={styles.breadcrumbField}>
+              <div
+                className={`${styles.breadcrumbTrail} ${
+                  breadcrumbValidationMessage ? styles.breadcrumbTrailInvalid : ''
+                }`.trim()}
+                data-testid="breadcrumb-trail"
+                onDoubleClick={() => setIsBreadcrumbEditing(true)}
+                onClick={(event) => {
+                  if (event.target === event.currentTarget) {
+                    setIsBreadcrumbEditing(true);
+                  }
+                }}
+              >
+                {isBreadcrumbEditing ? (
+                  <div className={styles.breadcrumbInputWrap}>
+                    <Input
+                      ref={breadcrumbInputRef}
+                      className={styles.breadcrumbInput}
+                      value={breadcrumbDraft}
+                      onChange={(event) => {
+                        setBreadcrumbDraft(event.target.value);
+                        setActiveBreadcrumbHintIndex(-1);
+                      }}
+                      onBlur={(event) => {
+                        if (isBreadcrumbPathCommitAllowed(event.target.value)) {
+                          commitBreadcrumbPath(event.target.value);
+                        }
+                        setIsBreadcrumbEditing(false);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'ArrowDown') {
+                          if (breadcrumbHintOptions.length === 0) {
+                            return;
+                          }
 
-                    if (event.key === 'Escape') {
-                      setBreadcrumbDraft(selectedPath ? `/${selectedPath}` : '/');
-                      setIsBreadcrumbEditing(false);
-                    }
-                  }}
-                  aria-label="Breadcrumb path"
-                  placeholder="/bucket/folder"
-                />
-              ) : (
-                <>
-                  <button className={styles.breadcrumbLink} onClick={() => setSelectedPath('')}>
-                    /
-                  </button>
-                  {breadcrumbSegments.map((segment, index) => (
-                    <span key={segment.path} className={styles.breadcrumbPart}>
-                      {index > 0 ? <span className={styles.breadcrumbDivider}>/</span> : null}
-                      <button
-                        className={styles.breadcrumbLink}
-                        onClick={() => setSelectedPath(segment.path)}
+                          event.preventDefault();
+                          setActiveBreadcrumbHintIndex((previous) => {
+                            if (previous < 0) {
+                              return 0;
+                            }
+
+                            return Math.min(previous + 1, breadcrumbHintOptions.length - 1);
+                          });
+                          return;
+                        }
+
+                        if (event.key === 'ArrowUp') {
+                          if (breadcrumbHintOptions.length === 0) {
+                            return;
+                          }
+
+                          event.preventDefault();
+                          setActiveBreadcrumbHintIndex((previous) => {
+                            if (previous < 0) {
+                              return breadcrumbHintOptions.length - 1;
+                            }
+
+                            return Math.max(previous - 1, 0);
+                          });
+                          return;
+                        }
+
+                        if (event.key === 'Enter') {
+                          if (activeBreadcrumbHintIndex >= 0) {
+                            const highlighted = breadcrumbHintOptions[activeBreadcrumbHintIndex];
+                            if (highlighted) {
+                              setBreadcrumbDraft(highlighted);
+                              commitBreadcrumbPath(highlighted);
+                              setIsBreadcrumbEditing(false);
+                              return;
+                            }
+                          }
+
+                          const enteredValue = (event.target as HTMLInputElement).value;
+                          if (isBreadcrumbPathCommitAllowed(enteredValue)) {
+                            commitBreadcrumbPath(enteredValue);
+                          }
+                          setIsBreadcrumbEditing(false);
+                          return;
+                        }
+
+                        if (event.key === 'Tab' && activeBreadcrumbHintIndex >= 0) {
+                          const highlighted = breadcrumbHintOptions[activeBreadcrumbHintIndex];
+                          if (!highlighted) {
+                            return;
+                          }
+
+                          event.preventDefault();
+                          setBreadcrumbDraft(highlighted);
+                          if (isBreadcrumbPathCommitAllowed(highlighted)) {
+                            commitBreadcrumbPath(highlighted);
+                          }
+                          setIsBreadcrumbEditing(false);
+                          return;
+                        }
+
+                        if (event.key === 'Escape') {
+                          setBreadcrumbDraft(selectedPath ? `/${selectedPath}` : '/');
+                          setIsBreadcrumbEditing(false);
+                        }
+                      }}
+                      aria-label="Breadcrumb path"
+                      placeholder="/bucket/folder"
+                    />
+                    {breadcrumbHintOptions.length > 0 ? (
+                      <div
+                        className={styles.breadcrumbHints}
+                        data-testid="breadcrumb-hints"
+                        role="listbox"
                       >
-                        {segment.label}
-                      </button>
-                    </span>
-                  ))}
-                </>
-              )}
+                        {breadcrumbHintOptions.map((hint, index) => (
+                          <button
+                            key={hint}
+                            type="button"
+                            role="option"
+                            aria-selected={activeBreadcrumbHintIndex === index}
+                            className={`${styles.breadcrumbHintButton} ${
+                              activeBreadcrumbHintIndex === index
+                                ? styles.breadcrumbHintButtonActive
+                                : ''
+                            }`.trim()}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                            }}
+                            onClick={() => {
+                              setBreadcrumbDraft(hint);
+                              if (isBreadcrumbPathCommitAllowed(hint)) {
+                                commitBreadcrumbPath(hint);
+                              }
+                              setIsBreadcrumbEditing(false);
+                            }}
+                          >
+                            {hint}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <>
+                    <button className={styles.breadcrumbLink} onClick={() => setSelectedPath('')}>
+                      /
+                    </button>
+                    {breadcrumbSegments.map((segment, index) => (
+                      <span key={segment.path} className={styles.breadcrumbPart}>
+                        {index > 0 ? <span className={styles.breadcrumbDivider}>/</span> : null}
+                        <button
+                          className={styles.breadcrumbLink}
+                          onClick={() => setSelectedPath(segment.path)}
+                        >
+                          {segment.label}
+                        </button>
+                      </span>
+                    ))}
+                  </>
+                )}
+              </div>
+              {breadcrumbValidationMessage ? (
+                <p className={styles.breadcrumbValidationError}>{breadcrumbValidationMessage}</p>
+              ) : null}
             </div>
 
             <div className={styles.browserFilterRow}>

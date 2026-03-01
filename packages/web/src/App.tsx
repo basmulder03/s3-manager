@@ -24,6 +24,16 @@ const formatDate = (value: string | null): string => {
 const normalizeVirtualPath = (value: string): string =>
   value.trim().replace(/^\/+/, '').replace(/\/+$/, '');
 
+const getBucketNameFromPath = (path: string): string => {
+  const normalized = normalizeVirtualPath(path);
+  if (!normalized) {
+    return '';
+  }
+
+  const [bucketName = ''] = normalized.split('/');
+  return bucketName;
+};
+
 const SESSION_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 export const App = () => {
@@ -80,7 +90,43 @@ export const App = () => {
 
   const authStatus = trpc.auth.status.useQuery({});
   const authMe = trpc.auth.me.useQuery({}, { retry: false });
-  const browse = trpc.s3.browse.useQuery({ virtualPath: selectedPath });
+  const buckets = trpc.s3.listBuckets.useQuery({});
+
+  const knownBucketNames = useMemo(() => {
+    const rawBuckets = buckets.data?.buckets;
+    if (!Array.isArray(rawBuckets)) {
+      return [] as string[];
+    }
+
+    return rawBuckets
+      .map((bucket) => (typeof bucket?.name === 'string' ? bucket.name.trim() : ''))
+      .filter((bucketName) => bucketName.length > 0);
+  }, [buckets.data?.buckets]);
+
+  const selectedBucketName = useMemo(() => getBucketNameFromPath(selectedPath), [selectedPath]);
+
+  const hasSelectedBucket = selectedBucketName.length > 0;
+  const canValidateBucket = buckets.isSuccess;
+  const selectedBucketExists = useMemo(() => {
+    if (!hasSelectedBucket || !canValidateBucket) {
+      return true;
+    }
+
+    return knownBucketNames.includes(selectedBucketName);
+  }, [canValidateBucket, hasSelectedBucket, knownBucketNames, selectedBucketName]);
+
+  const breadcrumbValidationMessage =
+    hasSelectedBucket && canValidateBucket && !selectedBucketExists
+      ? `Bucket "${selectedBucketName}" does not exist.`
+      : undefined;
+
+  const browse = trpc.s3.browse.useQuery(
+    { virtualPath: selectedPath },
+    {
+      enabled: selectedBucketExists,
+      retry: false,
+    }
+  );
   const createFolder = trpc.s3.createFolder.useMutation();
   const renameItem = trpc.s3.renameItem.useMutation();
   const deleteObject = trpc.s3.deleteObject.useMutation();
@@ -425,6 +471,8 @@ export const App = () => {
                   <BrowserPage
                     selectedPath={selectedPath}
                     setSelectedPath={setSelectedPath}
+                    knownBucketNames={knownBucketNames}
+                    breadcrumbValidationMessage={breadcrumbValidationMessage}
                     canWrite={canWrite}
                     canDelete={canDelete}
                     isUploading={browser.isUploading}

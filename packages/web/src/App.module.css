@@ -788,6 +788,26 @@
   background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
 }
 
+.breadcrumbField {
+  display: grid;
+  gap: 0.22rem;
+  flex: 1;
+  min-width: 220px;
+}
+
+.breadcrumbTrailInvalid {
+  border-color: color-mix(in srgb, var(--danger) 74%, var(--line-strong));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 28%, transparent) inset;
+}
+
+.breadcrumbValidationError {
+  margin: 0;
+  color: color-mix(in srgb, var(--danger) 88%, var(--text));
+  font-size: 0.72rem;
+  line-height: 1.2;
+  padding-left: 0.2rem;
+}
+
 .breadcrumbInput {
   min-width: 180px;
   width: 100%;
@@ -798,6 +818,48 @@
   border: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.breadcrumbInputWrap {
+  position: relative;
+  width: 100%;
+}
+
+.breadcrumbHints {
+  position: absolute;
+  top: calc(100% + 0.28rem);
+  left: 0;
+  right: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 72%, var(--brand));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--surface-soft));
+  box-shadow: 0 14px 30px -18px color-mix(in srgb, var(--brand) 30%, transparent);
+}
+
+.breadcrumbHintButton {
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+  padding: 0.42rem 0.56rem;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1.25;
+}
+
+.breadcrumbHintButton:last-child {
+  border-bottom: 0;
+}
+
+.breadcrumbHintButton:hover,
+.breadcrumbHintButtonActive {
+  background: color-mix(in srgb, var(--surface-alt) 78%, var(--surface));
 }
 
 .breadcrumbInput:focus {

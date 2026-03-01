@@ -79,6 +79,12 @@ vi.mock('@web/trpc/client', () => ({
       },
     },
     s3: {
+      listBuckets: {
+        useQuery: () => ({
+          isSuccess: true,
+          data: { buckets: [{ name: 'my-bucket' }, { name: 'archive-bucket' }] },
+        }),
+      },
       browse: {
         useQuery: () => ({
           isLoading: false,
