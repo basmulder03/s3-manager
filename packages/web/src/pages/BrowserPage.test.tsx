@@ -3,6 +3,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import type { BrowseItem } from '@server/services/s3/types';
 import { BrowserPage } from '@web/pages/BrowserPage';
 
+const OVERVIEW_COLUMNS_STORAGE_KEY = 'browser-overview-columns';
+
 const createProps = () => {
   const setSelectedPath = vi.fn();
 
@@ -98,6 +100,10 @@ describe('BrowserPage breadcrumb editing', () => {
 });
 
 describe('BrowserPage sorting and filtering', () => {
+  beforeEach(() => {
+    window.localStorage.removeItem(OVERVIEW_COLUMNS_STORAGE_KEY);
+  });
+
   afterEach(() => {
     cleanup();
   });
@@ -375,5 +381,95 @@ describe('BrowserPage sorting and filtering', () => {
     fireEvent.doubleClick(screen.getByText('notes.txt'));
 
     expect(props.onViewFile).toHaveBeenCalledWith('my-bucket/notes.txt');
+  });
+
+  it('persists file overview fields visibility for the explorer table', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'notes.txt',
+        type: 'file',
+        path: 'my-bucket/notes.txt',
+        size: 10,
+        lastModified: null,
+      },
+    ];
+
+    const { unmount } = render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    expect(screen.getByRole('columnheader', { name: 'Size' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Customize visible fields' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Size' }));
+
+    expect(screen.queryByRole('columnheader', { name: 'Size' })).not.toBeInTheDocument();
+    const storedColumns = window.localStorage.getItem(OVERVIEW_COLUMNS_STORAGE_KEY);
+    expect(storedColumns).not.toBeNull();
+    const parsedColumns = JSON.parse(storedColumns ?? '{}') as Record<string, unknown>;
+    expect(parsedColumns.showName).toBe(true);
+    expect(parsedColumns.showSize).toBe(false);
+    expect(parsedColumns.showModified).toBe(true);
+
+    expect(screen.getByRole('checkbox', { name: 'Content Type' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Storage Class' })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Name' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Metadata' })).not.toBeInTheDocument();
+
+    unmount();
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    expect(screen.queryByRole('columnheader', { name: 'Size' })).not.toBeInTheDocument();
+  });
+
+  it('supports toggling all fields and filtering the fields list', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'notes.txt',
+        type: 'file',
+        path: 'my-bucket/notes.txt',
+        size: 10,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Customize visible fields' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle all on' }));
+    expect(screen.getByRole('button', { name: 'Toggle all off' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle all off' }));
+    expect(screen.getByRole('columnheader', { name: 'Name' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Size' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle all on' }));
+    expect(screen.getByRole('columnheader', { name: 'Name' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search visible fields' }), {
+      target: { value: 'content' },
+    });
+    expect(screen.getByRole('checkbox', { name: 'Content Type' })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Storage Class' })).not.toBeInTheDocument();
   });
 });

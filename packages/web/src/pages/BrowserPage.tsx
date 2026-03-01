@@ -14,12 +14,14 @@ import {
   PencilLine,
   RefreshCw,
   Search,
+  SlidersHorizontal,
   Trash2,
   Undo2,
   X,
 } from 'lucide-react';
 import { Button, Input } from '@web/components/ui';
-import type { BrowseItem } from '@server/services/s3/types';
+import { trpcProxyClient } from '@web/trpc/client';
+import type { BrowseItem, ObjectPropertiesResult } from '@server/services/s3/types';
 import { resolveFileCapability } from '@web/utils/fileCapabilities';
 import { formatBytes } from '@web/utils/formatBytes';
 import styles from '@web/App.module.css';
@@ -74,6 +76,32 @@ type SortDirection = 'asc' | 'desc';
 interface SortRule {
   key: SortKey;
   direction: SortDirection;
+}
+
+type OverviewColumnKey =
+  | 'showKey'
+  | 'showSize'
+  | 'showModified'
+  | 'showEtag'
+  | 'showVersionId'
+  | 'showServerSideEncryption'
+  | 'showContentType'
+  | 'showStorageClass'
+  | 'showCacheControl'
+  | 'showContentDisposition'
+  | 'showContentEncoding'
+  | 'showContentLanguage'
+  | 'showExpires';
+
+type OverviewColumnVisibility = Record<OverviewColumnKey, boolean> & {
+  showName: boolean;
+  showMetadata: boolean;
+};
+
+interface OverviewColumnDefinition {
+  key: OverviewColumnKey;
+  label: string;
+  requiresProperties: boolean;
 }
 
 interface ShortcutDefinition {
@@ -169,6 +197,74 @@ const nameCollator = new Intl.Collator(undefined, {
   numeric: true,
 });
 
+const OVERVIEW_COLUMNS_STORAGE_KEY = 'browser-overview-columns';
+
+const defaultOverviewColumnVisibility: OverviewColumnVisibility = {
+  showName: true,
+  showKey: false,
+  showSize: true,
+  showModified: true,
+  showEtag: false,
+  showVersionId: false,
+  showServerSideEncryption: false,
+  showContentType: false,
+  showStorageClass: false,
+  showCacheControl: false,
+  showContentDisposition: false,
+  showContentEncoding: false,
+  showContentLanguage: false,
+  showExpires: false,
+  showMetadata: false,
+};
+
+const overviewColumnDefinitions: OverviewColumnDefinition[] = [
+  { key: 'showKey', label: 'Key', requiresProperties: false },
+  { key: 'showSize', label: 'Size', requiresProperties: false },
+  { key: 'showModified', label: 'Modified', requiresProperties: false },
+  { key: 'showEtag', label: 'ETag', requiresProperties: false },
+  { key: 'showVersionId', label: 'Version Id', requiresProperties: true },
+  {
+    key: 'showServerSideEncryption',
+    label: 'Server-side encryption',
+    requiresProperties: true,
+  },
+  { key: 'showContentType', label: 'Content Type', requiresProperties: true },
+  { key: 'showStorageClass', label: 'Storage Class', requiresProperties: true },
+  { key: 'showCacheControl', label: 'Cache Control', requiresProperties: true },
+  { key: 'showContentDisposition', label: 'Content Disposition', requiresProperties: true },
+  { key: 'showContentEncoding', label: 'Content Encoding', requiresProperties: true },
+  { key: 'showContentLanguage', label: 'Content Language', requiresProperties: true },
+  { key: 'showExpires', label: 'Expires', requiresProperties: true },
+];
+
+const resolveInitialOverviewColumnVisibility = (): OverviewColumnVisibility => {
+  if (typeof window === 'undefined') {
+    return defaultOverviewColumnVisibility;
+  }
+
+  const stored = window.localStorage.getItem(OVERVIEW_COLUMNS_STORAGE_KEY);
+  if (!stored) {
+    return defaultOverviewColumnVisibility;
+  }
+
+  try {
+    const parsed = JSON.parse(stored) as Partial<OverviewColumnVisibility>;
+    return overviewColumnDefinitions.reduce<OverviewColumnVisibility>(
+      (next, column) => {
+        const parsedValue = parsed[column.key];
+        next[column.key] =
+          typeof parsedValue === 'boolean'
+            ? parsedValue
+            : defaultOverviewColumnVisibility[column.key];
+        return next;
+      },
+      { ...defaultOverviewColumnVisibility }
+    );
+  } catch {
+    return defaultOverviewColumnVisibility;
+  }
+};
+
 const formatDate = (value: string | null): string => {
   if (!value) {
     return '-';
@@ -220,6 +316,14 @@ export const BrowserPage = ({
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filterQuery, setFilterQuery] = useState('');
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [isOverviewFieldsMenuOpen, setIsOverviewFieldsMenuOpen] = useState(false);
+  const [overviewFieldsFilterQuery, setOverviewFieldsFilterQuery] = useState('');
+  const [overviewColumnVisibility, setOverviewColumnVisibility] =
+    useState<OverviewColumnVisibility>(resolveInitialOverviewColumnVisibility);
+  const [propertiesByPath, setPropertiesByPath] = useState<
+    Record<string, ObjectPropertiesResult | null>
+  >({});
+  const [propertiesLoadingPaths, setPropertiesLoadingPaths] = useState<Set<string>>(new Set());
   const [pendingFolderUploadFiles, setPendingFolderUploadFiles] = useState<File[]>([]);
   const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
   const [sortRules, setSortRules] = useState<SortRule[]>([
@@ -228,6 +332,7 @@ export const BrowserPage = ({
   ]);
   const breadcrumbInputRef = useRef<HTMLInputElement>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
+  const overviewFieldsMenuRef = useRef<HTMLDivElement>(null);
   const uploadFilesInputRef = useRef<HTMLInputElement>(null);
   const uploadFolderInputRef = useRef<HTMLInputElement>(null);
   const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
@@ -275,6 +380,36 @@ export const BrowserPage = ({
   }, [isBreadcrumbEditing]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(
+      OVERVIEW_COLUMNS_STORAGE_KEY,
+      JSON.stringify(overviewColumnVisibility)
+    );
+  }, [overviewColumnVisibility]);
+
+  useEffect(() => {
+    if (!isOverviewFieldsMenuOpen) {
+      return;
+    }
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (overviewFieldsMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      setIsOverviewFieldsMenuOpen(false);
+    };
+
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [isOverviewFieldsMenuOpen]);
+
+  useEffect(() => {
     if (!isFilterOpen) {
       return;
     }
@@ -294,6 +429,88 @@ export const BrowserPage = ({
       path: segments.slice(0, index + 1).join('/'),
     }));
   }, [selectedPath]);
+
+  const isAnyPropertyBackedColumnVisible = useMemo(
+    () =>
+      overviewColumnDefinitions.some(
+        (column) => column.requiresProperties && overviewColumnVisibility[column.key]
+      ),
+    [overviewColumnVisibility]
+  );
+
+  useEffect(() => {
+    if (!isAnyPropertyBackedColumnVisible) {
+      return;
+    }
+
+    const missingPaths = (browse.data?.items ?? [])
+      .filter((item) => item.type === 'file')
+      .map((item) => item.path)
+      .filter((path) => propertiesByPath[path] === undefined && !propertiesLoadingPaths.has(path));
+
+    if (missingPaths.length === 0) {
+      return;
+    }
+
+    const loadMissingProperties = async () => {
+      await Promise.all(
+        missingPaths.map(async (path) => {
+          setPropertiesLoadingPaths((previous) => {
+            if (previous.has(path)) {
+              return previous;
+            }
+
+            const next = new Set(previous);
+            next.add(path);
+            return next;
+          });
+
+          try {
+            const details = await trpcProxyClient.s3.getProperties.query({ path });
+
+            setPropertiesByPath((previous) => {
+              if (previous[path] !== undefined) {
+                return previous;
+              }
+
+              return {
+                ...previous,
+                [path]: details,
+              };
+            });
+          } catch {
+            setPropertiesByPath((previous) => {
+              if (previous[path] !== undefined) {
+                return previous;
+              }
+
+              return {
+                ...previous,
+                [path]: null,
+              };
+            });
+          } finally {
+            setPropertiesLoadingPaths((previous) => {
+              if (!previous.has(path)) {
+                return previous;
+              }
+
+              const next = new Set(previous);
+              next.delete(path);
+              return next;
+            });
+          }
+        })
+      );
+    };
+
+    void loadMissingProperties();
+  }, [
+    browse.data?.items,
+    isAnyPropertyBackedColumnVisible,
+    propertiesByPath,
+    propertiesLoadingPaths,
+  ]);
 
   const parentPath = useMemo(() => {
     const normalized = selectedPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
@@ -467,6 +684,16 @@ export const BrowserPage = ({
   };
 
   const selectedRecordsCount = selectedItems.size;
+  const visibleOverviewColumns = overviewColumnDefinitions.filter(
+    (column) => overviewColumnVisibility[column.key]
+  );
+  const visibleOverviewColumnsCount = visibleOverviewColumns.length;
+  const allOverviewColumnsSelected =
+    visibleOverviewColumnsCount === overviewColumnDefinitions.length;
+  const normalizedOverviewFieldsFilterQuery = overviewFieldsFilterQuery.trim().toLowerCase();
+  const filteredOverviewColumns = overviewColumnDefinitions.filter((column) =>
+    column.label.toLowerCase().includes(normalizedOverviewFieldsFilterQuery)
+  );
   const hasBucketContext = selectedPath.trim().replace(/^\/+/, '').length > 0;
   const uploadDisabled = isUploading || !hasBucketContext;
   const selectedBrowseItems = (browse.data?.items ?? []).filter((item) =>
@@ -490,6 +717,100 @@ export const BrowserPage = ({
     }
 
     return formatBytes(item.size);
+  };
+
+  const getObjectKeyFromPath = (path: string): string => {
+    const parts = path.split('/');
+    return parts.slice(1).join('/') || path;
+  };
+
+  const getPropertiesForItem = (item: BrowseItem): ObjectPropertiesResult | null | undefined => {
+    if (item.type !== 'file') {
+      return undefined;
+    }
+
+    return propertiesByPath[item.path];
+  };
+
+  const resolveOverviewFieldValue = (
+    item: BrowseItem,
+    columnKey: OverviewColumnKey,
+    isParentNavigation: boolean
+  ): string => {
+    if (isParentNavigation) {
+      return '';
+    }
+
+    if (columnKey === 'showSize') {
+      return formatItemSize(item);
+    }
+
+    if (columnKey === 'showModified') {
+      return formatDate(item.lastModified);
+    }
+
+    if (item.type !== 'file') {
+      return '-';
+    }
+
+    const details = getPropertiesForItem(item);
+    const isLoading = propertiesLoadingPaths.has(item.path);
+
+    if (columnKey === 'showKey') {
+      return details?.key ?? getObjectKeyFromPath(item.path);
+    }
+
+    if (columnKey === 'showEtag') {
+      return item.etag ?? details?.etag ?? (isLoading ? 'Loading...' : '-');
+    }
+
+    if (details === undefined) {
+      return isLoading ? 'Loading...' : '-';
+    }
+
+    if (details === null) {
+      return '-';
+    }
+
+    if (columnKey === 'showVersionId') {
+      return details.versionId ?? '-';
+    }
+    if (columnKey === 'showServerSideEncryption') {
+      return details.serverSideEncryption ?? '-';
+    }
+    if (columnKey === 'showContentType') {
+      return details.contentType;
+    }
+    if (columnKey === 'showStorageClass') {
+      return details.storageClass;
+    }
+    if (columnKey === 'showCacheControl') {
+      return details.cacheControl ?? '-';
+    }
+    if (columnKey === 'showContentDisposition') {
+      return details.contentDisposition ?? '-';
+    }
+    if (columnKey === 'showContentEncoding') {
+      return details.contentEncoding ?? '-';
+    }
+    if (columnKey === 'showContentLanguage') {
+      return details.contentLanguage ?? '-';
+    }
+    if (columnKey === 'showExpires') {
+      return details.expires ? formatDate(details.expires) : '-';
+    }
+    return '-';
+  };
+
+  const isSortableColumn = (columnKey: OverviewColumnKey): boolean => {
+    return columnKey === 'showSize' || columnKey === 'showModified';
+  };
+
+  const resolveSortKey = (columnKey: OverviewColumnKey): SortKey => {
+    if (columnKey === 'showSize') {
+      return 'size';
+    }
+    return 'modified';
   };
 
   const contextItemCapability = useMemo(() => {
@@ -883,6 +1204,77 @@ export const BrowserPage = ({
               ) : null}
             </div>
 
+            <div className={styles.overviewFieldsWrap} ref={overviewFieldsMenuRef}>
+              <Button
+                variant="muted"
+                className={styles.iconButton}
+                onClick={() => setIsOverviewFieldsMenuOpen((previous) => !previous)}
+                aria-label="Customize visible fields"
+                title="Customize visible fields"
+                aria-expanded={isOverviewFieldsMenuOpen}
+              >
+                <SlidersHorizontal size={16} aria-hidden />
+              </Button>
+              {isOverviewFieldsMenuOpen ? (
+                <div
+                  className={styles.overviewFieldsMenu}
+                  role="menu"
+                  aria-label="Visible fields menu"
+                >
+                  <div className={styles.overviewFieldsHeader}>
+                    <p className={styles.overviewFieldsTitle}>Visible fields</p>
+                    <Input
+                      className={styles.overviewFieldsSearchInput}
+                      value={overviewFieldsFilterQuery}
+                      onChange={(event) => setOverviewFieldsFilterQuery(event.target.value)}
+                      placeholder="Search fields"
+                      aria-label="Search visible fields"
+                    />
+                    <div className={styles.overviewFieldsActions}>
+                      <Button
+                        variant="muted"
+                        className={styles.overviewFieldsActionButton}
+                        onClick={() => {
+                          setOverviewColumnVisibility((previous) => {
+                            const next = { ...previous };
+                            for (const column of overviewColumnDefinitions) {
+                              next[column.key] = !allOverviewColumnsSelected;
+                            }
+                            return next;
+                          });
+                        }}
+                      >
+                        {allOverviewColumnsSelected ? 'Toggle all off' : 'Toggle all on'}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className={styles.overviewFieldsList}>
+                    {filteredOverviewColumns.length === 0 ? (
+                      <p className={styles.overviewFieldsEmptyState}>
+                        No fields match this search.
+                      </p>
+                    ) : null}
+                    {filteredOverviewColumns.map((column) => (
+                      <label key={column.key} className={styles.overviewFieldsOption}>
+                        <input
+                          className={styles.overviewFieldsCheckbox}
+                          type="checkbox"
+                          checked={overviewColumnVisibility[column.key]}
+                          onChange={(event) =>
+                            setOverviewColumnVisibility((previous) => ({
+                              ...previous,
+                              [column.key]: event.target.checked,
+                            }))
+                          }
+                        />
+                        <span>{column.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
             {selectedRecordsCount > 0 ? (
               <>
                 <span className={styles.selectionCount}>{selectedRecordsCount} selected</span>
@@ -1098,7 +1490,7 @@ export const BrowserPage = ({
               <table className={styles.itemsTable}>
                 <thead>
                   <tr>
-                    <th>
+                    <th className={styles.nameColumn}>
                       <button
                         className={styles.sortHeaderButton}
                         type="button"
@@ -1111,32 +1503,39 @@ export const BrowserPage = ({
                         </span>
                       </button>
                     </th>
-                    <th>
-                      <button
-                        className={styles.sortHeaderButton}
-                        type="button"
-                        onClick={(event) => setSortForColumn('size', event.shiftKey)}
-                        title={getSortTooltip('size')}
-                      >
-                        <span>Size</span>
-                        <span className={styles.sortIndicator} aria-hidden>
-                          {getSortIndicator('size')}
-                        </span>
-                      </button>
-                    </th>
-                    <th>
-                      <button
-                        className={styles.sortHeaderButton}
-                        type="button"
-                        onClick={(event) => setSortForColumn('modified', event.shiftKey)}
-                        title={getSortTooltip('modified')}
-                      >
-                        <span>Modified</span>
-                        <span className={styles.sortIndicator} aria-hidden>
-                          {getSortIndicator('modified')}
-                        </span>
-                      </button>
-                    </th>
+                    {visibleOverviewColumns.map((column) => {
+                      const columnClassName =
+                        column.key === 'showSize'
+                          ? styles.sizeColumn
+                          : column.key === 'showModified'
+                            ? styles.modifiedColumn
+                            : styles.propertyColumn;
+
+                      if (!isSortableColumn(column.key)) {
+                        return (
+                          <th key={column.key} className={columnClassName}>
+                            {column.label}
+                          </th>
+                        );
+                      }
+
+                      const sortKey = resolveSortKey(column.key);
+                      return (
+                        <th key={column.key} className={columnClassName}>
+                          <button
+                            className={styles.sortHeaderButton}
+                            type="button"
+                            onClick={(event) => setSortForColumn(sortKey, event.shiftKey)}
+                            title={getSortTooltip(sortKey)}
+                          >
+                            <span>{column.label}</span>
+                            <span className={styles.sortIndicator} aria-hidden>
+                              {getSortIndicator(sortKey)}
+                            </span>
+                          </button>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
@@ -1184,7 +1583,7 @@ export const BrowserPage = ({
                         handleRowKeyDown(event, item, index, isParentNavigation)
                       }
                     >
-                      <td className={styles.nameCell}>
+                      <td className={`${styles.nameCell} ${styles.nameColumn}`}>
                         <div className={styles.itemMainButton}>
                           <span className={styles.itemIcon} aria-hidden>
                             {item.type === 'directory' ? <Folder size={16} /> : <File size={16} />}
@@ -1192,8 +1591,20 @@ export const BrowserPage = ({
                           <strong>{item.name}</strong>
                         </div>
                       </td>
-                      <td>{isParentNavigation ? '' : formatItemSize(item)}</td>
-                      <td>{isParentNavigation ? '' : formatDate(item.lastModified)}</td>
+                      {visibleOverviewColumns.map((column) => {
+                        const columnClassName =
+                          column.key === 'showSize'
+                            ? styles.sizeColumn
+                            : column.key === 'showModified'
+                              ? styles.modifiedColumn
+                              : styles.propertyColumn;
+
+                        return (
+                          <td key={column.key} className={columnClassName}>
+                            {resolveOverviewFieldValue(item, column.key, isParentNavigation)}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>

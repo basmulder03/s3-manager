@@ -105,7 +105,7 @@
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface);
-  overflow: hidden;
+  overflow: visible;
   box-shadow: var(--shadow);
 }
 
@@ -359,6 +359,194 @@
   align-items: center;
   justify-content: flex-end;
   gap: 0;
+}
+
+.overviewFieldsWrap {
+  position: relative;
+}
+
+.overviewFieldsMenu {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 20;
+  min-width: 240px;
+  display: grid;
+  gap: 0;
+  max-height: min(70vh, 420px);
+  overflow: auto;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 78%, var(--brand));
+  border-radius: 10px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-soft) 62%, var(--surface)) 0%,
+    color-mix(in srgb, var(--surface) 92%, var(--surface-soft)) 22%,
+    var(--surface) 100%
+  );
+  box-shadow:
+    0 16px 34px rgba(10, 22, 38, 0.22),
+    0 2px 0 color-mix(in srgb, var(--line) 38%, transparent) inset;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--line-strong) 70%, var(--brand))
+    color-mix(in srgb, var(--surface-soft) 82%, var(--surface));
+}
+
+.overviewFieldsMenu::-webkit-scrollbar {
+  width: 10px;
+}
+
+.overviewFieldsMenu::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--surface-soft) 82%, var(--surface));
+  border-radius: 999px;
+}
+
+.overviewFieldsMenu::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--line-strong) 80%, var(--brand)),
+    color-mix(in srgb, var(--line-strong) 60%, var(--brand))
+  );
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--surface-soft) 82%, var(--surface));
+}
+
+.overviewFieldsMenu::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--line-strong) 64%, var(--brand)),
+    color-mix(in srgb, var(--line-strong) 48%, var(--brand))
+  );
+}
+
+.overviewFieldsTitle {
+  margin: 0;
+  padding: 0;
+  color: color-mix(in srgb, var(--muted) 72%, var(--brand));
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.overviewFieldsHeader {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.55rem 0.6rem 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 74%, var(--surface));
+  background: color-mix(in srgb, var(--surface) 95%, var(--surface-soft));
+}
+
+.overviewFieldsList {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.45rem 0.6rem 0.55rem;
+}
+
+.overviewFieldsSearchInput {
+  height: 1.9rem;
+  font-size: 0.8rem;
+}
+
+.overviewFieldsActions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.overviewFieldsActionButton {
+  flex: 1;
+  min-height: 1.65rem;
+  padding: 0 0.45rem;
+  font-size: 0.74rem;
+  line-height: 1;
+}
+
+.overviewFieldsEmptyState {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.overviewFieldsOption {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.1rem 0.2rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.overviewFieldsOption:hover {
+  background: color-mix(in srgb, var(--surface-soft) 86%, var(--surface));
+}
+
+.overviewFieldsCheckbox {
+  position: relative;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 74%, var(--brand));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--surface-soft) 88%, var(--surface));
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.overviewFieldsCheckbox::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  content: '';
+  width: 0.3rem;
+  height: 0.55rem;
+  border-right: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: translate(-50%, -58%) rotate(45deg) scale(0.7);
+  opacity: 0;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.overviewFieldsCheckbox:hover {
+  border-color: color-mix(in srgb, var(--brand) 56%, var(--line-strong));
+  background: color-mix(in srgb, var(--brand-soft) 52%, var(--surface-soft));
+}
+
+.overviewFieldsCheckbox:checked {
+  border-color: color-mix(in srgb, var(--brand) 72%, var(--line-strong));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--brand) 82%, #0a6e9c),
+    color-mix(in srgb, var(--brand) 68%, #0a6e9c)
+  );
+}
+
+.overviewFieldsCheckbox:checked::after {
+  opacity: 1;
+  transform: translate(-50%, -58%) rotate(45deg) scale(1);
+}
+
+.overviewFieldsCheckbox:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 26%, transparent);
+}
+
+.overviewFieldsCheckbox:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .filterToggleConnected {
@@ -631,13 +819,43 @@
 .itemsTableWrap {
   border: 1px solid color-mix(in srgb, var(--line) 84%, var(--brand));
   border-radius: 0 0 12px 12px;
-  overflow: hidden;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--line-strong) 70%, var(--brand))
+    color-mix(in srgb, var(--surface-soft) 84%, var(--surface));
+}
+
+.itemsTableWrap::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.itemsTableWrap::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--surface-soft) 84%, var(--surface));
+}
+
+.itemsTableWrap::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--line-strong) 80%, var(--brand)),
+    color-mix(in srgb, var(--line-strong) 62%, var(--brand))
+  );
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--surface-soft) 84%, var(--surface));
+}
+
+.itemsTableWrap::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--line-strong) 66%, var(--brand)),
+    color-mix(in srgb, var(--line-strong) 48%, var(--brand))
+  );
 }
 
 .itemsTable {
   width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .itemsTable thead th {
@@ -651,6 +869,22 @@
   border: 1px solid color-mix(in srgb, var(--line) 84%, var(--brand));
   border-left: 0;
   border-right: 0;
+}
+
+.nameColumn {
+  width: 54%;
+}
+
+.sizeColumn {
+  width: 20%;
+}
+
+.modifiedColumn {
+  width: 26%;
+}
+
+.propertyColumn {
+  min-width: 170px;
 }
 
 .sortHeaderButton {
@@ -680,18 +914,6 @@
 
 .sortIndicatorIcon {
   flex-shrink: 0;
-}
-
-.itemsTable thead th:nth-child(1) {
-  width: 54%;
-}
-
-.itemsTable thead th:nth-child(2) {
-  width: 20%;
-}
-
-.itemsTable thead th:nth-child(3) {
-  width: 26%;
 }
 
 .emptyItemsState {
@@ -1218,19 +1440,6 @@
   }
 }
 
-@media (max-width: 1060px) {
-  .itemsTable thead th:nth-child(2),
-  .itemsTable thead th:nth-child(3),
-  .itemsTable tbody td:nth-child(2),
-  .itemsTable tbody td:nth-child(3) {
-    display: none;
-  }
-
-  .itemsTable thead th:nth-child(1) {
-    width: auto;
-  }
-}
-
 @media (max-width: 900px) {
   .finderWindow {
     grid-template-columns: 1fr;
@@ -1243,22 +1452,6 @@
 
   .gridTwo {
     grid-template-columns: 1fr;
-  }
-
-  .itemsTable thead {
-    display: none;
-  }
-
-  .itemsTable tbody tr {
-    display: table-row;
-  }
-
-  .itemsTable tbody td {
-    border: 0;
-  }
-
-  .itemsTable tbody td:not(.nameCell) {
-    display: none;
   }
 
   .folderInput {
