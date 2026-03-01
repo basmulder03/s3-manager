@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { API_ORIGIN } from '@web/trpc/client';
 import { Button } from '@web/components/ui';
+import { ModalPortal } from '@web/components/modals/ModalPortal';
 import { useI18n } from '@web/i18n';
 import styles from '@web/App.module.css';
 
@@ -374,136 +375,138 @@ export const FinderSidebar = ({
       </section>
 
       {isElevationModalOpen && authenticated && temporaryAccessSupported ? (
-        <div
-          className={styles.modalOverlay}
-          role="presentation"
-          onClick={() => setIsElevationModalOpen(false)}
-        >
-          <section
-            className={styles.modalCard}
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('sidebar.modal.aria')}
-            onClick={(event) => event.stopPropagation()}
+        <ModalPortal>
+          <div
+            className={styles.modalOverlay}
+            role="presentation"
+            onClick={() => setIsElevationModalOpen(false)}
           >
-            <h3>{t('sidebar.modal.title')}</h3>
-            {entitlementsLoading ? (
-              <p className={`${styles.state} ${styles.loadingState}`}>
-                {t('sidebar.modal.loading')}
-              </p>
-            ) : (
-              <div className={styles.elevationCard}>
-                <label className={styles.elevationLabel} htmlFor="elevation-entitlement-select">
-                  {t('sidebar.modal.entitlement')}
-                </label>
-                <select
-                  id="elevation-entitlement-select"
-                  className={styles.elevationSelect}
-                  value={selectedEntitlementKey}
-                  onChange={(event) => {
-                    setSelectedEntitlementKey(event.target.value);
-                    setSubmitError(null);
-                  }}
-                >
-                  {entitlements.map((entitlement) => (
-                    <option key={entitlement.key} value={entitlement.key}>
-                      {entitlement.key}
-                    </option>
-                  ))}
-                </select>
-
-                <p className={styles.elevationHint}>
-                  {t('sidebar.modal.grants', {
-                    permissions: selectedEntitlement?.permissions.join(', ') ?? '-',
-                  })}
+            <section
+              className={styles.modalCard}
+              role="dialog"
+              aria-modal="true"
+              aria-label={t('sidebar.modal.aria')}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h3>{t('sidebar.modal.title')}</h3>
+              {entitlementsLoading ? (
+                <p className={`${styles.state} ${styles.loadingState}`}>
+                  {t('sidebar.modal.loading')}
                 </p>
-
-                <label className={styles.elevationLabel} htmlFor="elevation-justification-input">
-                  {t('sidebar.modal.reason')}
-                </label>
-                <textarea
-                  id="elevation-justification-input"
-                  className={styles.elevationTextarea}
-                  value={justification}
-                  onChange={(event) => setJustification(event.target.value)}
-                  placeholder={t('sidebar.modal.reasonPlaceholder')}
-                  rows={3}
-                />
-
-                {submitError ? (
-                  <p className={`${styles.state} ${styles.stateError}`}>{submitError}</p>
-                ) : null}
-
-                {selectedEntitlementAlreadyActive ? (
-                  <p className={styles.elevationHint}>{t('sidebar.modal.alreadyActive')}</p>
-                ) : null}
-                {selectedEntitlementPending ? (
-                  <p className={styles.elevationHint}>{t('sidebar.modal.pending')}</p>
-                ) : null}
-
-                <div className={styles.modalActions}>
-                  <Button variant="muted" onClick={() => setIsElevationModalOpen(false)}>
-                    {t('sidebar.modal.close')}
-                  </Button>
-                  <Button
-                    variant="default"
-                    disabled={
-                      isSubmitting ||
-                      !justification.trim() ||
-                      selectedEntitlementAlreadyActive ||
-                      selectedEntitlementPending
-                    }
-                    onClick={() => {
-                      void submitElevationRequest();
+              ) : (
+                <div className={styles.elevationCard}>
+                  <label className={styles.elevationLabel} htmlFor="elevation-entitlement-select">
+                    {t('sidebar.modal.entitlement')}
+                  </label>
+                  <select
+                    id="elevation-entitlement-select"
+                    className={styles.elevationSelect}
+                    value={selectedEntitlementKey}
+                    onChange={(event) => {
+                      setSelectedEntitlementKey(event.target.value);
+                      setSubmitError(null);
                     }}
                   >
-                    {isSubmitting ? t('sidebar.modal.submitting') : t('sidebar.modal.request')}
-                  </Button>
-                </div>
+                    {entitlements.map((entitlement) => (
+                      <option key={entitlement.key} value={entitlement.key}>
+                        {entitlement.key}
+                      </option>
+                    ))}
+                  </select>
 
-                {activeRequest ? (
-                  <div className={styles.elevationStatusCard}>
-                    <p className={styles.elevationStatusTitle}>
-                      {t('sidebar.modal.latestRequest')}
-                    </p>
-                    <p className={styles.elevationHint}>
-                      {t('sidebar.modal.requestEntitlement', {
-                        entitlementKey: activeRequest.entitlementKey,
-                      })}
-                    </p>
-                    <p className={styles.elevationHint}>
-                      {t('sidebar.modal.status')}{' '}
-                      <strong
-                        className={
-                          activeRequest.status === 'granted'
-                            ? styles.elevationStatusGranted
-                            : activeRequest.status === 'pending'
-                              ? styles.elevationStatusPending
-                              : styles.elevationStatusDenied
-                        }
-                      >
-                        {activeRequest.status}
-                      </strong>
-                      {isPolling && activeRequest.status === 'pending'
-                        ? t('sidebar.modal.refreshing')
-                        : ''}
-                    </p>
-                    {activeRequest.expiresAt ? (
+                  <p className={styles.elevationHint}>
+                    {t('sidebar.modal.grants', {
+                      permissions: selectedEntitlement?.permissions.join(', ') ?? '-',
+                    })}
+                  </p>
+
+                  <label className={styles.elevationLabel} htmlFor="elevation-justification-input">
+                    {t('sidebar.modal.reason')}
+                  </label>
+                  <textarea
+                    id="elevation-justification-input"
+                    className={styles.elevationTextarea}
+                    value={justification}
+                    onChange={(event) => setJustification(event.target.value)}
+                    placeholder={t('sidebar.modal.reasonPlaceholder')}
+                    rows={3}
+                  />
+
+                  {submitError ? (
+                    <p className={`${styles.state} ${styles.stateError}`}>{submitError}</p>
+                  ) : null}
+
+                  {selectedEntitlementAlreadyActive ? (
+                    <p className={styles.elevationHint}>{t('sidebar.modal.alreadyActive')}</p>
+                  ) : null}
+                  {selectedEntitlementPending ? (
+                    <p className={styles.elevationHint}>{t('sidebar.modal.pending')}</p>
+                  ) : null}
+
+                  <div className={styles.modalActions}>
+                    <Button variant="muted" onClick={() => setIsElevationModalOpen(false)}>
+                      {t('sidebar.modal.close')}
+                    </Button>
+                    <Button
+                      variant="default"
+                      disabled={
+                        isSubmitting ||
+                        !justification.trim() ||
+                        selectedEntitlementAlreadyActive ||
+                        selectedEntitlementPending
+                      }
+                      onClick={() => {
+                        void submitElevationRequest();
+                      }}
+                    >
+                      {isSubmitting ? t('sidebar.modal.submitting') : t('sidebar.modal.request')}
+                    </Button>
+                  </div>
+
+                  {activeRequest ? (
+                    <div className={styles.elevationStatusCard}>
+                      <p className={styles.elevationStatusTitle}>
+                        {t('sidebar.modal.latestRequest')}
+                      </p>
                       <p className={styles.elevationHint}>
-                        {t('sidebar.modal.requestExpires', {
-                          value: new Date(activeRequest.expiresAt).toLocaleString(locale),
+                        {t('sidebar.modal.requestEntitlement', {
+                          entitlementKey: activeRequest.entitlementKey,
                         })}
                       </p>
-                    ) : null}
-                    {activeRequest.message ? (
-                      <p className={styles.elevationHint}>{activeRequest.message}</p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </section>
-        </div>
+                      <p className={styles.elevationHint}>
+                        {t('sidebar.modal.status')}{' '}
+                        <strong
+                          className={
+                            activeRequest.status === 'granted'
+                              ? styles.elevationStatusGranted
+                              : activeRequest.status === 'pending'
+                                ? styles.elevationStatusPending
+                                : styles.elevationStatusDenied
+                          }
+                        >
+                          {activeRequest.status}
+                        </strong>
+                        {isPolling && activeRequest.status === 'pending'
+                          ? t('sidebar.modal.refreshing')
+                          : ''}
+                      </p>
+                      {activeRequest.expiresAt ? (
+                        <p className={styles.elevationHint}>
+                          {t('sidebar.modal.requestExpires', {
+                            value: new Date(activeRequest.expiresAt).toLocaleString(locale),
+                          })}
+                        </p>
+                      ) : null}
+                      {activeRequest.message ? (
+                        <p className={styles.elevationHint}>{activeRequest.message}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </section>
+          </div>
+        </ModalPortal>
       ) : null}
     </aside>
   );
