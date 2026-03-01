@@ -439,9 +439,12 @@ export const App = () => {
                     onUploadFiles={browser.uploadFiles}
                     onUploadFolder={browser.uploadFolder}
                     onClearSelection={browser.clearSelection}
+                    onSelectItemOnly={browser.selectOnlyPath}
+                    onToggleItemSelection={browser.toggleSelectionAtPath}
                     onRowClick={browser.handleRowClick}
                     onRowDoubleClick={browser.handleRowDoubleClick}
                     onOpenContextMenu={browser.openContextMenu}
+                    onOpenItemContextMenu={browser.openContextMenuForItem}
                     onCloseContextMenu={browser.closeContextMenu}
                     onRename={browser.renamePathItem}
                     onMove={browser.movePathItem}

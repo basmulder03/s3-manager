@@ -36,9 +36,12 @@ const createProps = () => {
       onUploadFiles: vi.fn(async () => {}),
       onUploadFolder: vi.fn(async () => {}),
       onClearSelection: vi.fn(),
+      onSelectItemOnly: vi.fn(),
+      onToggleItemSelection: vi.fn(),
       onRowClick: vi.fn(),
       onRowDoubleClick: vi.fn(),
       onOpenContextMenu: vi.fn(),
+      onOpenItemContextMenu: vi.fn(),
       onCloseContextMenu: vi.fn(),
       onRename: vi.fn(),
       onMove: vi.fn(),
@@ -113,6 +116,122 @@ describe('BrowserPage sorting and filtering', () => {
     expect(screen.getByText('Move selected item')).toBeInTheDocument();
     expect(screen.getByText('Delete selected items')).toBeInTheDocument();
     expect(screen.getByText('Clear selection or close dialogs')).toBeInTheDocument();
+  });
+
+  it('opens and closes shortcuts modal with keyboard keys', () => {
+    const { props } = createProps();
+    render(<BrowserPage {...props} />);
+
+    fireEvent.keyDown(window, { key: '?' });
+    expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument();
+  });
+
+  it('supports keyboard row selection and context menu trigger', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'alpha.txt',
+        type: 'file',
+        path: 'my-bucket/alpha.txt',
+        size: 4,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    const firstDataRow = screen.getByText('alpha.txt').closest('tr');
+    expect(firstDataRow).not.toBeNull();
+    if (!firstDataRow) {
+      return;
+    }
+    firstDataRow.focus();
+
+    fireEvent.keyDown(firstDataRow, { key: ' ' });
+    expect(props.onSelectItemOnly).toHaveBeenCalledWith('my-bucket/alpha.txt', 0);
+
+    fireEvent.keyDown(firstDataRow, { key: 'F10', shiftKey: true });
+    expect(props.onOpenItemContextMenu).toHaveBeenCalledWith(items[0]);
+  });
+
+  it('moves focus into explorer rows when arrow key is pressed globally', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'alpha.txt',
+        type: 'file',
+        path: 'my-bucket/alpha.txt',
+        size: 4,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    const firstDataRow = screen.getByText('alpha.txt').closest('tr');
+    expect(firstDataRow).not.toBeNull();
+    if (!firstDataRow) {
+      return;
+    }
+
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    expect(firstDataRow).toHaveFocus();
+  });
+
+  it('navigates to parent on Backspace key', () => {
+    const { props, setSelectedPath } = createProps();
+    render(<BrowserPage {...props} />);
+
+    fireEvent.keyDown(window, { key: 'Backspace' });
+    expect(setSelectedPath).toHaveBeenCalledWith('my-bucket');
+  });
+
+  it('opens focused directory with ArrowRight and navigates parent with ArrowLeft', () => {
+    const { props, setSelectedPath } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'reports',
+        type: 'directory',
+        path: 'my-bucket/folder/reports',
+        size: null,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    const directoryRow = screen.getByText('reports').closest('tr');
+    expect(directoryRow).not.toBeNull();
+    if (!directoryRow) {
+      return;
+    }
+
+    directoryRow.focus();
+    fireEvent.keyDown(directoryRow, { key: 'ArrowRight' });
+    expect(props.onRowDoubleClick).toHaveBeenCalledWith(items[0]);
+
+    fireEvent.keyDown(directoryRow, { key: 'ArrowLeft' });
+    expect(setSelectedPath).toHaveBeenCalledWith('my-bucket');
   });
 
   it('uses numeric-aware string sorting for names', () => {

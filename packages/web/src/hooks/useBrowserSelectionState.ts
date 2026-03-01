@@ -107,8 +107,24 @@ export const useBrowserSelectionState = ({
     });
   };
 
-  const selectOnly = (path: string) => {
+  const selectOnly = (path: string, index?: number) => {
     setSelectedItems(new Set([path]));
+    if (typeof index === 'number') {
+      setLastSelectedIndex(index);
+    }
+  };
+
+  const toggleSelectionAtPath = (path: string, index: number) => {
+    setSelectedItems((previous) => {
+      const next = new Set(previous);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+    setLastSelectedIndex(index);
   };
 
   const handleRowClick = (item: BrowseItem, index: number, event: MouseEvent<HTMLElement>) => {
@@ -120,16 +136,7 @@ export const useBrowserSelectionState = ({
 
     if (event.metaKey || event.ctrlKey) {
       event.preventDefault();
-      setSelectedItems((previous) => {
-        const next = new Set(previous);
-        if (next.has(item.path)) {
-          next.delete(item.path);
-        } else {
-          next.add(item.path);
-        }
-        return next;
-      });
-      setLastSelectedIndex(index);
+      toggleSelectionAtPath(item.path, index);
       return;
     }
 
@@ -143,8 +150,26 @@ export const useBrowserSelectionState = ({
       return;
     }
 
-    selectOnly(item.path);
-    setLastSelectedIndex(index);
+    selectOnly(item.path, index);
+  };
+
+  const openContextMenuAt = (item: BrowseItem, clientX: number, clientY: number) => {
+    if (!selectedItems.has(item.path)) {
+      selectOnly(item.path);
+    }
+
+    const menuWidth = 220;
+    const menuHeight = 230;
+    const margin = 10;
+
+    const x = Math.min(clientX, window.innerWidth - menuWidth - margin);
+    const y = Math.min(clientY, window.innerHeight - menuHeight - margin);
+
+    setContextMenu({
+      x: Math.max(margin, x),
+      y: Math.max(margin, y),
+      item,
+    });
   };
 
   const handleRowDoubleClick = (item: BrowseItem) => {
@@ -156,22 +181,13 @@ export const useBrowserSelectionState = ({
   const openContextMenu = (item: BrowseItem, event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    if (!selectedItems.has(item.path)) {
-      selectOnly(item.path);
-    }
+    openContextMenuAt(item, event.clientX, event.clientY);
+  };
 
-    const menuWidth = 220;
-    const menuHeight = 230;
-    const margin = 10;
-
-    const x = Math.min(event.clientX, window.innerWidth - menuWidth - margin);
-    const y = Math.min(event.clientY, window.innerHeight - menuHeight - margin);
-
-    setContextMenu({
-      x: Math.max(margin, x),
-      y: Math.max(margin, y),
-      item,
-    });
+  const openContextMenuForItem = (item: BrowseItem) => {
+    const x = Math.max(20, window.innerWidth * 0.55);
+    const y = Math.max(20, window.innerHeight * 0.34);
+    openContextMenuAt(item, x, y);
   };
 
   return {
@@ -184,9 +200,12 @@ export const useBrowserSelectionState = ({
     contextMenu,
     setContextMenu,
     toggleSelection,
+    toggleSelectionAtPath,
+    selectOnly,
     clearSelection,
     handleRowClick,
     handleRowDoubleClick,
     openContextMenu,
+    openContextMenuForItem,
   };
 };

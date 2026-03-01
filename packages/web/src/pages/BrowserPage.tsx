@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MouseEvent, ReactNode } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, ReactNode } from 'react';
 import {
   ArrowDownToLine,
   ArrowRightLeft,
@@ -51,9 +51,12 @@ interface BrowserPageProps {
   onUploadFiles: (files: FileList | File[]) => Promise<void>;
   onUploadFolder: (files: FileList | File[]) => Promise<void>;
   onClearSelection: () => void;
+  onSelectItemOnly: (path: string, index: number) => void;
+  onToggleItemSelection: (path: string, index: number) => void;
   onRowClick: (item: BrowseItem, index: number, event: MouseEvent<HTMLElement>) => void;
   onRowDoubleClick: (item: BrowseItem) => void;
   onOpenContextMenu: (item: BrowseItem, event: MouseEvent) => void;
+  onOpenItemContextMenu: (item: BrowseItem) => void;
   onCloseContextMenu: () => void;
   onRename: (path: string, currentName: string) => void;
   onMove: (path: string) => void;
@@ -86,6 +89,48 @@ const browserShortcuts: ShortcutDefinition[] = [
     action: 'Select all visible items',
     keys: ['Ctrl/Cmd', 'A'],
     Icon: CheckSquare,
+  },
+  {
+    id: 'focus-filter',
+    action: 'Focus file filter',
+    keys: ['/'],
+    Icon: Search,
+  },
+  {
+    id: 'shortcuts-modal',
+    action: 'Open shortcuts help',
+    keys: ['?'],
+    Icon: Keyboard,
+  },
+  {
+    id: 'parent',
+    action: 'Go to parent folder',
+    keys: ['ArrowLeft', 'Backspace', 'Alt+ArrowUp'],
+    Icon: Undo2,
+  },
+  {
+    id: 'row-nav',
+    action: 'Jump to explorer and move focus',
+    keys: ['Arrow keys', 'Home', 'End'],
+    Icon: Folder,
+  },
+  {
+    id: 'row-open',
+    action: 'Open focused item',
+    keys: ['Enter', 'ArrowRight'],
+    Icon: File,
+  },
+  {
+    id: 'row-select',
+    action: 'Select focused item',
+    keys: ['Space'],
+    Icon: CheckSquare,
+  },
+  {
+    id: 'row-menu',
+    action: 'Open item context menu',
+    keys: ['Shift', 'F10'],
+    Icon: Keyboard,
   },
   {
     id: 'download',
@@ -154,9 +199,12 @@ export const BrowserPage = ({
   onUploadFiles,
   onUploadFolder,
   onClearSelection,
+  onSelectItemOnly,
+  onToggleItemSelection,
   onRowClick,
   onRowDoubleClick,
   onOpenContextMenu,
+  onOpenItemContextMenu,
   onCloseContextMenu,
   onRename,
   onMove,
@@ -173,6 +221,7 @@ export const BrowserPage = ({
   const [filterQuery, setFilterQuery] = useState('');
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [pendingFolderUploadFiles, setPendingFolderUploadFiles] = useState<File[]>([]);
+  const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
   const [sortRules, setSortRules] = useState<SortRule[]>([
     { key: 'type', direction: 'asc' },
     { key: 'name', direction: 'asc' },
@@ -181,6 +230,7 @@ export const BrowserPage = ({
   const filterInputRef = useRef<HTMLInputElement>(null);
   const uploadFilesInputRef = useRef<HTMLInputElement>(null);
   const uploadFolderInputRef = useRef<HTMLInputElement>(null);
+  const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
   const folderInputAttributes = {
     directory: '',
     webkitdirectory: '',
@@ -465,6 +515,254 @@ export const BrowserPage = ({
   const closeFilter = () => {
     setFilterQuery('');
     setIsFilterOpen(false);
+  };
+
+  const focusRowAtIndex = useCallback(
+    (index: number) => {
+      if (renderedItems.length === 0) {
+        return;
+      }
+
+      const nextIndex = Math.max(0, Math.min(index, renderedItems.length - 1));
+      setFocusedRowIndex(nextIndex);
+      rowRefs.current[nextIndex]?.focus();
+    },
+    [renderedItems.length]
+  );
+
+  const defaultRowIndex = useMemo(() => {
+    if (renderedItems.length === 0) {
+      return -1;
+    }
+    if (renderedItems[0]?.isParentNavigation && renderedItems.length > 1) {
+      return 1;
+    }
+    return 0;
+  }, [renderedItems]);
+
+  useEffect(() => {
+    if (renderedItems.length === 0 || defaultRowIndex < 0) {
+      setFocusedRowIndex(null);
+      return;
+    }
+
+    if (
+      isShortcutsModalOpen ||
+      pendingFolderUploadFiles.length > 0 ||
+      isBreadcrumbEditing ||
+      isFilterOpen
+    ) {
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    const isTypingInInput =
+      activeElement instanceof HTMLInputElement ||
+      activeElement instanceof HTMLTextAreaElement ||
+      activeElement instanceof HTMLSelectElement ||
+      Boolean((activeElement as HTMLElement | null)?.isContentEditable);
+
+    if (isTypingInInput) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      focusRowAtIndex(defaultRowIndex);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [
+    defaultRowIndex,
+    focusRowAtIndex,
+    isBreadcrumbEditing,
+    isFilterOpen,
+    isShortcutsModalOpen,
+    pendingFolderUploadFiles.length,
+    selectedPath,
+    renderedItems,
+  ]);
+
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+
+      const target = event.target;
+      const isTypingInInput =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        Boolean((target as HTMLElement | null)?.isContentEditable);
+
+      if (isShortcutsModalOpen && event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        setIsShortcutsModalOpen(false);
+        return;
+      }
+
+      if (isTypingInInput) {
+        return;
+      }
+
+      if (event.key === '/') {
+        event.preventDefault();
+        openFilter();
+        return;
+      }
+
+      if (event.key === '?') {
+        event.preventDefault();
+        setIsShortcutsModalOpen(true);
+        return;
+      }
+
+      if (event.key === 'Backspace' && selectedPath) {
+        event.preventDefault();
+        setSelectedPath(parentPath);
+        return;
+      }
+
+      if (event.altKey && event.key === 'ArrowUp' && selectedPath) {
+        event.preventDefault();
+        setSelectedPath(parentPath);
+        return;
+      }
+
+      if (event.key === 'ArrowLeft' && selectedPath) {
+        event.preventDefault();
+        setSelectedPath(parentPath);
+        return;
+      }
+
+      const isExplorerNavigationKey =
+        event.key === 'ArrowDown' ||
+        event.key === 'ArrowUp' ||
+        event.key === 'ArrowRight' ||
+        event.key === 'ArrowLeft' ||
+        event.key === 'Home' ||
+        event.key === 'End';
+
+      if (!isExplorerNavigationKey || renderedItems.length === 0) {
+        return;
+      }
+
+      const activeElement = document.activeElement;
+      const focusedRow =
+        activeElement instanceof HTMLTableRowElement && rowRefs.current.includes(activeElement)
+          ? activeElement
+          : null;
+
+      if (focusedRow) {
+        return;
+      }
+
+      event.preventDefault();
+      if (event.key === 'End') {
+        focusRowAtIndex(renderedItems.length - 1);
+        return;
+      }
+
+      if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+        focusRowAtIndex(defaultRowIndex > 0 ? defaultRowIndex : renderedItems.length - 1);
+        return;
+      }
+
+      focusRowAtIndex(defaultRowIndex >= 0 ? defaultRowIndex : 0);
+    };
+
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [
+    defaultRowIndex,
+    focusRowAtIndex,
+    isShortcutsModalOpen,
+    openFilter,
+    parentPath,
+    renderedItems.length,
+    selectedPath,
+    setSelectedPath,
+  ]);
+
+  const handleRowKeyDown = (
+    event: ReactKeyboardEvent<HTMLTableRowElement>,
+    item: BrowseItem,
+    renderedIndex: number,
+    isParentNavigation: boolean
+  ) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      focusRowAtIndex(renderedIndex + 1);
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      focusRowAtIndex(renderedIndex - 1);
+      return;
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault();
+      focusRowAtIndex(0);
+      return;
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault();
+      focusRowAtIndex(renderedItems.length - 1);
+      return;
+    }
+
+    if ((event.key === 'ArrowLeft' || event.key === 'Backspace') && selectedPath) {
+      event.preventDefault();
+      setSelectedPath(parentPath);
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      if (isParentNavigation) {
+        setSelectedPath(parentPath);
+        return;
+      }
+
+      if (item.type === 'file') {
+        void onViewFile(item.path);
+        return;
+      }
+
+      onRowDoubleClick(item);
+      return;
+    }
+
+    if (event.key === ' ' || event.key === 'Spacebar') {
+      if (isParentNavigation) {
+        return;
+      }
+
+      event.preventDefault();
+      if (event.metaKey || event.ctrlKey) {
+        onToggleItemSelection(item.path, renderedIndex);
+      } else {
+        onSelectItemOnly(item.path, renderedIndex);
+      }
+      return;
+    }
+
+    if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') {
+      if (isParentNavigation) {
+        return;
+      }
+
+      event.preventDefault();
+      onOpenItemContextMenu(item);
+    }
   };
 
   return (
@@ -845,6 +1143,12 @@ export const BrowserPage = ({
                   {renderedItems.map(({ item, isParentNavigation }, index) => (
                     <tr
                       key={`${item.type}:${isParentNavigation ? '__parent__' : item.path}`}
+                      ref={(element) => {
+                        rowRefs.current[index] = element;
+                      }}
+                      tabIndex={focusedRowIndex === index ? 0 : -1}
+                      data-focused={focusedRowIndex === index ? 'true' : 'false'}
+                      onFocus={() => setFocusedRowIndex(index)}
                       className={
                         !isParentNavigation && selectedItems.has(item.path) ? styles.isSelected : ''
                       }
@@ -876,6 +1180,9 @@ export const BrowserPage = ({
 
                         onOpenContextMenu(item, event);
                       }}
+                      onKeyDown={(event) =>
+                        handleRowKeyDown(event, item, index, isParentNavigation)
+                      }
                     >
                       <td className={styles.nameCell}>
                         <div className={styles.itemMainButton}>
