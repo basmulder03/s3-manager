@@ -60,6 +60,7 @@ Internet → Gateway (TLS) → HTTPRoute
 ```
 
 **Advantages:**
+
 - Native OIDC support (no external proxy needed)
 - Declarative policy management
 - Better observability with Gateway API
@@ -77,6 +78,7 @@ Internet → NGINX Ingress (TLS)
 ```
 
 **Disadvantages:**
+
 - Requires separate oauth2-proxy deployment
 - Configuration via annotations (less declarative)
 - More complex setup
@@ -227,14 +229,14 @@ Update the `config.azure.roleMapping` in your values file with your Azure AD gro
 config:
   azure:
     roleMapping:
-      "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx":  # S3-Admin group ID
+      'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx': # S3-Admin group ID
         - view
         - write
         - delete
-      "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy":  # S3-Editor group ID
+      'yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy': # S3-Editor group ID
         - view
         - write
-      "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz":  # S3-Viewer group ID
+      'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz': # S3-Viewer group ID
         - view
 ```
 
@@ -380,6 +382,7 @@ curl -I https://s3-manager.example.com
 **Symptoms:** Browser keeps redirecting between app and OIDC provider
 
 **Causes:**
+
 - Incorrect redirect URI configured
 - Cookie domain mismatch
 - HTTPS/TLS issues
@@ -387,6 +390,7 @@ curl -I https://s3-manager.example.com
 **Solutions:**
 
 For Envoy Gateway:
+
 ```bash
 # Check SecurityPolicy
 kubectl describe securitypolicy -n default
@@ -396,6 +400,7 @@ kubectl get securitypolicy -o yaml | grep redirectUrl
 ```
 
 For NGINX + oauth2-proxy:
+
 ```bash
 # Check oauth2-proxy logs
 kubectl logs -n auth-system -l app=oauth2-proxy
@@ -411,6 +416,7 @@ helm get values oauth2-proxy -n auth-system | grep redirect-url
 **Solutions:**
 
 For Envoy Gateway:
+
 ```bash
 # Update rate limiting in values.yaml
 helm upgrade s3-manager ./helm/s3-manager \
@@ -419,6 +425,7 @@ helm upgrade s3-manager ./helm/s3-manager \
 ```
 
 For NGINX:
+
 ```bash
 # Update annotation in values.yaml
 helm upgrade s3-manager ./helm/s3-manager \
@@ -470,6 +477,7 @@ kubectl logs -n envoy-gateway-system -l control-plane=envoy-gateway
 **Symptoms:** User can log in but gets "Unauthorized" after redirect
 
 **Causes:**
+
 - Token issuer mismatch
 - Missing or incorrect audience claim
 - Token expiration issues
@@ -507,7 +515,7 @@ kubectl describe securitypolicy
 
 # Test connectivity from pod
 kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- sh
-# Inside pod: curl http://s3-manager:80/health
+# Inside pod: curl http://s3-manager:80/api/health
 ```
 
 ### Getting Help

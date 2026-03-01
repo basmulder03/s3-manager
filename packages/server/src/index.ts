@@ -46,9 +46,9 @@ const server = Bun.serve({
 startupLogger.info(
   {
     listenAddress: `http://localhost:${server.port}`,
-    trpcEndpoint: `http://localhost:${server.port}/trpc`,
-    healthEndpoint: `http://localhost:${server.port}/health`,
-    readinessEndpoint: `http://localhost:${server.port}/health/ready`,
+    trpcEndpoint: `http://localhost:${server.port}/api/trpc`,
+    healthEndpoint: `http://localhost:${server.port}/api/health`,
+    readinessEndpoint: `http://localhost:${server.port}/api/health/ready`,
   },
   'Server ready'
 );

@@ -10,7 +10,7 @@ const webServer = managedServers
   ? [
       {
         command: 'bun run --cwd ../server dev',
-        url: `${apiOrigin}/health`,
+        url: `${apiOrigin}/api/health`,
         reuseExistingServer: true,
         timeout: 120_000,
         env: {
@@ -41,7 +41,7 @@ const webServer = managedServers
         reuseExistingServer: true,
         timeout: 120_000,
         env: {
-          VITE_API_URL: `${apiOrigin}/trpc`,
+          VITE_API_URL: `${apiOrigin}/api/trpc`,
         },
       },
     ]

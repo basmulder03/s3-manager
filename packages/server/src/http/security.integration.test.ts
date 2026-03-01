@@ -33,7 +33,7 @@ describe('security hardening', () => {
     const { createApp } = await import('../app');
     const app = createApp();
 
-    const response = await app.request('http://localhost:3000/auth/refresh', {
+    const response = await app.request('http://localhost:3000/api/auth/refresh', {
       method: 'POST',
       headers: {
         cookie: 's3_refresh_token=test-refresh-token',

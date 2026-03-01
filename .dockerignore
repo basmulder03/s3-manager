@@ -56,7 +56,6 @@ requirements-dev.txt
 
 # Docker and container files (not needed in image)
 .dockerignore
-Dockerfile
 Dockerfile.dev
 docker-compose.yml
 podman-compose.yml

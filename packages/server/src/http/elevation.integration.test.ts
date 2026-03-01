@@ -124,7 +124,7 @@ describe('auth elevation endpoints', () => {
       const cookie = `s3_access_token=${encodeURIComponent(accessToken)}`;
 
       const entitlementsResponse = await app.request(
-        'http://localhost:3000/auth/elevation/entitlements',
+        'http://localhost:3000/api/auth/elevation/entitlements',
         {
           headers: {
             cookie,
@@ -137,7 +137,7 @@ describe('auth elevation endpoints', () => {
       expect(entitlementsJson.entitlements).toHaveLength(1);
       expect(entitlementsJson.entitlements[0].key).toBe('property-admin-temp');
 
-      const userResponse = await app.request('http://localhost:3000/auth/user', {
+      const userResponse = await app.request('http://localhost:3000/api/auth/user', {
         headers: {
           cookie,
         },
@@ -149,7 +149,7 @@ describe('auth elevation endpoints', () => {
       expect(userJson.user.elevationSources[0].entitlementKey).toBe('property-admin-temp');
 
       const missingReasonResponse = await app.request(
-        'http://localhost:3000/auth/elevation/request',
+        'http://localhost:3000/api/auth/elevation/request',
         {
           method: 'POST',
           headers: {
@@ -163,7 +163,7 @@ describe('auth elevation endpoints', () => {
       );
       expect(missingReasonResponse.status).toBe(400);
 
-      const csrfResponse = await app.request('http://localhost:3000/auth/elevation/request', {
+      const csrfResponse = await app.request('http://localhost:3000/api/auth/elevation/request', {
         method: 'POST',
         headers: {
           cookie,
@@ -177,18 +177,21 @@ describe('auth elevation endpoints', () => {
       });
       expect(csrfResponse.status).toBe(403);
 
-      const requestResponse = await app.request('http://localhost:3000/auth/elevation/request', {
-        method: 'POST',
-        headers: {
-          cookie,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          entitlementKey: 'property-admin-temp',
-          justification: 'Need metadata updates',
-          durationMinutes: 45,
-        }),
-      });
+      const requestResponse = await app.request(
+        'http://localhost:3000/api/auth/elevation/request',
+        {
+          method: 'POST',
+          headers: {
+            cookie,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            entitlementKey: 'property-admin-temp',
+            justification: 'Need metadata updates',
+            durationMinutes: 45,
+          }),
+        }
+      );
 
       expect(requestResponse.status).toBe(200);
       const requestJson = await requestResponse.json();
@@ -197,7 +200,7 @@ describe('auth elevation endpoints', () => {
       expect(requestId.length).toBeGreaterThan(0);
 
       const statusResponse = await app.request(
-        `http://localhost:3000/auth/elevation/status/${encodeURIComponent(requestId)}`,
+        `http://localhost:3000/api/auth/elevation/status/${encodeURIComponent(requestId)}`,
         {
           headers: {
             cookie,
@@ -271,7 +274,7 @@ describe('auth elevation endpoints', () => {
       const app = createApp();
       const cookie = `s3_access_token=${encodeURIComponent(accessToken)}`;
 
-      const beforeUserResponse = await app.request('http://localhost:3000/auth/user', {
+      const beforeUserResponse = await app.request('http://localhost:3000/api/auth/user', {
         headers: {
           cookie,
         },
@@ -280,36 +283,42 @@ describe('auth elevation endpoints', () => {
       const beforeUser = await beforeUserResponse.json();
       expect(beforeUser.user.permissions).not.toContain('manage_properties');
 
-      const requestResponse = await app.request('http://localhost:3000/auth/elevation/request', {
-        method: 'POST',
-        headers: {
-          cookie,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          entitlementKey: 'property-admin-temp',
-          justification: 'Dev mock flow',
-        }),
-      });
+      const requestResponse = await app.request(
+        'http://localhost:3000/api/auth/elevation/request',
+        {
+          method: 'POST',
+          headers: {
+            cookie,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            entitlementKey: 'property-admin-temp',
+            justification: 'Dev mock flow',
+          }),
+        }
+      );
 
       expect(requestResponse.status).toBe(200);
       const requestJson = await requestResponse.json();
       expect(requestJson.request.status).toBe('granted');
 
-      const duplicateResponse = await app.request('http://localhost:3000/auth/elevation/request', {
-        method: 'POST',
-        headers: {
-          cookie,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          entitlementKey: 'property-admin-temp',
-          justification: 'Trying duplicate request',
-        }),
-      });
+      const duplicateResponse = await app.request(
+        'http://localhost:3000/api/auth/elevation/request',
+        {
+          method: 'POST',
+          headers: {
+            cookie,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            entitlementKey: 'property-admin-temp',
+            justification: 'Trying duplicate request',
+          }),
+        }
+      );
       expect(duplicateResponse.status).toBe(409);
 
-      const afterUserResponse = await app.request('http://localhost:3000/auth/user', {
+      const afterUserResponse = await app.request('http://localhost:3000/api/auth/user', {
         headers: {
           cookie,
         },
@@ -321,7 +330,7 @@ describe('auth elevation endpoints', () => {
       expect(afterUser.user.elevationSources[0].entitlementKey).toBe('property-admin-temp');
 
       const deactivateResponse = await app.request(
-        'http://localhost:3000/auth/elevation/deactivate',
+        'http://localhost:3000/api/auth/elevation/deactivate',
         {
           method: 'POST',
           headers: {
@@ -335,7 +344,7 @@ describe('auth elevation endpoints', () => {
       );
       expect(deactivateResponse.status).toBe(200);
 
-      const afterDeactivateResponse = await app.request('http://localhost:3000/auth/user', {
+      const afterDeactivateResponse = await app.request('http://localhost:3000/api/auth/user', {
         headers: {
           cookie,
         },
@@ -347,7 +356,7 @@ describe('auth elevation endpoints', () => {
 
       for (let attempt = 0; attempt < 8; attempt += 1) {
         const throttledProbe = await app.request(
-          'http://localhost:3000/auth/elevation/deactivate',
+          'http://localhost:3000/api/auth/elevation/deactivate',
           {
             method: 'POST',
             headers: {

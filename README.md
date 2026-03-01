@@ -27,7 +27,7 @@ bun run dev:server
 bun run dev:web
 ```
 
-- API: `http://localhost:3000`
+- API base: `http://localhost:3000/api`
 - Web: `http://localhost:5173`
 
 ## Commands
@@ -58,4 +58,5 @@ docs/       # development docs
 ## CI
 
 - TypeScript CI workflow: `.github/workflows/typescript-ci.yml`
+- Release + container publish workflow: `.github/workflows/release-container.yml`
 - Current rollout mode is manual dispatch.

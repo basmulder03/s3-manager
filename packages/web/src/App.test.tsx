@@ -97,7 +97,7 @@ vi.mock('@web/trpc/client', () => ({
       },
     },
   },
-  API_ORIGIN: 'http://localhost:3000',
+  API_ORIGIN: 'http://localhost:3000/api',
   trpcProxyClient: {
     s3: {
       getObjectMetadata: {
@@ -197,7 +197,7 @@ describe('App routes', () => {
 
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
 
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3000/auth/refresh', {
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3000/api/auth/refresh', {
       method: 'POST',
       credentials: 'include',
     });

@@ -48,7 +48,7 @@ ingress:
         clientSecretRef:
           name: s3-manager-oidc-secret
           key: client-secret
-        redirectUrl: https://s3-manager.example.com/auth/callback
+        redirectUrl: https://s3-manager.example.com/api/auth/callback
         logoutUrl: https://s3-manager.example.com/auth/logout
         scopes:
           - openid
@@ -109,7 +109,7 @@ config:
   keycloak:
     authority: https://keycloak.example.com/realms/s3-manager
     clientId: s3-manager-client
-    redirectUri: https://s3-manager.example.com/auth/callback
+    redirectUri: https://s3-manager.example.com/api/auth/callback
     logoutUri: https://s3-manager.example.com/auth/logout
     scope: 'openid profile email roles'
 
@@ -158,14 +158,14 @@ autoscaling:
 # Health checks
 livenessProbe:
   httpGet:
-    path: /health
+    path: /api/health
     port: http
   initialDelaySeconds: 30
   periodSeconds: 10
 
 readinessProbe:
   httpGet:
-    path: /health
+    path: /api/health
     port: http
   initialDelaySeconds: 5
   periodSeconds: 5

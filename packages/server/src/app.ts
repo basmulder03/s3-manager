@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { trpcServer } from '@hono/trpc-server';
+import { existsSync, statSync } from 'node:fs';
+import { normalize, resolve } from 'node:path';
 import { appRouter } from '@/trpc/router';
 import { createContext } from '@/trpc';
 import { config } from '@/config';
@@ -9,12 +11,20 @@ import { registerAuthHttpRoutes } from '@/http/auth';
 import { enforceSameOriginForMutation } from '@/http/csrf';
 import { registerUploadHttpRoutes } from '@/http/upload';
 
+const webDistDir = resolve(import.meta.dir, '../../web/dist');
+const webIndexFile = resolve(webDistDir, 'index.html');
+
+const isBackendPath = (path: string): boolean => {
+  return path === '/api' || path.startsWith('/api/');
+};
+
 /**
  * Create and configure Hono application
  */
 export const createApp = () => {
   const app = new Hono();
   const appLogger = getLogger('App');
+  const hasWebBuild = existsSync(webIndexFile);
 
   const apiCsp = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
 
@@ -48,7 +58,9 @@ export const createApp = () => {
     c.header('X-Frame-Options', 'DENY');
     c.header('Referrer-Policy', 'no-referrer');
     c.header('Permissions-Policy', 'accelerometer=(), camera=(), geolocation=(), microphone=()');
-    c.header('Content-Security-Policy', apiCsp);
+    if (isBackendPath(c.req.path)) {
+      c.header('Content-Security-Policy', apiCsp);
+    }
 
     if (config.nodeEnv === 'production') {
       c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
@@ -74,11 +86,11 @@ export const createApp = () => {
   });
 
   // Health check endpoints (for K8s probes - simple HTTP, not tRPC)
-  app.get('/health', (c) => {
+  app.get('/api/health', (c) => {
     return c.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  app.get('/health/ready', (c) => {
+  app.get('/api/health/ready', (c) => {
     const telemetry = getTelemetryStatus();
     return c.json({
       status: 'ready',
@@ -102,21 +114,51 @@ export const createApp = () => {
 
   // tRPC endpoint
   app.use(
-    '/trpc/*',
+    '/api/trpc/*',
     trpcServer({
       router: appRouter,
       createContext,
     })
   );
 
-  // Root endpoint
-  app.get('/', (c) => {
+  app.get('/api', (c) => {
     return c.json({
       app: config.app.name,
       version: config.app.version,
-      message: 'S3 Manager API - Use /trpc for API endpoints',
+      message: 'S3 Manager API - Use /api/trpc for API endpoints',
     });
   });
+
+  if (hasWebBuild) {
+    app.get('*', (c) => {
+      if (isBackendPath(c.req.path)) {
+        return c.notFound();
+      }
+
+      const normalizedPath = normalize(c.req.path);
+      const relativePath =
+        normalizedPath === '/' ? 'index.html' : normalizedPath.replace(/^\/+/, '');
+      const requestedPath = resolve(webDistDir, relativePath);
+
+      if (
+        requestedPath.startsWith(webDistDir) &&
+        existsSync(requestedPath) &&
+        statSync(requestedPath).isFile()
+      ) {
+        return new Response(Bun.file(requestedPath));
+      }
+
+      return new Response(Bun.file(webIndexFile));
+    });
+  } else {
+    app.get('/', (c) => {
+      return c.json({
+        app: config.app.name,
+        version: config.app.version,
+        message: 'S3 Manager API - Use /api/trpc for API endpoints',
+      });
+    });
+  }
 
   return app;
 };

@@ -39,7 +39,7 @@ Use these local Keycloak credentials to sign in:
 ## 4) Verify
 
 ```bash
-curl http://localhost:3000/health
+curl http://localhost:3000/api/health
 curl http://localhost:4566/_localstack/health
 ```
 

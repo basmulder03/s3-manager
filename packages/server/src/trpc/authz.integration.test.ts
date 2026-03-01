@@ -33,7 +33,7 @@ describe('tRPC auth boundaries', () => {
 
   it('returns UNAUTHORIZED for protected procedure without user', async () => {
     const caller = appRouter.createCaller({
-      req: new Request('http://localhost:3000/trpc/auth.me'),
+      req: new Request('http://localhost:3000/api/trpc/auth.me'),
       actor: 'anonymous',
       user: null,
       permissions: [],
@@ -49,7 +49,7 @@ describe('tRPC auth boundaries', () => {
 
   it('returns FORBIDDEN when user lacks delete permission', async () => {
     const caller = appRouter.createCaller({
-      req: new Request('http://localhost:3000/trpc/s3.deleteObject'),
+      req: new Request('http://localhost:3000/api/trpc/s3.deleteObject'),
       actor: 'viewer@example.com',
       user: {
         id: 'user-1',
@@ -77,7 +77,7 @@ describe('tRPC auth boundaries', () => {
 
   it('includes elevation sources in auth.me response', async () => {
     const caller = appRouter.createCaller({
-      req: new Request('http://localhost:3000/trpc/auth.me'),
+      req: new Request('http://localhost:3000/api/trpc/auth.me'),
       actor: 'viewer@example.com',
       user: {
         id: 'user-3',
@@ -106,7 +106,7 @@ describe('tRPC auth boundaries', () => {
 
   it('returns FORBIDDEN when user lacks write permission for text edits', async () => {
     const caller = appRouter.createCaller({
-      req: new Request('http://localhost:3000/trpc/s3.updateObjectTextContent'),
+      req: new Request('http://localhost:3000/api/trpc/s3.updateObjectTextContent'),
       actor: 'viewer@example.com',
       user: {
         id: 'user-1',
@@ -134,7 +134,7 @@ describe('tRPC auth boundaries', () => {
 
   it('returns FORBIDDEN when user lacks manage_properties permission for property edits', async () => {
     const caller = appRouter.createCaller({
-      req: new Request('http://localhost:3000/trpc/s3.updateProperties'),
+      req: new Request('http://localhost:3000/api/trpc/s3.updateProperties'),
       actor: 'editor@example.com',
       user: {
         id: 'user-2',

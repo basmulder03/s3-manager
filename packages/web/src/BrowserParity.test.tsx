@@ -145,7 +145,7 @@ vi.mock('@web/trpc/client', () => ({
       },
     },
   },
-  API_ORIGIN: 'http://localhost:3000',
+  API_ORIGIN: 'http://localhost:3000/api',
   trpcProxyClient: {
     s3: {
       getObjectMetadata: {

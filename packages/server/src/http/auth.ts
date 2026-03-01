@@ -26,6 +26,8 @@ import {
 } from '@/auth/elevation';
 
 const authLogger = () => getLogger('Auth');
+const API_PREFIX = '/api';
+const apiPath = (path: string): string => `${API_PREFIX}${path}`;
 
 const cookieBaseOptions = {
   path: '/',
@@ -34,9 +36,12 @@ const cookieBaseOptions = {
   sameSite: config.session.cookieSameSite.toLowerCase() as 'strict' | 'lax' | 'none',
 };
 
-const callbackPath = config.oidcRedirectPath.startsWith('/')
+const callbackPathInput = config.oidcRedirectPath.startsWith('/')
   ? config.oidcRedirectPath
   : `/${config.oidcRedirectPath}`;
+const callbackPath = callbackPathInput.startsWith(API_PREFIX)
+  ? callbackPathInput
+  : apiPath(callbackPathInput);
 const elevationRateLimit = new Map<string, { timestamps: number[]; lastSeenAt: number }>();
 const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, '');
 
@@ -130,7 +135,7 @@ const clearAuthCookies = (c: Context): void => {
 };
 
 export const registerAuthHttpRoutes = (app: Hono): void => {
-  app.get('/auth/login', async (c) => {
+  app.get(apiPath('/auth/login'), async (c) => {
     const returnTo = resolveReturnTo(c.req.query('returnTo'));
 
     if (config.localDevMode) {
@@ -227,16 +232,16 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
     }
   });
 
-  app.get('/auth/logout', async (c) => {
+  app.get(apiPath('/auth/logout'), async (c) => {
     return c.json(
       {
-        error: 'Use POST /auth/logout',
+        error: 'Use POST /api/auth/logout',
       },
       405
     );
   });
 
-  app.post('/auth/logout', async (c) => {
+  app.post(apiPath('/auth/logout'), async (c) => {
     const returnTo = resolveReturnTo(c.req.query('returnTo'));
     const accessToken = getCookie(c, ACCESS_TOKEN_COOKIE);
     const refreshToken = getCookie(c, REFRESH_TOKEN_COOKIE);
@@ -283,7 +288,7 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
     }
   });
 
-  app.get('/auth/user', async (c) => {
+  app.get(apiPath('/auth/user'), async (c) => {
     const user = await resolveAuthUser(c.req.raw);
     if (!user) {
       return c.json(
@@ -309,7 +314,7 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
     });
   });
 
-  app.post('/auth/refresh', async (c) => {
+  app.post(apiPath('/auth/refresh'), async (c) => {
     if (config.localDevMode) {
       return c.json({
         refreshed: true,
@@ -367,7 +372,7 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
     }
   });
 
-  app.post('/auth/pim/elevate', async (c) => {
+  app.post(apiPath('/auth/pim/elevate'), async (c) => {
     const csrfFailure = enforceSameOriginForMutation(c);
     if (csrfFailure) {
       return csrfFailure;
@@ -378,7 +383,7 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
       return c.json({ error: 'Authentication required' }, 401);
     }
 
-    const rateLimited = enforceElevationRateLimit(c, user.id, '/auth/pim/elevate');
+    const rateLimited = enforceElevationRateLimit(c, user.id, '/api/auth/pim/elevate');
     if (rateLimited) {
       return rateLimited;
     }
@@ -425,7 +430,7 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
     }
   });
 
-  app.get('/auth/elevation/entitlements', async (c) => {
+  app.get(apiPath('/auth/elevation/entitlements'), async (c) => {
     const user = await resolveAuthUser(c.req.raw);
     if (!user) {
       return c.json({ error: 'Authentication required' }, 401);
@@ -446,7 +451,7 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
     }
   });
 
-  app.post('/auth/elevation/request', async (c) => {
+  app.post(apiPath('/auth/elevation/request'), async (c) => {
     const csrfFailure = enforceSameOriginForMutation(c);
     if (csrfFailure) {
       return csrfFailure;
@@ -457,7 +462,7 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
       return c.json({ error: 'Authentication required' }, 401);
     }
 
-    const rateLimited = enforceElevationRateLimit(c, user.id, '/auth/elevation/request');
+    const rateLimited = enforceElevationRateLimit(c, user.id, '/api/auth/elevation/request');
     if (rateLimited) {
       return rateLimited;
     }
@@ -503,7 +508,7 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
     }
   });
 
-  app.get('/auth/elevation/status/:requestId', async (c) => {
+  app.get(apiPath('/auth/elevation/status/:requestId'), async (c) => {
     const user = await resolveAuthUser(c.req.raw);
     if (!user) {
       return c.json({ error: 'Authentication required' }, 401);
@@ -531,7 +536,7 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
     }
   });
 
-  app.post('/auth/elevation/deactivate', async (c) => {
+  app.post(apiPath('/auth/elevation/deactivate'), async (c) => {
     const csrfFailure = enforceSameOriginForMutation(c);
     if (csrfFailure) {
       return csrfFailure;
@@ -542,7 +547,7 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
       return c.json({ error: 'Authentication required' }, 401);
     }
 
-    const rateLimited = enforceElevationRateLimit(c, user.id, '/auth/elevation/deactivate');
+    const rateLimited = enforceElevationRateLimit(c, user.id, '/api/auth/elevation/deactivate');
     if (rateLimited) {
       return rateLimited;
     }

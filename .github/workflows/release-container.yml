@@ -1,0 +1,126 @@
+name: Release and Publish Container
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version (SemVer, with or without leading v)
+        required: true
+        type: string
+      image_repository:
+        description: Container image repository (optional)
+        required: false
+        default: ''
+        type: string
+      publish_latest:
+        description: Also publish the latest image tag
+        required: false
+        default: false
+        type: boolean
+      create_release:
+        description: Create a GitHub release for this tag
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-container-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release + Container Publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          VERSION_INPUT="${{ inputs.version }}"
+          if [[ -z "$VERSION_INPUT" ]]; then
+            echo "version input is required"
+            exit 1
+          fi
+
+          if [[ "$VERSION_INPUT" =~ ^v ]]; then
+            RELEASE_TAG="$VERSION_INPUT"
+            IMAGE_TAG="${VERSION_INPUT#v}"
+          else
+            RELEASE_TAG="v${VERSION_INPUT}"
+            IMAGE_TAG="$VERSION_INPUT"
+          fi
+
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version '$VERSION_INPUT'. Use SemVer like 2.1.0 or v2.1.0."
+            exit 1
+          fi
+
+          IMAGE_REPOSITORY="${{ inputs.image_repository }}"
+          if [[ -z "$IMAGE_REPOSITORY" ]]; then
+            IMAGE_REPOSITORY="ghcr.io/${GITHUB_REPOSITORY,,}"
+          fi
+
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "image_repository=$IMAGE_REPOSITORY" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag does not already exist
+        shell: bash
+        run: |
+          TAG="${{ steps.meta.outputs.release_tag }}"
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            echo "Tag '$TAG' already exists. Choose a new version."
+            exit 1
+          fi
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: ${{ startsWith(steps.meta.outputs.image_repository, 'ghcr.io/') }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: docker-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.meta.outputs.image_repository }}
+          tags: |
+            type=raw,value=${{ steps.meta.outputs.image_tag }}
+            type=sha
+            type=raw,value=latest,enable=${{ inputs.publish_latest }}
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.docker-meta.outputs.tags }}
+          labels: ${{ steps.docker-meta.outputs.labels }}
+
+      - name: Create GitHub release
+        if: ${{ inputs.create_release == true }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ steps.meta.outputs.release_tag }}"
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --generate-notes

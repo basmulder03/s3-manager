@@ -38,7 +38,7 @@ data:
   OIDC_PROVIDER: 'keycloak'
   OIDC_DISCOVERY_URL: 'http://keycloak.keycloak.svc.cluster.local/realms/s3-manager/.well-known/openid-configuration'
   OIDC_CLIENT_ID: 's3-manager-client'
-  OIDC_REDIRECT_URI: 'http://s3-manager.local/auth/callback'
+  OIDC_REDIRECT_URI: 'http://s3-manager.local/api/auth/callback'
   OIDC_LOGOUT_REDIRECT_URI: 'http://s3-manager.local'
   OIDC_SCOPES: 'openid profile email roles'
 
@@ -201,7 +201,7 @@ spec:
 
           livenessProbe:
             httpGet:
-              path: /health
+              path: /api/health
               port: http
             initialDelaySeconds: 30
             periodSeconds: 10
@@ -210,7 +210,7 @@ spec:
 
           readinessProbe:
             httpGet:
-              path: /health
+              path: /api/health
               port: http
             initialDelaySeconds: 5
             periodSeconds: 5

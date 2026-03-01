@@ -78,7 +78,7 @@ kubectl get pods -A | grep -E "(s3-manager|keycloak|localstack|envoy)"
 Test service access via port-forwarding (in separate terminals):
 
 ```bash
-curl http://localhost:9080/health    # S3 Manager
+curl http://localhost:9080/api/health    # S3 Manager
 curl http://localhost:9081           # Keycloak
 curl http://localhost:9082/_localstack/health  # LocalStack
 ```
@@ -87,11 +87,11 @@ curl http://localhost:9082/_localstack/health  # LocalStack
 
 Once deployed and port-forwarding is running, access the services at:
 
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| **S3 Manager** | http://localhost:9080 | Via Keycloak OIDC |
-| **Keycloak Admin** | http://localhost:9081/admin | admin / admin |
-| **LocalStack S3** | http://localhost:9082 | test / test |
+| Service            | URL                         | Credentials       |
+| ------------------ | --------------------------- | ----------------- |
+| **S3 Manager**     | http://localhost:9080       | Via Keycloak OIDC |
+| **Keycloak Admin** | http://localhost:9081/admin | admin / admin     |
+| **LocalStack S3**  | http://localhost:9082       | test / test       |
 
 ## Configuration Files
 
@@ -125,6 +125,7 @@ aws --endpoint-url=http://localhost:9082 s3 cp test.txt s3://test-bucket/
 ### Test Keycloak
 
 Open http://localhost:9081/admin in your browser:
+
 - Username: `admin`
 - Password: `admin`
 
@@ -186,6 +187,7 @@ kind clusters sometimes need Docker Desktop to be restarted after sleep:
 ## Production Deployment
 
 For production deployments, see:
+
 - `../../helm/s3-manager/` - Helm chart for production
 - Production setup uses Ingress instead of NodePort
 - Proper SSL/TLS certificates required

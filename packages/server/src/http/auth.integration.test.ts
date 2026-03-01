@@ -110,7 +110,7 @@ describe('auth http flow', () => {
       const app = createApp();
 
       const loginResponse = await app.request(
-        'http://localhost:3000/auth/login?returnTo=%2Fdashboard'
+        'http://localhost:3000/api/auth/login?returnTo=%2Fdashboard'
       );
       expect(loginResponse.status).toBe(302);
 
@@ -121,7 +121,7 @@ describe('auth http flow', () => {
       expect(state).toBeTruthy();
 
       const callbackResponse = await app.request(
-        `http://localhost:3000/auth/callback?state=${state!}&code=sample-code`
+        `http://localhost:3000/api/auth/callback?state=${state!}&code=sample-code`
       );
       expect(callbackResponse.status).toBe(302);
       expect(callbackResponse.headers.get('location')).toBe('http://localhost:5173/dashboard');
@@ -130,7 +130,7 @@ describe('auth http flow', () => {
       expect(callbackSetCookie.length).toBeGreaterThanOrEqual(3);
       const cookieHeader = getCookieHeader(callbackSetCookie);
 
-      const userResponse = await app.request('http://localhost:3000/auth/user', {
+      const userResponse = await app.request('http://localhost:3000/api/auth/user', {
         headers: {
           cookie: cookieHeader,
         },
@@ -144,7 +144,7 @@ describe('auth http flow', () => {
       expect(userJson.user.permissions).toContain('write');
       expect(userJson.user.permissions).toContain('delete');
 
-      const refreshResponse = await app.request('http://localhost:3000/auth/refresh', {
+      const refreshResponse = await app.request('http://localhost:3000/api/auth/refresh', {
         method: 'POST',
         headers: {
           cookie: cookieHeader,
@@ -160,7 +160,7 @@ describe('auth http flow', () => {
       expect(refreshSetCookie.some((entry) => entry.startsWith('s3_refresh_token='))).toBeTrue();
 
       const logoutCsrfResponse = await app.request(
-        'http://localhost:3000/auth/logout?returnTo=%2Fdashboard',
+        'http://localhost:3000/api/auth/logout?returnTo=%2Fdashboard',
         {
           method: 'POST',
           headers: {
@@ -173,7 +173,7 @@ describe('auth http flow', () => {
       expect(logoutCsrfResponse.status).toBe(403);
 
       const logoutResponse = await app.request(
-        'http://localhost:3000/auth/logout?returnTo=%2Fdashboard',
+        'http://localhost:3000/api/auth/logout?returnTo=%2Fdashboard',
         {
           method: 'POST',
           headers: {
@@ -196,7 +196,7 @@ describe('auth http flow', () => {
       expect(logoutSetCookie.some((entry) => entry.startsWith('s3_access_token='))).toBeTrue();
       expect(logoutSetCookie.some((entry) => entry.startsWith('s3_refresh_token='))).toBeTrue();
 
-      const logoutGetResponse = await app.request('http://localhost:3000/auth/logout');
+      const logoutGetResponse = await app.request('http://localhost:3000/api/auth/logout');
       expect(logoutGetResponse.status).toBe(405);
     } finally {
       oidcServer.stop(true);

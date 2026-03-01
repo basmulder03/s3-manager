@@ -28,7 +28,7 @@ describe('AuthActions', () => {
     render(<AuthActions authenticated={false} navigateTo={navigateTo} />);
     fireEvent.click(screen.getByRole('button', { name: 'Login' }));
 
-    expect(navigateTo).toHaveBeenCalledWith('http://localhost:3000/auth/login?returnTo=%2F');
+    expect(navigateTo).toHaveBeenCalledWith('http://localhost:3000/api/auth/login?returnTo=%2F');
   });
 
   it('requests logout URL and navigates when logout is clicked', async () => {
@@ -39,7 +39,9 @@ describe('AuthActions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
 
     await waitFor(() => {
-      expect(logoutRequest).toHaveBeenCalledWith('http://localhost:3000/auth/logout?returnTo=%2F');
+      expect(logoutRequest).toHaveBeenCalledWith(
+        'http://localhost:3000/api/auth/logout?returnTo=%2F'
+      );
       expect(navigateTo).toHaveBeenCalledWith('http://localhost:3000/provider-logout');
     });
   });

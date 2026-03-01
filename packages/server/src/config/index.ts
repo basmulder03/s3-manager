@@ -288,7 +288,7 @@ const configSchema = z.object({
   }),
 
   // OIDC Redirect Configuration
-  oidcRedirectPath: z.string().default('/auth/callback'),
+  oidcRedirectPath: z.string().default('/api/auth/callback'),
 
   // Authentication / JWT Verification Configuration
   auth: z.object({

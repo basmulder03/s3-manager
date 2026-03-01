@@ -46,8 +46,8 @@ Local development runs with authentication required (`AUTH_REQUIRED=true`).
 ## 4) Verify
 
 ```bash
-curl http://localhost:3000/health
-curl http://localhost:3000/trpc/health.info
+curl http://localhost:3000/api/health
+curl http://localhost:3000/api/trpc/health.info
 ```
 
 ## 5) Run tests

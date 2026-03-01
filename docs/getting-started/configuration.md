@@ -95,7 +95,7 @@ Generate from Azure Portal → App registrations → Your app → Certificates &
 
 ### App Registration Setup
 
-1. **Redirect URI**: Must be set to `https://your-domain.com/auth/callback`
+1. **Redirect URI**: Must be set to `https://your-domain.com/api/auth/callback`
 2. **API Permissions**:
    - Microsoft Graph → User.Read (Delegated)
    - Microsoft Graph → GroupMember.Read.All (Delegated)
@@ -391,13 +391,13 @@ ELEVATION_0_REQUIRE_JUSTIFICATION=true
 ### Using PIM in Application
 
 1. User authenticates with base role/group membership
-2. App calls `GET /auth/elevation/entitlements` and displays requestable options
-3. User submits `POST /auth/elevation/request` with `entitlementKey`
+2. App calls `GET /api/auth/elevation/entitlements` and displays requestable options
+3. User submits `POST /api/auth/elevation/request` with `entitlementKey`
 4. Backend validates:
    - Entitlement exists in env allowlist
    - Provider matches current OIDC provider
    - User is eligible (Azure eligibility check for group PIM)
-5. App polls `GET /auth/elevation/status/{requestId}` until granted/denied
+5. App polls `GET /api/auth/elevation/status/{requestId}` until granted/denied
 6. Session is refreshed and new permissions become active in app
 
 ### Group Claim Mapping

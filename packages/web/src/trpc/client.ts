@@ -2,7 +2,7 @@ import { createTRPCReact } from '@trpc/react-query';
 import { createTRPCProxyClient, httpBatchLink } from '@trpc/client';
 import type { AppRouter } from '@server/trpc/router';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/trpc';
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/trpc';
 export const API_ORIGIN = API_URL.replace(/\/trpc\/?$/, '');
 
 let refreshRequestInFlight: Promise<boolean> | null = null;

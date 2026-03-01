@@ -30,7 +30,7 @@ const parseMetadata = (
 };
 
 export const registerUploadHttpRoutes = (app: Hono) => {
-  app.post('/s3/upload/proxy', async (c) => {
+  app.post('/api/s3/upload/proxy', async (c) => {
     const user = await resolveAuthUser(c.req.raw);
     if (shouldRequireAuth() && !user) {
       return c.json({ error: 'Authentication required' }, 401);

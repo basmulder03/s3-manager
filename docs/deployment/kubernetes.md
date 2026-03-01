@@ -38,7 +38,7 @@ Before deploying, ensure you have:
    ```
    Name: S3 Manager
    Supported account types: Single tenant
-   Redirect URI: https://your-domain.com/auth/callback
+   Redirect URI: https://your-domain.com/api/auth/callback
    ```
 4. Save the Application (client) ID and Directory (tenant) ID
 
@@ -79,6 +79,7 @@ kubectl get svc -n rook-ceph | grep rgw
 ```
 
 Example output:
+
 ```
 rook-ceph-rgw-my-store   ClusterIP   10.96.123.45   <none>   8080/TCP   7d
 ```
@@ -95,10 +96,11 @@ metadata:
   namespace: rook-ceph
 spec:
   store: my-store
-  displayName: "S3 Manager User"
+  displayName: 'S3 Manager User'
 ```
 
 Apply:
+
 ```bash
 kubectl apply -f s3-user.yaml
 ```
@@ -125,18 +127,18 @@ replicaCount: 2
 image:
   repository: your-registry.azurecr.io/s3-manager
   pullPolicy: IfNotPresent
-  tag: "1.0.0"
+  tag: '1.0.0'
 
 imagePullSecrets:
   - name: acr-secret
 
 ingress:
   enabled: true
-  className: "nginx"
+  className: 'nginx'
   annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    cert-manager.io/cluster-issuer: 'letsencrypt-prod'
+    nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
+    nginx.ingress.kubernetes.io/ssl-protocols: 'TLSv1.2 TLSv1.3'
   hosts:
     - host: s3-manager.example.com
       paths:
@@ -156,17 +158,17 @@ resources:
     memory: 128Mi
 
 config:
-  secretKey: "CHANGE-THIS-TO-A-SECURE-RANDOM-STRING"
+  secretKey: 'CHANGE-THIS-TO-A-SECURE-RANDOM-STRING'
   sessionCookieSecure: true
-  
+
   azureAd:
-    tenantId: "your-tenant-id-here"
-    clientId: "your-client-id-here"
-    clientSecret: "your-client-secret-here"
-  
+    tenantId: 'your-tenant-id-here'
+    clientId: 'your-client-id-here'
+    clientSecret: 'your-client-secret-here'
+
   pim:
     enabled: true
-  
+
   rolePermissions:
     S3-Viewer:
       - view
@@ -177,14 +179,14 @@ config:
       - view
       - write
       - delete
-  
-  defaultRole: "S3-Viewer"
-  
+
+  defaultRole: 'S3-Viewer'
+
   s3:
-    endpoint: "http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:8080"
-    accessKey: "your-s3-access-key"
-    secretKey: "your-s3-secret-key"
-    region: "us-east-1"
+    endpoint: 'http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:8080'
+    accessKey: 'your-s3-access-key'
+    secretKey: 'your-s3-secret-key'
+    region: 'us-east-1'
     useSSL: false
     verifySSL: false
 ```
@@ -262,6 +264,7 @@ kubectl get ingress -n s3-manager s3-manager -o jsonpath='{.status.loadBalancer.
 ```
 
 Create an A record:
+
 ```
 s3-manager.example.com → <ingress-ip>
 ```
@@ -282,14 +285,15 @@ s3-manager.example.com → <ingress-ip>
 
 ```yaml
 podAnnotations:
-  prometheus.io/scrape: "true"
-  prometheus.io/port: "8080"
-  prometheus.io/path: "/metrics"
+  prometheus.io/scrape: 'true'
+  prometheus.io/port: '8080'
+  prometheus.io/path: '/metrics'
 ```
 
 ### Set up Grafana Dashboard
 
 Create a dashboard to monitor:
+
 - Request rate
 - Response time
 - Error rate
@@ -354,6 +358,7 @@ kubectl get events -n s3-manager --sort-by='.lastTimestamp'
 ### Authentication not working
 
 1. Verify Azure AD configuration:
+
    ```bash
    kubectl get secret -n s3-manager s3-manager -o yaml
    ```
@@ -361,7 +366,7 @@ kubectl get events -n s3-manager --sort-by='.lastTimestamp'
 2. Check redirect URI matches:
    - Azure AD: Must be exact match
    - Include protocol (https://)
-   - Check path (/auth/callback)
+   - Check path (/api/auth/callback)
 
 3. Verify API permissions granted
 

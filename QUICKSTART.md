@@ -22,7 +22,7 @@ bun run dev
 http://localhost:5173
 ```
 
-The frontend talks to `VITE_API_URL` (defaults to `http://localhost:3000/trpc`).
+The frontend talks to `VITE_API_URL` (defaults to `http://localhost:3000/api/trpc`).
 
 Frontend includes:
 
@@ -36,50 +36,50 @@ Frontend includes:
 
 ```bash
 # Health check (simple)
-curl http://localhost:3000/health
+curl http://localhost:3000/api/health
 
 # Readiness check (with dependencies)
-curl http://localhost:3000/health/ready
+curl http://localhost:3000/api/health/ready
 
 # Server info
-curl http://localhost:3000/trpc/health.info
+curl http://localhost:3000/api/trpc/health.info
 
 # Auth status
-curl http://localhost:3000/trpc/auth.status
+curl http://localhost:3000/api/trpc/auth.status
 
 # Current authenticated user
-curl http://localhost:3000/trpc/auth.me \
+curl http://localhost:3000/api/trpc/auth.me \
   -H 'Authorization: Bearer <access-token>'
 
 # Introspect current token if provider supports it
-curl http://localhost:3000/trpc/auth.introspect \
+curl http://localhost:3000/api/trpc/auth.introspect \
   -H 'Authorization: Bearer <access-token>'
 
 # OIDC login start
-curl -i http://localhost:3000/auth/login
+curl -i http://localhost:3000/api/auth/login
 
 # Current HTTP auth user from cookie/header
-curl -i http://localhost:3000/auth/user
+curl -i http://localhost:3000/api/auth/user
 
 # Refresh tokens using refresh cookie
-curl -i -X POST http://localhost:3000/auth/refresh
+curl -i -X POST http://localhost:3000/api/auth/refresh
 
 # Logout (POST; revokes access/refresh tokens when revocation endpoint is available)
-curl -i -X POST "http://localhost:3000/auth/logout?returnTo=%2F"
+curl -i -X POST "http://localhost:3000/api/auth/logout?returnTo=%2F"
 
 # S3 buckets
-curl http://localhost:3000/trpc/s3.listBuckets
+curl http://localhost:3000/api/trpc/s3.listBuckets
 
 # S3 virtual filesystem root
-curl "http://localhost:3000/trpc/s3.browse?input=%7B%22virtualPath%22%3A%22%22%7D"
+curl "http://localhost:3000/api/trpc/s3.browse?input=%7B%22virtualPath%22%3A%22%22%7D"
 
 # S3 create presigned upload URL
-curl -X POST http://localhost:3000/trpc/s3.createPresignedUpload \
+curl -X POST http://localhost:3000/api/trpc/s3.createPresignedUpload \
   -H 'content-type: application/json' \
   -d '{"json":{"bucketName":"my-bucket","objectKey":"folder/file.txt","contentType":"text/plain"}}'
 
 # S3 upload cookbook contract (single + multipart)
-curl "http://localhost:3000/trpc/s3.uploadCookbook?input=%7B%22bucketName%22%3A%22my-bucket%22%2C%22objectKey%22%3A%22folder%2Fvideo.mp4%22%2C%22fileSizeBytes%22%3A52428800%7D"
+curl "http://localhost:3000/api/trpc/s3.uploadCookbook?input=%7B%22bucketName%22%3A%22my-bucket%22%2C%22objectKey%22%3A%22folder%2Fvideo.mp4%22%2C%22fileSizeBytes%22%3A52428800%7D"
 
 # Root endpoint
 curl http://localhost:3000/
@@ -156,7 +156,7 @@ S3_SOURCE_0_SECRET_KEY=test
 PORT=3000
 NODE_ENV=development
 WEB_ORIGIN=http://localhost:5173
-VITE_API_URL=http://localhost:3000/trpc
+VITE_API_URL=http://localhost:3000/api/trpc
 LOCAL_DEV_MODE=false
 OIDC_PROVIDER=keycloak
 S3_SOURCE_0_REGION=us-east-1
