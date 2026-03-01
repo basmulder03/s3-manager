@@ -273,6 +273,62 @@ az ad group member add \
 2. **Privileged Role Administrator**: Setup role assignments
 3. **Configure eligible roles**: Set up roles that can be activated
 
+### API Endpoints
+
+#### PIM_AZURE_ASSIGNMENT_SCHEDULE_REQUEST_API
+
+**Required**: No  
+**Type**: URL  
+**Default**: `https://graph.microsoft.com/v1.0/identityGovernance/privilegedAccess/group/assignmentScheduleRequests`  
+**Description**: Azure endpoint used to submit and inspect self-activation requests for privileged access groups
+
+#### PIM_AZURE_ELIGIBILITY_SCHEDULE_API
+
+**Required**: No  
+**Type**: URL  
+**Default**: `https://graph.microsoft.com/v1.0/identityGovernance/privilegedAccess/group/eligibilityScheduleInstances`  
+**Description**: Azure endpoint used to verify that a user is eligible before elevation is requested
+
+#### PIM_GOOGLE_MEMBERSHIPS_API_BASE
+
+**Required**: No  
+**Type**: URL  
+**Default**: `https://cloudidentity.googleapis.com/v1/groups`  
+**Description**: Google Cloud Identity groups API base used for temporary membership elevation
+
+#### PIM_GOOGLE_OPERATIONS_API_BASE
+
+**Required**: No  
+**Type**: URL  
+**Default**: `https://cloudidentity.googleapis.com/v1`  
+**Description**: Google long-running operations API base used to poll elevation status
+
+### Entitlement Configuration (env-driven)
+
+Entitlements are the only escalation targets that users can request. They are configured with indexed variables and mapped directly to app permissions.
+
+For each entitlement index `N`:
+
+- `ELEVATION_N_KEY`: Unique entitlement key used by API/UI (`property-admin-temp`)
+- `ELEVATION_N_PROVIDER`: `azure` or `google`
+- `ELEVATION_N_TARGET`: Provider target ID (`groupId` for Azure PIM group, `groups/<id-or-email>` for Google)
+- `ELEVATION_N_PERMISSION_BUNDLE`: Comma-separated app permissions (`view,write,manage_properties`)
+- `ELEVATION_N_MAX_DURATION_MINUTES`: Maximum requested duration (1-1440)
+- `ELEVATION_N_REQUIRE_JUSTIFICATION`: `true`/`false`
+
+Example:
+
+```bash
+PIM_ENABLED=true
+
+ELEVATION_0_KEY=property-admin-temp
+ELEVATION_0_PROVIDER=azure
+ELEVATION_0_TARGET=00000000-0000-0000-0000-000000000000
+ELEVATION_0_PERMISSION_BUNDLE=view,write,manage_properties
+ELEVATION_0_MAX_DURATION_MINUTES=60
+ELEVATION_0_REQUIRE_JUSTIFICATION=true
+```
+
 ### PIM Role Configuration
 
 1. Go to Azure AD → Privileged Identity Management
@@ -285,13 +341,15 @@ az ad group member add \
 
 ### Using PIM in Application
 
-1. User logs in with base role (e.g., S3-Viewer)
-2. Clicks "Request Elevated Access (PIM)" button
-3. Enters target role (e.g., S3-Admin)
-4. PIM workflow activates:
-   - If approval required: Waits for approver
-   - If auto-approved: Role activated immediately
-5. User's permissions updated with elevated role
+1. User authenticates with base role/group membership
+2. App calls `GET /auth/elevation/entitlements` and displays requestable options
+3. User submits `POST /auth/elevation/request` with `entitlementKey`
+4. Backend validates:
+   - Entitlement exists in env allowlist
+   - Provider matches current OIDC provider
+   - User is eligible (Azure eligibility check for group PIM)
+5. App polls `GET /auth/elevation/status/{requestId}` until granted/denied
+6. Session is refreshed and new permissions become active in app
 
 ### PIM Activation Duration
 

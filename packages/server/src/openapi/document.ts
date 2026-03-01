@@ -138,12 +138,46 @@ export const getOpenApiDocument = (baseUrl: string): Record<string, unknown> => 
     },
     '/auth/pim/elevate': {
       post: {
-        summary: 'Request PIM elevation',
+        summary: 'Request elevation (legacy alias)',
         tags: ['auth'],
         responses: {
           '200': { description: 'Elevation request submitted' },
           '400': { description: 'Invalid request' },
           '401': { description: 'Authentication required' },
+        },
+      },
+    },
+    '/auth/elevation/entitlements': {
+      get: {
+        summary: 'List available elevation entitlements',
+        tags: ['auth'],
+        responses: {
+          '200': { description: 'Elevation entitlements' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
+    '/auth/elevation/request': {
+      post: {
+        summary: 'Request temporary elevated access',
+        tags: ['auth'],
+        responses: {
+          '200': { description: 'Elevation request submitted' },
+          '400': { description: 'Invalid request' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Request not permitted' },
+        },
+      },
+    },
+    '/auth/elevation/status/{requestId}': {
+      get: {
+        summary: 'Get elevation request status',
+        tags: ['auth'],
+        responses: {
+          '200': { description: 'Elevation request status' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Not allowed' },
+          '404': { description: 'Request not found' },
         },
       },
     },

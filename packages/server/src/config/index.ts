@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+const permissionSchema = z.enum(['view', 'write', 'delete', 'manage_properties']);
+
 /**
  * Configuration schema with Zod validation
  * Provides type-safe, validated configuration from environment variables
@@ -34,6 +36,15 @@ type MutableS3Source = {
   region?: string;
   useSsl?: string;
   verifySsl?: string;
+};
+
+type MutableElevationEntitlement = {
+  key?: string;
+  provider?: string;
+  target?: string;
+  permissionBundle?: string;
+  maxDurationMinutes?: string;
+  requireJustification?: string;
 };
 
 const parseBooleanEnv = (
@@ -121,6 +132,100 @@ const parseS3SourcesEnv = (): unknown => {
   });
 };
 
+const parsePermissionBundle = (
+  value: string | undefined,
+  envName: string
+): Array<'view' | 'write' | 'delete' | 'manage_properties'> => {
+  const normalized = optionalEnv(value);
+  if (!normalized) {
+    throw new Error(`${envName} must contain at least one permission`);
+  }
+
+  const permissions = normalized
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(
+      (entry): entry is 'view' | 'write' | 'delete' | 'manage_properties' =>
+        entry === 'view' || entry === 'write' || entry === 'delete' || entry === 'manage_properties'
+    );
+
+  if (permissions.length === 0) {
+    throw new Error(
+      `${envName} must contain one or more valid permissions: view, write, delete, manage_properties`
+    );
+  }
+
+  return Array.from(new Set(permissions));
+};
+
+const parseElevationEntitlementsEnv = (): unknown => {
+  const entitlementByIndex = new Map<number, MutableElevationEntitlement>();
+
+  for (const [envName, envValue] of Object.entries(process.env)) {
+    const match = envName.match(
+      /^ELEVATION_(\d+)_(KEY|PROVIDER|TARGET|PERMISSION_BUNDLE|MAX_DURATION_MINUTES|REQUIRE_JUSTIFICATION)$/
+    );
+    if (!match) {
+      continue;
+    }
+
+    const index = Number(match[1]);
+    const field = match[2];
+    const entitlement = entitlementByIndex.get(index) ?? {};
+
+    if (field === 'KEY') {
+      entitlement.key = envValue;
+    } else if (field === 'PROVIDER') {
+      entitlement.provider = envValue;
+    } else if (field === 'TARGET') {
+      entitlement.target = envValue;
+    } else if (field === 'PERMISSION_BUNDLE') {
+      entitlement.permissionBundle = envValue;
+    } else if (field === 'MAX_DURATION_MINUTES') {
+      entitlement.maxDurationMinutes = envValue;
+    } else if (field === 'REQUIRE_JUSTIFICATION') {
+      entitlement.requireJustification = envValue;
+    }
+
+    entitlementByIndex.set(index, entitlement);
+  }
+
+  if (entitlementByIndex.size === 0) {
+    return undefined;
+  }
+
+  const sortedIndexes = [...entitlementByIndex.keys()].sort((a, b) => a - b);
+
+  return sortedIndexes.map((index) => {
+    const entitlement = entitlementByIndex.get(index)!;
+    const key = optionalEnv(entitlement.key);
+    const provider = optionalEnv(entitlement.provider);
+    const target = optionalEnv(entitlement.target);
+
+    if (!key || !provider || !target) {
+      throw new Error(
+        `Elevation entitlement ${index} is missing required values. Set ELEVATION_${index}_KEY, ELEVATION_${index}_PROVIDER, and ELEVATION_${index}_TARGET`
+      );
+    }
+
+    return {
+      key,
+      provider,
+      target,
+      permissions: parsePermissionBundle(
+        entitlement.permissionBundle,
+        `ELEVATION_${index}_PERMISSION_BUNDLE`
+      ),
+      maxDurationMinutes: Number.parseInt(entitlement.maxDurationMinutes ?? '60', 10),
+      requireJustification: parseBooleanEnv(
+        entitlement.requireJustification,
+        `ELEVATION_${index}_REQUIRE_JUSTIFICATION`,
+        false
+      ),
+    };
+  });
+};
+
 const s3SourceSchema = z.object({
   id: z
     .string()
@@ -192,21 +297,59 @@ const configSchema = z.object({
   // PIM Configuration
   pim: z.object({
     enabled: booleanString,
-    roleAssignmentApi: z
-      .string()
-      .url()
-      .default('https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments'),
+    azure: z.object({
+      assignmentScheduleRequestApi: z
+        .string()
+        .url()
+        .default(
+          'https://graph.microsoft.com/v1.0/identityGovernance/privilegedAccess/group/assignmentScheduleRequests'
+        ),
+      eligibilityScheduleApi: z
+        .string()
+        .url()
+        .default(
+          'https://graph.microsoft.com/v1.0/identityGovernance/privilegedAccess/group/eligibilityScheduleInstances'
+        ),
+    }),
+    google: z.object({
+      membershipsApiBase: z
+        .string()
+        .url()
+        .default('https://cloudidentity.googleapis.com/v1/groups'),
+      operationsApiBase: z.string().url().default('https://cloudidentity.googleapis.com/v1'),
+    }),
+    entitlements: z
+      .array(
+        z.object({
+          key: z.string().trim().min(1),
+          provider: z.enum(['azure', 'google']),
+          target: z.string().trim().min(1),
+          permissions: z.array(permissionSchema).min(1),
+          maxDurationMinutes: z.coerce.number().int().positive().max(1440).default(60),
+          requireJustification: z.coerce.boolean().default(false),
+        })
+      )
+      .default([])
+      .transform((entitlements) => {
+        const keys = new Set<string>();
+        for (const entry of entitlements) {
+          if (keys.has(entry.key)) {
+            throw new Error(`Duplicate elevation entitlement key '${entry.key}'`);
+          }
+          keys.add(entry.key);
+        }
+
+        return entitlements;
+      }),
   }),
 
   // Role-Based Permissions
-  rolePermissions: z
-    .record(z.string(), z.array(z.enum(['view', 'write', 'delete', 'manage_properties'])))
-    .default({
-      'S3-Viewer': ['view'],
-      'S3-Editor': ['view', 'write'],
-      'S3-Admin': ['view', 'write', 'delete'],
-      'S3-Property-Admin': ['view', 'write', 'manage_properties'],
-    }),
+  rolePermissions: z.record(z.string(), z.array(permissionSchema)).default({
+    'S3-Viewer': ['view'],
+    'S3-Editor': ['view', 'write'],
+    'S3-Admin': ['view', 'write', 'delete'],
+    'S3-Property-Admin': ['view', 'write', 'manage_properties'],
+  }),
 
   defaultRole: z.string().default('S3-Viewer'),
 
@@ -371,7 +514,17 @@ export const loadConfig = (): Config => {
       // PIM
       pim: {
         enabled: process.env.PIM_ENABLED,
-        roleAssignmentApi: optionalEnv(process.env.PIM_ROLE_ASSIGNMENT_API),
+        azure: {
+          assignmentScheduleRequestApi: optionalEnv(
+            process.env.PIM_AZURE_ASSIGNMENT_SCHEDULE_REQUEST_API
+          ),
+          eligibilityScheduleApi: optionalEnv(process.env.PIM_AZURE_ELIGIBILITY_SCHEDULE_API),
+        },
+        google: {
+          membershipsApiBase: optionalEnv(process.env.PIM_GOOGLE_MEMBERSHIPS_API_BASE),
+          operationsApiBase: optionalEnv(process.env.PIM_GOOGLE_OPERATIONS_API_BASE),
+        },
+        entitlements: parseElevationEntitlementsEnv(),
       },
 
       // Role Permissions (use default from schema)
