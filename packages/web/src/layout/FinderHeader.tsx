@@ -1,11 +1,12 @@
 import { AuthActions } from '@web/components';
 import { Button } from '@web/components/ui';
 import styles from '@web/App.module.css';
+import type { ThemeId } from '@web/state/ui';
 import { BookOpenText, Keyboard, Menu, Moon, Sun } from 'lucide-react';
 
 interface FinderHeaderProps {
-  theme: 'light' | 'dark';
-  setTheme: (theme: 'light' | 'dark') => void;
+  theme: ThemeId;
+  setTheme: (theme: ThemeId) => void;
   authenticated: boolean;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;

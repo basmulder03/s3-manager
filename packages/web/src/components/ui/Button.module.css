@@ -7,6 +7,10 @@
   padding: 0.46rem 0.68rem;
   cursor: pointer;
   font-weight: 600;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .button:hover {
@@ -16,6 +20,11 @@
 .button:disabled {
   opacity: 0.48;
   cursor: not-allowed;
+}
+
+.button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 28%, transparent);
 }
 
 .muted {

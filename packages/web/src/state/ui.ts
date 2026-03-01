@@ -1,19 +1,26 @@
 import { create } from 'zustand';
 
+export const THEME_OPTIONS = ['light', 'dark'] as const;
+
+export type ThemeId = (typeof THEME_OPTIONS)[number];
+
 interface UiState {
   selectedPath: string;
   setSelectedPath: (path: string) => void;
-  theme: 'light' | 'dark';
-  setTheme: (theme: 'light' | 'dark') => void;
+  theme: ThemeId;
+  setTheme: (theme: ThemeId) => void;
 }
 
-const resolveInitialTheme = (): 'light' | 'dark' => {
+const isThemeId = (value: string | null): value is ThemeId =>
+  value !== null && THEME_OPTIONS.includes(value as ThemeId);
+
+const resolveInitialTheme = (): ThemeId => {
   if (typeof window === 'undefined') {
     return 'light';
   }
 
   const stored = window.localStorage.getItem('ui-theme');
-  if (stored === 'light' || stored === 'dark') {
+  if (isThemeId(stored)) {
     return stored;
   }
 

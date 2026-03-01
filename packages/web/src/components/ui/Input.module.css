@@ -9,7 +9,7 @@
   font-family: 'IBM Plex Mono', monospace;
 }
 
-.input:focus {
+.input:focus-visible {
   border-color: color-mix(in srgb, var(--brand) 55%, var(--line));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 20%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 24%, transparent);
 }
