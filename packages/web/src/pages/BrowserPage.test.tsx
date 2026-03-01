@@ -77,6 +77,10 @@ const createProps = () => {
       onCloseContextMenu: vi.fn(),
       onRename: vi.fn(),
       onMove: vi.fn(),
+      onCopyItems: vi.fn(),
+      onCutItems: vi.fn(),
+      onPasteIntoPath: vi.fn(async () => {}),
+      hasClipboardItems: false,
       onDownload: vi.fn(async () => {}),
       onCalculateFolderSize: vi.fn(async () => {}),
       onOpenProperties: vi.fn(async () => {}),
@@ -345,6 +349,9 @@ describe('BrowserPage sorting and filtering', () => {
     expect(screen.getByText('Download selected files')).toBeInTheDocument();
     expect(screen.getByText('Rename selected item')).toBeInTheDocument();
     expect(screen.getByText('Move selected item')).toBeInTheDocument();
+    expect(screen.getByText('Copy selected items')).toBeInTheDocument();
+    expect(screen.getByText('Cut selected items')).toBeInTheDocument();
+    expect(screen.getByText('Paste into current folder')).toBeInTheDocument();
     expect(screen.getByText('Delete selected items')).toBeInTheDocument();
     expect(screen.getByText('Clear selection or close dialogs')).toBeInTheDocument();
   });
@@ -476,6 +483,110 @@ describe('BrowserPage sorting and filtering', () => {
 
     fireEvent.keyDown(menu, { key: 'Escape' });
     expect(props.onCloseContextMenu).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows copy and cut actions for file context menu items', () => {
+    const { props } = createProps();
+    const selectedItem: BrowseItem = {
+      name: 'alpha.txt',
+      type: 'file',
+      path: 'my-bucket/alpha.txt',
+      size: 4,
+      lastModified: null,
+    };
+
+    render(
+      <BrowserPage
+        {...props}
+        contextMenu={{ x: 120, y: 60, item: selectedItem }}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items: [selectedItem] } }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('menuitem', { name: /Copy/ }));
+    expect(props.onCopyItems).toHaveBeenCalledWith([selectedItem]);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: /Cut/ }));
+    expect(props.onCutItems).toHaveBeenCalledWith([selectedItem]);
+  });
+
+  it('shows paste action for directory context menu when clipboard has items', () => {
+    const { props } = createProps();
+    const directory: BrowseItem = {
+      name: 'docs',
+      type: 'directory',
+      path: 'archive-bucket/docs',
+      size: null,
+      lastModified: null,
+    };
+
+    render(
+      <BrowserPage
+        {...props}
+        hasClipboardItems
+        contextMenu={{ x: 120, y: 60, item: directory }}
+        selectedPath="archive-bucket"
+        browse={{ ...props.browse, data: { ...props.browse.data!, items: [directory] } }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('menuitem', { name: /Paste into Folder/ }));
+    expect(props.onPasteIntoPath).toHaveBeenCalledWith('archive-bucket/docs');
+  });
+
+  it('marks clipboard items in the table for copy and cut modes', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'alpha.txt',
+        type: 'file',
+        path: 'my-bucket/alpha.txt',
+        size: 4,
+        lastModified: null,
+      },
+      {
+        name: 'reports',
+        type: 'directory',
+        path: 'my-bucket/reports',
+        size: null,
+        lastModified: null,
+      },
+    ];
+
+    const { rerender } = render(
+      <BrowserPage
+        {...props}
+        selectedPath="my-bucket"
+        clipboardMode="copy"
+        clipboardPaths={new Set(['my-bucket/alpha.txt'])}
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    const fileRow = screen.getByText('alpha.txt').closest('tr');
+    expect(fileRow).not.toBeNull();
+    if (!fileRow) {
+      return;
+    }
+    expect(within(fileRow).getByText('Copy')).toBeInTheDocument();
+
+    rerender(
+      <BrowserPage
+        {...props}
+        selectedPath="my-bucket"
+        clipboardMode="cut"
+        clipboardPaths={new Set(['my-bucket/reports'])}
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    const folderRow = screen.getByText('reports').closest('tr');
+    expect(folderRow).not.toBeNull();
+    if (!folderRow) {
+      return;
+    }
+    expect(within(folderRow).getByText('Cut')).toBeInTheDocument();
   });
 
   it('moves focus into explorer rows when arrow key is pressed globally', () => {

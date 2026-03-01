@@ -243,4 +243,15 @@ export interface RenameItemResult {
   destinationPath: string;
   movedObjects: number;
 }
+
+export interface CopyItemInput {
+  sourcePath: string;
+  destinationPath: string;
+}
+
+export interface CopyItemResult {
+  sourcePath: string;
+  destinationPath: string;
+  copiedObjects: number;
+}
 import type { Readable } from 'node:stream';

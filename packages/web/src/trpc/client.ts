@@ -56,6 +56,7 @@ export const trpc = createTRPCReact<AppRouter>();
 const links = [
   httpBatchLink({
     url: API_URL,
+    maxURLLength: 2000,
     fetch(url, options) {
       return fetchWithAuthRefresh(url, options);
     },

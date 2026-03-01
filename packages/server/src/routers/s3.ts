@@ -460,6 +460,31 @@ export const s3Router = router({
       }
     }),
 
+  copyItem: writeProcedure
+    .meta({
+      openapi: {
+        method: 'POST',
+        path: '/s3/item/copy',
+        tags: ['s3'],
+        summary: 'Copy item',
+        protect: true,
+      },
+    })
+    .input(
+      z.object({
+        sourcePath: z.string().min(1),
+        destinationPath: z.string().min(1),
+      })
+    )
+    .output(z.any())
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return s3Service.copyItem(input, actorFromContext(ctx));
+      } catch (error) {
+        throw mapS3ErrorToTrpc(error);
+      }
+    }),
+
   deleteObject: deleteProcedure
     .meta({
       openapi: {

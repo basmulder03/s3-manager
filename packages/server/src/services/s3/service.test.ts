@@ -309,6 +309,96 @@ describe('S3Service renameItem', () => {
     expect(copyCall).toBeTruthy();
     expect(copyCall?.input.Bucket).toBe('other-bucket');
   });
+
+  it('moves a file to bucket root when destination path is bucket only', async () => {
+    const client = new RenameMockS3Client();
+    const service = new S3Service(() => client as never);
+
+    const result = await service.renameItem(
+      {
+        sourcePath: 'my-bucket/folder/report.txt',
+        destinationPath: 'my-bucket',
+      },
+      'tester@example.com'
+    );
+
+    expect(result.destinationPath).toBe('my-bucket/report.txt');
+    expect(result.movedObjects).toBe(1);
+
+    const copyCall = client.calls.find((call) => call instanceof CopyObjectCommand) as
+      | undefined
+      | (unknown & CommandInput);
+    expect(copyCall).toBeTruthy();
+    expect(copyCall?.input.Key).toBe('report.txt');
+  });
+});
+
+describe('S3Service copyItem', () => {
+  it('copies a single file without deleting source object', async () => {
+    const client = new RenameMockS3Client();
+    const service = new S3Service(() => client as never);
+
+    const result = await service.copyItem(
+      {
+        sourcePath: 'my-bucket/folder/report.txt',
+        destinationPath: 'my-bucket/archive',
+      },
+      'tester@example.com'
+    );
+
+    expect(result.destinationPath).toBe('my-bucket/archive/report.txt');
+    expect(result.copiedObjects).toBe(1);
+
+    const copyCalls = client.calls.filter((call) => call instanceof CopyObjectCommand);
+    const deleteCalls = client.calls.filter((call) => call instanceof DeleteObjectCommand);
+
+    expect(copyCalls).toHaveLength(1);
+    expect(deleteCalls).toHaveLength(0);
+  });
+
+  it('copies a folder recursively without deleting source objects', async () => {
+    const client = new RenameFolderMockS3Client();
+    const service = new S3Service(() => client as never);
+
+    const result = await service.copyItem(
+      {
+        sourcePath: 'my-bucket/folder/sub/',
+        destinationPath: 'my-bucket/archive',
+      },
+      'tester@example.com'
+    );
+
+    expect(result.destinationPath).toBe('my-bucket/archive/sub');
+    expect(result.copiedObjects).toBe(2);
+
+    const copyCalls = client.calls.filter((call) => call instanceof CopyObjectCommand);
+    const deleteBatchCalls = client.calls.filter((call) => call instanceof DeleteObjectsCommand);
+
+    expect(copyCalls).toHaveLength(2);
+    expect(deleteBatchCalls).toHaveLength(0);
+  });
+
+  it('copies a file to bucket root when destination path is bucket only', async () => {
+    const client = new RenameMockS3Client();
+    const service = new S3Service(() => client as never);
+
+    const result = await service.copyItem(
+      {
+        sourcePath: 'my-bucket/folder/report.txt',
+        destinationPath: 'my-bucket',
+      },
+      'tester@example.com'
+    );
+
+    expect(result.destinationPath).toBe('my-bucket/report.txt');
+    expect(result.copiedObjects).toBe(1);
+
+    const copyCall = client.calls.find((call) => call instanceof CopyObjectCommand) as
+      | undefined
+      | (unknown & CommandInput);
+    expect(copyCall).toBeTruthy();
+    expect(copyCall?.input.Key).toBe('report.txt');
+  });
 });
 
 describe('S3Service getObjectProperties', () => {

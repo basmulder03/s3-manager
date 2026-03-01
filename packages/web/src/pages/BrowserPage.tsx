@@ -4,7 +4,9 @@ import {
   ArrowDownToLine,
   ArrowRightLeft,
   BookOpenText,
+  ClipboardPaste,
   CheckSquare,
+  Copy,
   ChevronDown,
   ChevronUp,
   Eraser,
@@ -14,6 +16,7 @@ import {
   Keyboard,
   PencilLine,
   RefreshCw,
+  Scissors,
   Search,
   SlidersHorizontal,
   Trash2,
@@ -68,6 +71,12 @@ interface BrowserPageProps {
   onCloseContextMenu: () => void;
   onRename: (path: string, currentName: string) => void;
   onMove: (path: string) => void;
+  onCopyItems: (items: BrowseItem[]) => void;
+  onCutItems: (items: BrowseItem[]) => void;
+  onPasteIntoPath: (destinationPath: string) => Promise<void>;
+  hasClipboardItems: boolean;
+  clipboardMode?: 'copy' | 'cut' | null;
+  clipboardPaths?: Set<string>;
   onDownload: (path: string) => Promise<void>;
   onCalculateFolderSize: (path: string) => Promise<void>;
   onOpenProperties: (path: string) => Promise<void>;
@@ -228,6 +237,24 @@ const browserShortcuts: ShortcutDefinition[] = [
     action: 'Move selected item',
     shortcuts: [['Ctrl/Cmd', 'Shift', 'M']],
     Icon: ArrowRightLeft,
+  },
+  {
+    id: 'copy',
+    action: 'Copy selected items',
+    shortcuts: [['Ctrl/Cmd', 'C']],
+    Icon: Copy,
+  },
+  {
+    id: 'cut',
+    action: 'Cut selected items',
+    shortcuts: [['Ctrl/Cmd', 'X']],
+    Icon: Scissors,
+  },
+  {
+    id: 'paste',
+    action: 'Paste into current folder',
+    shortcuts: [['Ctrl/Cmd', 'V']],
+    Icon: ClipboardPaste,
   },
   {
     id: 'delete',
@@ -572,6 +599,12 @@ export const BrowserPage = ({
   onCloseContextMenu,
   onRename,
   onMove,
+  onCopyItems,
+  onCutItems,
+  onPasteIntoPath,
+  hasClipboardItems,
+  clipboardMode = null,
+  clipboardPaths = new Set<string>(),
   onDownload,
   onCalculateFolderSize,
   onOpenProperties,
@@ -1589,6 +1622,18 @@ export const BrowserPage = ({
           void onCalculateFolderSize(contextMenu.item.path);
         },
       });
+
+      if (hasClipboardItems && canWrite) {
+        actions.push({
+          id: 'paste',
+          label: 'Paste into Folder',
+          hint: formatShortcutHint(['Ctrl/Cmd', 'V']),
+          onSelect: () => {
+            onCloseContextMenu();
+            void onPasteIntoPath(contextMenu.item.path);
+          },
+        });
+      }
     } else {
       if (contextItemCapability?.canView) {
         actions.push({
@@ -1630,6 +1675,28 @@ export const BrowserPage = ({
       });
     }
 
+    actions.push({
+      id: 'copy',
+      label: 'Copy',
+      hint: formatShortcutHint(['Ctrl/Cmd', 'C']),
+      onSelect: () => {
+        onCloseContextMenu();
+        onCopyItems([contextMenu.item]);
+      },
+    });
+
+    if (canWrite) {
+      actions.push({
+        id: 'cut',
+        label: 'Cut',
+        hint: formatShortcutHint(['Ctrl/Cmd', 'X']),
+        onSelect: () => {
+          onCloseContextMenu();
+          onCutItems([contextMenu.item]);
+        },
+      });
+    }
+
     if (canWrite) {
       actions.push({
         id: 'rename',
@@ -1667,16 +1734,20 @@ export const BrowserPage = ({
     return actions;
   }, [
     canDeleteContextItem,
+    hasClipboardItems,
     canWrite,
     contextItemCapability,
     contextMenu,
     onCalculateFolderSize,
     onCloseContextMenu,
+    onCopyItems,
+    onCutItems,
     onDeletePathItems,
     onDownload,
     onEditFile,
     onMove,
     onOpenProperties,
+    onPasteIntoPath,
     onRename,
     onViewFile,
     setSelectedPath,
@@ -2685,9 +2756,30 @@ export const BrowserPage = ({
                       tabIndex={focusedRowIndex === index ? 0 : -1}
                       data-focused={focusedRowIndex === index ? 'true' : 'false'}
                       onFocus={() => setFocusedRowIndex(index)}
-                      className={
-                        !isParentNavigation && selectedItems.has(item.path) ? styles.isSelected : ''
-                      }
+                      className={(() => {
+                        if (isParentNavigation) {
+                          return '';
+                        }
+
+                        const classNames: string[] = [];
+                        if (selectedItems.has(item.path)) {
+                          if (styles.isSelected) {
+                            classNames.push(styles.isSelected);
+                          }
+                        }
+
+                        if (clipboardPaths.has(item.path)) {
+                          const clipboardClass =
+                            clipboardMode === 'cut'
+                              ? styles.isClipboardCut
+                              : styles.isClipboardCopy;
+                          if (clipboardClass) {
+                            classNames.push(clipboardClass);
+                          }
+                        }
+
+                        return classNames.join(' ');
+                      })()}
                       onClick={(event) => {
                         if (isParentNavigation) {
                           return;
@@ -2726,6 +2818,11 @@ export const BrowserPage = ({
                             {item.type === 'directory' ? <Folder size={16} /> : <File size={16} />}
                           </span>
                           <strong>{item.name}</strong>
+                          {!isParentNavigation && clipboardPaths.has(item.path) ? (
+                            <span className={styles.clipboardTag}>
+                              {clipboardMode === 'cut' ? 'Cut' : 'Copy'}
+                            </span>
+                          ) : null}
                         </div>
                       </td>
                       {visibleOverviewColumns.map((column) => {

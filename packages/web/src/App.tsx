@@ -125,6 +125,7 @@ export const App = () => {
   );
   const createFolder = trpc.s3.createFolder.useMutation();
   const renameItem = trpc.s3.renameItem.useMutation();
+  const copyItem = trpc.s3.copyItem.useMutation();
   const deleteObject = trpc.s3.deleteObject.useMutation();
   const deleteFolder = trpc.s3.deleteFolder.useMutation();
   const deleteMultipleItems = trpc.s3.deleteMultiple.useMutation();
@@ -248,6 +249,7 @@ export const App = () => {
     locationPathname: location.pathname,
     createFolderAsync: createFolder.mutateAsync,
     renameItemAsync: renameItem.mutateAsync,
+    copyItemAsync: copyItem.mutateAsync,
     deleteObjectAsync: deleteObject.mutateAsync,
     deleteFolderAsync: deleteFolder.mutateAsync,
     deleteMultipleAsync: async (input) => {
@@ -535,6 +537,12 @@ export const App = () => {
                     onCloseContextMenu={browser.closeContextMenu}
                     onRename={browser.renamePathItem}
                     onMove={browser.movePathItem}
+                    onCopyItems={browser.copyPathItems}
+                    onCutItems={browser.cutPathItems}
+                    onPasteIntoPath={browser.pasteClipboardItems}
+                    hasClipboardItems={browser.hasClipboardItems}
+                    clipboardMode={browser.clipboardMode}
+                    clipboardPaths={browser.clipboardPaths}
                     onDownload={browser.downloadFile}
                     onCalculateFolderSize={browser.calculateFolderSize}
                     onOpenProperties={browser.openProperties}

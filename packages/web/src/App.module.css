@@ -1166,6 +1166,47 @@
   background: color-mix(in srgb, var(--brand-soft) 88%, var(--surface));
 }
 
+.itemsTable tbody tr.isClipboardCopy td {
+  background: color-mix(in srgb, var(--brand-soft) 62%, var(--surface));
+}
+
+.itemsTable tbody tr.isClipboardCopy td:first-child {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--brand) 62%, var(--line));
+}
+
+.itemsTable tbody tr.isClipboardCut td {
+  background: color-mix(in srgb, #f6e7b1 58%, var(--surface));
+  color: color-mix(in srgb, var(--text) 84%, #5f4a14);
+}
+
+.itemsTable tbody tr.isClipboardCut td:first-child {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, #cf9b1a 74%, var(--line));
+}
+
+.itemsTable tbody tr.isClipboardCut .itemMainButton {
+  opacity: 0.78;
+}
+
+.clipboardTag {
+  margin-left: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 70%, var(--brand));
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text) 78%, var(--muted));
+  background: color-mix(in srgb, var(--surface-soft) 70%, var(--surface));
+}
+
+.itemsTable tbody tr.isClipboardCut .clipboardTag {
+  border-color: color-mix(in srgb, #cf9b1a 62%, var(--line-strong));
+  background: color-mix(in srgb, #f6e7b1 64%, var(--surface));
+  color: color-mix(in srgb, #6f5313 74%, var(--text));
+}
+
 .nameCell {
   padding-left: 0.52rem !important;
 }
