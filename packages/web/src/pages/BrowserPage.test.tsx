@@ -99,6 +99,22 @@ describe('BrowserPage sorting and filtering', () => {
     cleanup();
   });
 
+  it('shows an overview of available keyboard shortcuts', () => {
+    const { props } = createProps();
+    render(<BrowserPage {...props} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open keyboard shortcuts' }));
+
+    expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+    expect(screen.getByText('Keyboard shortcuts')).toBeInTheDocument();
+    expect(screen.getByText('Select all visible items')).toBeInTheDocument();
+    expect(screen.getByText('Download selected files')).toBeInTheDocument();
+    expect(screen.getByText('Rename selected item')).toBeInTheDocument();
+    expect(screen.getByText('Move selected item')).toBeInTheDocument();
+    expect(screen.getByText('Delete selected items')).toBeInTheDocument();
+    expect(screen.getByText('Clear selection or close dialogs')).toBeInTheDocument();
+  });
+
   it('uses numeric-aware string sorting for names', () => {
     const { props } = createProps();
     const items: BrowseItem[] = [

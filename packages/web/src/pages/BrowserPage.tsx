@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import {
+  ArrowDownToLine,
+  ArrowRightLeft,
+  CheckSquare,
   ChevronDown,
   ChevronUp,
+  Eraser,
   File,
   Folder,
   House,
+  Keyboard,
+  PencilLine,
   RefreshCw,
   Search,
+  Trash2,
   Undo2,
   X,
 } from 'lucide-react';
@@ -66,6 +73,52 @@ interface SortRule {
   direction: SortDirection;
 }
 
+interface ShortcutDefinition {
+  id: string;
+  action: string;
+  keys: string[];
+  Icon: typeof Keyboard;
+}
+
+const browserShortcuts: ShortcutDefinition[] = [
+  {
+    id: 'select-all',
+    action: 'Select all visible items',
+    keys: ['Ctrl/Cmd', 'A'],
+    Icon: CheckSquare,
+  },
+  {
+    id: 'download',
+    action: 'Download selected files',
+    keys: ['Ctrl/Cmd', 'D'],
+    Icon: ArrowDownToLine,
+  },
+  {
+    id: 'rename',
+    action: 'Rename selected item',
+    keys: ['F2'],
+    Icon: PencilLine,
+  },
+  {
+    id: 'move',
+    action: 'Move selected item',
+    keys: ['Ctrl/Cmd', 'Shift', 'M'],
+    Icon: ArrowRightLeft,
+  },
+  {
+    id: 'delete',
+    action: 'Delete selected items',
+    keys: ['Delete'],
+    Icon: Trash2,
+  },
+  {
+    id: 'escape',
+    action: 'Clear selection or close dialogs',
+    keys: ['Esc'],
+    Icon: Eraser,
+  },
+];
+
 const nameCollator = new Intl.Collator(undefined, {
   sensitivity: 'base',
   numeric: true,
@@ -118,6 +171,7 @@ export const BrowserPage = ({
   const [breadcrumbDraft, setBreadcrumbDraft] = useState(selectedPath ? `/${selectedPath}` : '/');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filterQuery, setFilterQuery] = useState('');
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [pendingFolderUploadFiles, setPendingFolderUploadFiles] = useState<File[]>([]);
   const [sortRules, setSortRules] = useState<SortRule[]>([
     { key: 'type', direction: 'asc' },
@@ -593,6 +647,16 @@ export const BrowserPage = ({
 
             <Button
               variant="muted"
+              className={styles.iconButton}
+              onClick={() => setIsShortcutsModalOpen(true)}
+              aria-label="Open keyboard shortcuts"
+              title="Keyboard shortcuts"
+            >
+              <Keyboard size={16} aria-hidden />
+            </Button>
+
+            <Button
+              variant="muted"
               className={`${styles.iconButton} ${styles.refreshButton}`}
               onClick={browse.refetch}
               aria-label="Refresh current location"
@@ -611,6 +675,53 @@ export const BrowserPage = ({
 
       {browse.data ? (
         <>
+          {isShortcutsModalOpen ? (
+            <div
+              className={styles.modalOverlay}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="shortcuts-modal-title"
+              aria-describedby="shortcuts-modal-description"
+              aria-label="Keyboard shortcuts"
+            >
+              <div className={`${styles.modalCard} ${styles.shortcutsModalCard}`}>
+                <div className={styles.shortcutsModalHeader}>
+                  <Keyboard size={16} aria-hidden />
+                  <h3 id="shortcuts-modal-title">Keyboard shortcuts</h3>
+                </div>
+                <p id="shortcuts-modal-description" className={styles.shortcutsModalDescription}>
+                  Quick commands available in the browser view.
+                </p>
+                <div className={styles.shortcutsGrid}>
+                  <div className={styles.shortcutsTableHeader}>
+                    <span className={styles.shortcutsTableHeaderAction}>Action</span>
+                    <span className={styles.shortcutsTableHeaderKeys}>Shortcut</span>
+                  </div>
+                  {browserShortcuts.map(({ id, action, keys, Icon }) => (
+                    <div key={id} className={styles.shortcutItem}>
+                      <span className={styles.shortcutIcon} aria-hidden>
+                        <Icon size={14} />
+                      </span>
+                      <span className={styles.shortcutAction}>{action}</span>
+                      <span className={styles.shortcutKeys}>
+                        {keys.map((key) => (
+                          <kbd key={`${id}-${key}`} className={styles.shortcutKeycap}>
+                            {key}
+                          </kbd>
+                        ))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className={styles.modalActions}>
+                  <Button variant="muted" onClick={() => setIsShortcutsModalOpen(false)}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <input
             ref={uploadFilesInputRef}
             className={styles.hiddenInput}
