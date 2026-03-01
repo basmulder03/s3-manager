@@ -721,8 +721,8 @@ describe('BrowserPage sorting and filtering', () => {
     ).not.toBeInTheDocument();
 
     expect(screen.getByRole('dialog', { name: 'Filter query help' })).toBeInTheDocument();
-    expect(screen.getByText('meta.owner:alice')).toBeInTheDocument();
-    expect(screen.getByText('size>=10mb')).toBeInTheDocument();
+    expect(screen.getAllByText('meta.owner:alice').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('size>=10mb').length).toBeGreaterThan(0);
   });
 
   it('triggers file and folder upload handlers', () => {

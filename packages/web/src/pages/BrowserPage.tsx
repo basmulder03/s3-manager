@@ -144,6 +144,14 @@ interface ContextMenuAction {
   onSelect: () => void;
 }
 
+interface FilterHelpEntry {
+  id: string;
+  query: string;
+  whatItDoes: string;
+  howItWorks: string;
+  examples: string[];
+}
+
 const formatShortcutHint = (shortcut: string[]): string => shortcut.join(' + ');
 
 const browserShortcuts: ShortcutDefinition[] = [
@@ -230,6 +238,59 @@ const browserShortcuts: ShortcutDefinition[] = [
     action: 'Clear selection or close dialogs',
     shortcuts: [['Esc']],
     Icon: Eraser,
+  },
+];
+
+const filterHelpEntries: FilterHelpEntry[] = [
+  {
+    id: 'text-search',
+    query: 'report',
+    whatItDoes: 'Runs a broad text search across file/folder names, paths, and loaded properties.',
+    howItWorks: 'The token is matched as a case-insensitive contains check.',
+    examples: ['report', 'invoice 2026', '"quarterly report"'],
+  },
+  {
+    id: 'kind-filter',
+    query: 'type:file',
+    whatItDoes: 'Restricts results by item kind.',
+    howItWorks: 'Use type/kind/is with file or directory for exact type matches.',
+    examples: ['type:file', 'type:directory', 'is:file'],
+  },
+  {
+    id: 'size-filter',
+    query: 'size>=10mb',
+    whatItDoes: 'Compares object sizes numerically.',
+    howItWorks: 'Supports >, >=, <, <=, = and optional units (b, kb, mb, gb, tb).',
+    examples: ['size>500kb', 'size<=2mb', 'size=1024'],
+  },
+  {
+    id: 'property-filter',
+    query: 'contentType:json',
+    whatItDoes: 'Filters by file properties returned from object headers/details.',
+    howItWorks:
+      'Works with key, etag, storageClass, contentType, cacheControl, contentEncoding, contentLanguage, versionId, and more.',
+    examples: ['contentType:application/json', 'storageClass=STANDARD', 'etag:abc123'],
+  },
+  {
+    id: 'metadata-filter',
+    query: 'meta.owner:alice',
+    whatItDoes: 'Targets custom metadata values.',
+    howItWorks: 'Use meta.<metadata-key>:<value> to match one metadata key.',
+    examples: ['meta.owner:alice', 'meta.team:platform', 'meta.release>=2026'],
+  },
+  {
+    id: 'negation-filter',
+    query: '-type:directory',
+    whatItDoes: 'Excludes matches from the result set.',
+    howItWorks: 'Prefix any clause with - or ! to invert it.',
+    examples: ['-type:directory', '!contentType:image/', '-meta.env:dev'],
+  },
+  {
+    id: 'date-filter',
+    query: 'modified>=2026-01-01',
+    whatItDoes: 'Filters by modification/expiry timestamps.',
+    howItWorks: 'Date values are parsed and compared with numeric date operators.',
+    examples: ['modified>=2026-01-01', 'modified<2026-02-01', 'expires>2026-03-01'],
   },
 ];
 
@@ -2425,51 +2486,33 @@ export const BrowserPage = ({
                   <h3 id="filter-help-modal-title">Filter query help</h3>
                 </div>
                 <p id="filter-help-modal-description" className={styles.shortcutsModalDescription}>
-                  Use plain text or field-based expressions in the filter input.
+                  Use plain text or field expressions in the filter input. Clauses are combined with
+                  AND.
                 </p>
-                <div className={styles.shortcutsGrid}>
-                  <div className={styles.shortcutsTableHeader}>
-                    <span className={styles.shortcutsTableHeaderAction}>Pattern</span>
-                    <span className={styles.shortcutsTableHeaderKeys}>Meaning</span>
-                  </div>
-                  <div className={styles.shortcutItem}>
-                    <span className={styles.shortcutAction}>report</span>
-                    <span className={styles.shortcutKeys}>
-                      Text search across name, path, and metadata
-                    </span>
-                  </div>
-                  <div className={styles.shortcutItem}>
-                    <span className={styles.shortcutAction}>type:file</span>
-                    <span className={styles.shortcutKeys}>
-                      Only files (use type:directory for folders)
-                    </span>
-                  </div>
-                  <div className={styles.shortcutItem}>
-                    <span className={styles.shortcutAction}>size&gt;=10mb</span>
-                    <span className={styles.shortcutKeys}>
-                      Numeric size comparisons with units (kb, mb, gb)
-                    </span>
-                  </div>
-                  <div className={styles.shortcutItem}>
-                    <span className={styles.shortcutAction}>contentType:json</span>
-                    <span className={styles.shortcutKeys}>
-                      Property match (contentType, storageClass, etag, etc.)
-                    </span>
-                  </div>
-                  <div className={styles.shortcutItem}>
-                    <span className={styles.shortcutAction}>meta.owner:alice</span>
-                    <span className={styles.shortcutKeys}>
-                      Metadata key lookup (meta.&lt;key&gt;:&lt;value&gt;)
-                    </span>
-                  </div>
-                  <div className={styles.shortcutItem}>
-                    <span className={styles.shortcutAction}>-type:directory</span>
-                    <span className={styles.shortcutKeys}>Negate a clause with - or !</span>
-                  </div>
-                  <div className={styles.shortcutItem}>
-                    <span className={styles.shortcutAction}>"quarterly report"</span>
-                    <span className={styles.shortcutKeys}>Quoted phrase keeps spaces together</span>
-                  </div>
+                <div className={styles.filterHelpList}>
+                  {filterHelpEntries.map((entry) => (
+                    <article key={entry.id} className={styles.filterHelpCard}>
+                      <p className={styles.filterHelpSectionLabel}>Query option</p>
+                      <p className={styles.filterHelpQuery}>
+                        <code>{entry.query}</code>
+                      </p>
+                      <p className={styles.filterHelpSectionLabel}>What it does</p>
+                      <p className={styles.filterHelpBody}>{entry.whatItDoes}</p>
+                      <p className={styles.filterHelpSectionLabel}>How it works</p>
+                      <p className={styles.filterHelpBody}>{entry.howItWorks}</p>
+                      <p className={styles.filterHelpSectionLabel}>Examples</p>
+                      <p className={styles.filterHelpExamples}>
+                        {entry.examples.map((example, index) => (
+                          <Fragment key={`${entry.id}-${example}`}>
+                            {index > 0 ? (
+                              <span className={styles.filterHelpExampleSeparator}> | </span>
+                            ) : null}
+                            <code>{example}</code>
+                          </Fragment>
+                        ))}
+                      </p>
+                    </article>
+                  ))}
                 </div>
                 <div className={styles.modalActions}>
                   <Button variant="muted" onClick={() => setIsFilterHelpModalOpen(false)}>

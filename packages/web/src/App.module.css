@@ -674,6 +674,86 @@
   overflow: hidden;
 }
 
+.filterHelpList {
+  display: grid;
+  gap: 0.65rem;
+  max-height: min(60vh, 560px);
+  overflow: auto;
+  padding-right: 0.2rem;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--line-strong) 70%, var(--brand))
+    color-mix(in srgb, var(--surface-soft) 85%, var(--surface));
+}
+
+.filterHelpList::-webkit-scrollbar {
+  width: 10px;
+}
+
+.filterHelpList::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--surface-soft) 85%, var(--surface));
+  border-radius: 999px;
+}
+
+.filterHelpList::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--line-strong) 82%, var(--brand)),
+    color-mix(in srgb, var(--line-strong) 62%, var(--brand))
+  );
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--surface-soft) 85%, var(--surface));
+}
+
+.filterHelpList::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--line-strong) 64%, var(--brand)),
+    color-mix(in srgb, var(--line-strong) 46%, var(--brand))
+  );
+}
+
+.filterHelpCard {
+  display: grid;
+  gap: 0.24rem;
+  border: 1px solid color-mix(in srgb, var(--line) 86%, var(--brand));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 95%, var(--surface-soft));
+  padding: 0.68rem 0.72rem;
+}
+
+.filterHelpSectionLabel {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.filterHelpQuery,
+.filterHelpBody,
+.filterHelpExamples {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.filterHelpQuery code,
+.filterHelpExamples code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.75rem;
+  background: color-mix(in srgb, var(--surface-soft) 84%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--line) 82%, var(--brand));
+  border-radius: 6px;
+  padding: 0.1rem 0.32rem;
+}
+
+.filterHelpExampleSeparator {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
 .shortcutsTableHeader {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
