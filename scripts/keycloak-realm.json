@@ -124,8 +124,8 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "dev-client-secret-12345",
       "redirectUris": [
-        "http://localhost:3000/auth/callback",
-        "http://127.0.0.1:3000/auth/callback",
+        "http://localhost:3000/api/auth/callback",
+        "http://127.0.0.1:3000/api/auth/callback",
         "http://localhost:5173/*",
         "http://127.0.0.1:5173/*"
       ],

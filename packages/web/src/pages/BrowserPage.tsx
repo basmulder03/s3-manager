@@ -1,12 +1,4 @@
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type {
   CSSProperties,
@@ -16,33 +8,13 @@ import type {
   ReactNode,
 } from 'react';
 import {
-  ArrowDownToLine,
-  ArrowRightLeft,
-  BookOpenText,
-  ClipboardPaste,
-  CheckSquare,
-  Copy,
   ChevronDown,
   ChevronUp,
-  Eraser,
-  FileArchive,
-  FileAudio,
-  FileCode,
-  File,
-  FileImage,
-  FileSpreadsheet,
-  FileText,
-  FileVideo,
-  Folder,
   House,
-  Keyboard,
   MoreVertical,
-  PencilLine,
   RefreshCw,
-  Scissors,
   Search,
   SlidersHorizontal,
-  Trash2,
   Undo2,
   X,
 } from 'lucide-react';
@@ -52,6 +24,50 @@ import { trpcProxyClient } from '@web/trpc/client';
 import type { BrowseItem, ObjectPropertiesResult } from '@server/services/s3/types';
 import { resolveFileCapability } from '@web/utils/fileCapabilities';
 import { formatBytes } from '@web/utils/formatBytes';
+import {
+  BREADCRUMB_HINTS_STORAGE_KEY,
+  EXPLORER_GRID_VIEW_MIN_ZOOM,
+  EXPLORER_ZOOM_DEFAULT_LEVEL,
+  EXPLORER_ZOOM_EVENT_NAME,
+  EXPLORER_ZOOM_LEVELS,
+  EXPLORER_ZOOM_STORAGE_KEY,
+  formatShortcutHint,
+  nameCollator,
+  overviewColumnDefinitions,
+  overviewColumnSortKeyByColumn,
+  OVERVIEW_COLUMNS_STORAGE_KEY,
+  resolveInitialBreadcrumbHintPaths,
+  resolveInitialExplorerZoomLevel,
+  resolveInitialOverviewColumnVisibility,
+  resolveNearestExplorerZoomLevel,
+  resolveNextExplorerZoomLevel,
+} from '@web/pages/browser/constants';
+import {
+  cloneDroppedFile,
+  extractFilesFromDroppedEntries,
+  FileWithRelativePath,
+  INTERNAL_MOVE_DRAG_TYPE,
+} from '@web/pages/browser/dragDrop';
+import {
+  doesStringMatch,
+  normalizeFieldName,
+  normalizeText,
+  parseFilterClauses,
+  parseSizeLiteralBytes,
+} from '@web/pages/browser/filterQuery';
+import { renderBrowseItemIcon } from '@web/pages/browser/fileIcons';
+import { BrowserContextMenu } from '@web/pages/browser/components/BrowserContextMenu';
+import { BrowserInfoModals } from '@web/pages/browser/components/BrowserInfoModals';
+import type {
+  ContextMenuAction,
+  OverviewColumnKey,
+  OverviewColumnVisibility,
+  QueryClause,
+  QueryOperator,
+  SortDirection,
+  SortKey,
+  SortRule,
+} from '@web/pages/browser/types';
 import styles from '@web/App.module.css';
 
 interface BrowseData {
@@ -116,660 +132,8 @@ interface BrowserPageProps {
   setIsFilterHelpModalOpen?: (isOpen: boolean) => void;
 }
 
-const INTERNAL_MOVE_DRAG_TYPE = 'application/x-s3-manager-move-path';
-
-const IMAGE_EXTENSIONS = new Set([
-  'avif',
-  'bmp',
-  'gif',
-  'heic',
-  'jpeg',
-  'jpg',
-  'png',
-  'svg',
-  'tif',
-  'tiff',
-  'webp',
-]);
-
-const VIDEO_EXTENSIONS = new Set(['avi', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'webm']);
-const AUDIO_EXTENSIONS = new Set(['aac', 'flac', 'm4a', 'mp3', 'ogg', 'wav']);
-const ARCHIVE_EXTENSIONS = new Set(['7z', 'bz2', 'gz', 'rar', 'tar', 'tgz', 'zip']);
-const SPREADSHEET_EXTENSIONS = new Set(['csv', 'numbers', 'ods', 'tsv', 'xls', 'xlsx']);
-const CODE_EXTENSIONS = new Set([
-  'c',
-  'cc',
-  'cpp',
-  'cs',
-  'css',
-  'go',
-  'h',
-  'hpp',
-  'html',
-  'java',
-  'js',
-  'json',
-  'jsx',
-  'kt',
-  'md',
-  'php',
-  'py',
-  'rb',
-  'rs',
-  'sh',
-  'sql',
-  'toml',
-  'ts',
-  'tsx',
-  'vue',
-  'xml',
-  'yaml',
-  'yml',
-]);
-
-const TEXT_EXTENSIONS = new Set(['doc', 'docx', 'odt', 'pdf', 'rtf', 'txt']);
-const CODE_LIKE_FILE_NAMES = new Set(['dockerfile', 'makefile', 'readme', 'license']);
-
-const getFileIconByName = (fileName: string) => {
-  const normalizedName = fileName.trim().toLowerCase();
-  if (CODE_LIKE_FILE_NAMES.has(normalizedName)) {
-    return FileCode;
-  }
-
-  const extension = normalizedName.includes('.') ? (normalizedName.split('.').pop() ?? '') : '';
-  if (!extension) {
-    return File;
-  }
-
-  if (IMAGE_EXTENSIONS.has(extension)) {
-    return FileImage;
-  }
-  if (VIDEO_EXTENSIONS.has(extension)) {
-    return FileVideo;
-  }
-  if (AUDIO_EXTENSIONS.has(extension)) {
-    return FileAudio;
-  }
-  if (ARCHIVE_EXTENSIONS.has(extension)) {
-    return FileArchive;
-  }
-  if (SPREADSHEET_EXTENSIONS.has(extension)) {
-    return FileSpreadsheet;
-  }
-  if (CODE_EXTENSIONS.has(extension)) {
-    return FileCode;
-  }
-  if (TEXT_EXTENSIONS.has(extension)) {
-    return FileText;
-  }
-
-  return File;
-};
-
-const renderBrowseItemIcon = (item: BrowseItem) => {
-  const ItemIcon = item.type === 'directory' ? Folder : getFileIconByName(item.name);
-  return <ItemIcon size={16} />;
-};
-
-type FileWithRelativePath = File & { webkitRelativePath?: string };
-
-type DataTransferItemWithEntry = DataTransferItem & {
-  webkitGetAsEntry?: () => FileSystemEntryLike | null;
-};
-
-type FileSystemEntryLike = {
-  name: string;
-  isFile: boolean;
-  isDirectory: boolean;
-};
-
-type FileSystemFileEntryLike = FileSystemEntryLike & {
-  isFile: true;
-  file: (
-    successCallback: (file: File) => void,
-    errorCallback?: (error: DOMException) => void
-  ) => void;
-};
-
-type FileSystemDirectoryReaderLike = {
-  readEntries: (
-    successCallback: (entries: FileSystemEntryLike[]) => void,
-    errorCallback?: (error: DOMException) => void
-  ) => void;
-};
-
-type FileSystemDirectoryEntryLike = FileSystemEntryLike & {
-  isDirectory: true;
-  createReader: () => FileSystemDirectoryReaderLike;
-};
-
-const readDirectoryEntries = async (
-  reader: FileSystemDirectoryReaderLike
-): Promise<FileSystemEntryLike[]> => {
-  const entries: FileSystemEntryLike[] = [];
-
-  while (true) {
-    const chunk = await new Promise<FileSystemEntryLike[]>((resolve, reject) => {
-      reader.readEntries(resolve, reject);
-    });
-
-    if (chunk.length === 0) {
-      break;
-    }
-
-    entries.push(...chunk);
-  }
-
-  return entries;
-};
-
-const fileFromEntry = async (
-  entry: FileSystemFileEntryLike,
-  relativePath: string
-): Promise<FileWithRelativePath> => {
-  const file = await new Promise<File>((resolve, reject) => {
-    entry.file(resolve, reject);
-  });
-
-  const normalizedRelativePath = relativePath.replace(/^\/+/, '');
-  if (normalizedRelativePath.length > 0) {
-    Object.defineProperty(file, 'webkitRelativePath', {
-      configurable: true,
-      value: normalizedRelativePath,
-    });
-  }
-
-  return file as FileWithRelativePath;
-};
-
-const cloneDroppedFile = (file: File): File => {
-  return new globalThis.File([file], file.name, {
-    type: file.type,
-    lastModified: file.lastModified,
-  });
-};
-
-const collectFilesFromEntry = async (
-  entry: FileSystemEntryLike,
-  parentPath: string
-): Promise<FileWithRelativePath[]> => {
-  if (entry.isFile) {
-    const fileEntry = entry as FileSystemFileEntryLike;
-    const relativePath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
-    return [await fileFromEntry(fileEntry, relativePath)];
-  }
-
-  if (!entry.isDirectory) {
-    return [];
-  }
-
-  const directoryEntry = entry as FileSystemDirectoryEntryLike;
-  const nextParentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
-  const reader = directoryEntry.createReader();
-  const childEntries = await readDirectoryEntries(reader);
-  const nestedFiles = await Promise.all(
-    childEntries.map((childEntry) => collectFilesFromEntry(childEntry, nextParentPath))
-  );
-
-  return nestedFiles.flat();
-};
-
-const extractFilesFromDroppedEntries = async (
-  dataTransfer: DataTransfer
-): Promise<{ files: FileWithRelativePath[]; hasDirectoryEntry: boolean }> => {
-  const rawEntryItems = Array.from(dataTransfer.items ?? []).map(
-    (item) => (item as DataTransferItemWithEntry).webkitGetAsEntry?.() ?? null
-  );
-  const entryItems: FileSystemEntryLike[] = [];
-  for (const entry of rawEntryItems) {
-    if (entry) {
-      entryItems.push(entry as FileSystemEntryLike);
-    }
-  }
-
-  if (entryItems.length === 0) {
-    return { files: [], hasDirectoryEntry: false };
-  }
-
-  const hasDirectoryEntry = entryItems.some((entry) => entry.isDirectory);
-  const fileLists = await Promise.all(entryItems.map((entry) => collectFilesFromEntry(entry, '')));
-  const files = fileLists.flat();
-  return { files, hasDirectoryEntry };
-};
-
-type SortKey =
-  | 'name'
-  | 'size'
-  | 'modified'
-  | 'type'
-  | 'key'
-  | 'etag'
-  | 'versionId'
-  | 'serverSideEncryption'
-  | 'contentType'
-  | 'storageClass'
-  | 'cacheControl'
-  | 'contentDisposition'
-  | 'contentEncoding'
-  | 'contentLanguage'
-  | 'expires';
-type SortDirection = 'asc' | 'desc';
-
-interface SortRule {
-  key: SortKey;
-  direction: SortDirection;
-}
-
-type QueryOperator = ':' | '=' | '>' | '>=' | '<' | '<=';
-
-type QueryClause = {
-  negate: boolean;
-} & (
-  | {
-      kind: 'text';
-      value: string;
-    }
-  | {
-      kind: 'field';
-      field: string;
-      operator: QueryOperator;
-      value: string;
-    }
-);
-
-type OverviewColumnKey =
-  | 'showKey'
-  | 'showSize'
-  | 'showModified'
-  | 'showEtag'
-  | 'showVersionId'
-  | 'showServerSideEncryption'
-  | 'showContentType'
-  | 'showStorageClass'
-  | 'showCacheControl'
-  | 'showContentDisposition'
-  | 'showContentEncoding'
-  | 'showContentLanguage'
-  | 'showExpires';
-
-type OverviewColumnVisibility = Record<OverviewColumnKey, boolean> & {
-  showName: boolean;
-  showMetadata: boolean;
-};
-
-interface OverviewColumnDefinition {
-  key: OverviewColumnKey;
-  label: string;
-  requiresProperties: boolean;
-}
-
-interface ShortcutDefinition {
-  id: string;
-  action: string;
-  shortcuts: string[][];
-  Icon: typeof Keyboard;
-}
-
-interface ContextMenuAction {
-  id: string;
-  label: string;
-  hint?: string;
-  isDanger?: boolean;
-  isDisabled?: boolean;
-  submenuActions?: ContextMenuAction[];
-  onSelect: () => void;
-}
-
-interface FilterHelpEntry {
-  id: string;
-  query: string;
-  whatItDoes: string;
-  howItWorks: string;
-  examples: string[];
-}
-
-const formatShortcutHint = (shortcut: string[]): string => shortcut.join(' + ');
-
-const browserShortcuts: ShortcutDefinition[] = [
-  {
-    id: 'select-all',
-    action: 'Select all visible items',
-    shortcuts: [['Ctrl/Cmd', 'A']],
-    Icon: CheckSquare,
-  },
-  {
-    id: 'focus-filter',
-    action: 'Focus file filter',
-    shortcuts: [['/']],
-    Icon: Search,
-  },
-  {
-    id: 'refresh-explorer',
-    action: 'Refresh explorer contents',
-    shortcuts: [['F5']],
-    Icon: RefreshCw,
-  },
-  {
-    id: 'shortcuts-modal',
-    action: 'Open shortcuts help',
-    shortcuts: [['?']],
-    Icon: Keyboard,
-  },
-  {
-    id: 'parent',
-    action: 'Go to parent folder',
-    shortcuts: [['ArrowLeft'], ['Backspace'], ['Alt', 'ArrowUp']],
-    Icon: Undo2,
-  },
-  {
-    id: 'row-nav',
-    action: 'Jump to explorer and move focus',
-    shortcuts: [['Arrow keys'], ['Home'], ['End']],
-    Icon: Folder,
-  },
-  {
-    id: 'row-open',
-    action: 'Open focused item',
-    shortcuts: [['Enter'], ['ArrowRight']],
-    Icon: File,
-  },
-  {
-    id: 'row-select',
-    action: 'Select focused item',
-    shortcuts: [['Space']],
-    Icon: CheckSquare,
-  },
-  {
-    id: 'row-menu',
-    action: 'Open item context menu',
-    shortcuts: [['Shift', 'F10'], ['ContextMenu']],
-    Icon: Keyboard,
-  },
-  {
-    id: 'download',
-    action: 'Download selected files',
-    shortcuts: [['Ctrl/Cmd', 'D']],
-    Icon: ArrowDownToLine,
-  },
-  {
-    id: 'rename',
-    action: 'Rename selected item',
-    shortcuts: [['F2']],
-    Icon: PencilLine,
-  },
-  {
-    id: 'properties',
-    action: 'Open selected file properties',
-    shortcuts: [['Alt', 'Enter']],
-    Icon: BookOpenText,
-  },
-  {
-    id: 'calculate-folder-size',
-    action: 'Calculate selected folder size',
-    shortcuts: [['Ctrl/Cmd', 'Shift', 'S']],
-    Icon: Folder,
-  },
-  {
-    id: 'move',
-    action: 'Move selected item',
-    shortcuts: [['Ctrl/Cmd', 'Shift', 'M']],
-    Icon: ArrowRightLeft,
-  },
-  {
-    id: 'copy',
-    action: 'Copy selected items',
-    shortcuts: [['Ctrl/Cmd', 'C']],
-    Icon: Copy,
-  },
-  {
-    id: 'cut',
-    action: 'Cut selected items',
-    shortcuts: [['Ctrl/Cmd', 'X']],
-    Icon: Scissors,
-  },
-  {
-    id: 'paste',
-    action: 'Paste into current folder',
-    shortcuts: [['Ctrl/Cmd', 'V']],
-    Icon: ClipboardPaste,
-  },
-  {
-    id: 'delete',
-    action: 'Delete selected items',
-    shortcuts: [['Delete']],
-    Icon: Trash2,
-  },
-  {
-    id: 'escape',
-    action: 'Clear selection or close dialogs',
-    shortcuts: [['Esc']],
-    Icon: Eraser,
-  },
-];
-
-const filterHelpEntries: FilterHelpEntry[] = [
-  {
-    id: 'text-search',
-    query: 'report',
-    whatItDoes: 'Runs a broad text search across file/folder names, paths, and loaded properties.',
-    howItWorks: 'The token is matched as a case-insensitive contains check.',
-    examples: ['report', 'invoice 2026', '"quarterly report"'],
-  },
-  {
-    id: 'kind-filter',
-    query: 'type:file',
-    whatItDoes: 'Restricts results by item kind.',
-    howItWorks: 'Use type/kind/is with file or directory for exact type matches.',
-    examples: ['type:file', 'type:directory', 'is:file'],
-  },
-  {
-    id: 'size-filter',
-    query: 'size>=10mb',
-    whatItDoes: 'Compares object sizes numerically.',
-    howItWorks: 'Supports >, >=, <, <=, = and optional units (b, kb, mb, gb, tb).',
-    examples: ['size>500kb', 'size<=2mb', 'size=1024'],
-  },
-  {
-    id: 'property-filter',
-    query: 'contentType:json',
-    whatItDoes: 'Filters by file properties returned from object headers/details.',
-    howItWorks:
-      'Works with key, etag, storageClass, contentType, cacheControl, contentEncoding, contentLanguage, versionId, and more.',
-    examples: ['contentType:application/json', 'storageClass=STANDARD', 'etag:abc123'],
-  },
-  {
-    id: 'metadata-filter',
-    query: 'meta.owner:alice',
-    whatItDoes: 'Targets custom metadata values.',
-    howItWorks: 'Use meta.<metadata-key>:<value> to match one metadata key.',
-    examples: ['meta.owner:alice', 'meta.team:platform', 'meta.release>=2026'],
-  },
-  {
-    id: 'negation-filter',
-    query: '-type:directory',
-    whatItDoes: 'Excludes matches from the result set.',
-    howItWorks: 'Prefix any clause with - or ! to invert it.',
-    examples: ['-type:directory', '!contentType:image/', '-meta.env:dev'],
-  },
-  {
-    id: 'date-filter',
-    query: 'modified>=2026-01-01',
-    whatItDoes: 'Filters by modification/expiry timestamps.',
-    howItWorks: 'Date values are parsed and compared with numeric date operators.',
-    examples: ['modified>=2026-01-01', 'modified<2026-02-01', 'expires>2026-03-01'],
-  },
-];
-
-const nameCollator = new Intl.Collator(undefined, {
-  sensitivity: 'base',
-  numeric: true,
-});
-
-const OVERVIEW_COLUMNS_STORAGE_KEY = 'browser-overview-columns';
-const BREADCRUMB_HINTS_STORAGE_KEY = 'browser-breadcrumb-hints';
-const EXPLORER_ZOOM_STORAGE_KEY = 'browser-explorer-zoom';
-const EXPLORER_ZOOM_EVENT_NAME = 's3-manager:explorer-zoom-change';
-const EXPLORER_ZOOM_LEVELS = [70, 85, 100, 115, 130, 150, 175, 200] as const;
-const EXPLORER_ZOOM_DEFAULT_LEVEL = 100;
-const EXPLORER_GRID_VIEW_MIN_ZOOM = 130;
 const MIN_BROWSER_ZOOM_FACTOR = 0.5;
 const MAX_BROWSER_ZOOM_FACTOR = 3;
-
-const resolveNearestExplorerZoomLevel = (value: number): number => {
-  return EXPLORER_ZOOM_LEVELS.reduce((closest, candidate) => {
-    return Math.abs(candidate - value) < Math.abs(closest - value) ? candidate : closest;
-  }, EXPLORER_ZOOM_DEFAULT_LEVEL);
-};
-
-const resolveNextExplorerZoomLevel = (current: number, direction: 1 | -1): number => {
-  const nearest = resolveNearestExplorerZoomLevel(current);
-  const currentIndex = EXPLORER_ZOOM_LEVELS.findIndex((level) => level === nearest);
-  if (currentIndex < 0) {
-    return EXPLORER_ZOOM_DEFAULT_LEVEL;
-  }
-
-  const nextIndex = Math.max(
-    0,
-    Math.min(EXPLORER_ZOOM_LEVELS.length - 1, currentIndex + direction)
-  );
-  return EXPLORER_ZOOM_LEVELS[nextIndex] ?? EXPLORER_ZOOM_DEFAULT_LEVEL;
-};
-
-const resolveInitialExplorerZoomLevel = (): number => {
-  if (typeof window === 'undefined') {
-    return EXPLORER_ZOOM_DEFAULT_LEVEL;
-  }
-
-  const stored = window.localStorage.getItem(EXPLORER_ZOOM_STORAGE_KEY);
-  if (!stored) {
-    return EXPLORER_ZOOM_DEFAULT_LEVEL;
-  }
-
-  const parsed = Number.parseFloat(stored);
-  if (!Number.isFinite(parsed)) {
-    return EXPLORER_ZOOM_DEFAULT_LEVEL;
-  }
-
-  return resolveNearestExplorerZoomLevel(parsed);
-};
-
-const defaultOverviewColumnVisibility: OverviewColumnVisibility = {
-  showName: true,
-  showKey: false,
-  showSize: true,
-  showModified: true,
-  showEtag: false,
-  showVersionId: false,
-  showServerSideEncryption: false,
-  showContentType: false,
-  showStorageClass: false,
-  showCacheControl: false,
-  showContentDisposition: false,
-  showContentEncoding: false,
-  showContentLanguage: false,
-  showExpires: false,
-  showMetadata: false,
-};
-
-const overviewColumnDefinitions: OverviewColumnDefinition[] = [
-  { key: 'showKey', label: 'Key', requiresProperties: false },
-  { key: 'showSize', label: 'Size', requiresProperties: false },
-  { key: 'showModified', label: 'Modified', requiresProperties: false },
-  { key: 'showEtag', label: 'ETag', requiresProperties: false },
-  { key: 'showVersionId', label: 'Version Id', requiresProperties: true },
-  {
-    key: 'showServerSideEncryption',
-    label: 'Server-side encryption',
-    requiresProperties: true,
-  },
-  { key: 'showContentType', label: 'Content Type', requiresProperties: true },
-  { key: 'showStorageClass', label: 'Storage Class', requiresProperties: true },
-  { key: 'showCacheControl', label: 'Cache Control', requiresProperties: true },
-  { key: 'showContentDisposition', label: 'Content Disposition', requiresProperties: true },
-  { key: 'showContentEncoding', label: 'Content Encoding', requiresProperties: true },
-  { key: 'showContentLanguage', label: 'Content Language', requiresProperties: true },
-  { key: 'showExpires', label: 'Expires', requiresProperties: true },
-];
-
-const overviewColumnSortKeyByColumn: Record<OverviewColumnKey, SortKey> = {
-  showKey: 'key',
-  showSize: 'size',
-  showModified: 'modified',
-  showEtag: 'etag',
-  showVersionId: 'versionId',
-  showServerSideEncryption: 'serverSideEncryption',
-  showContentType: 'contentType',
-  showStorageClass: 'storageClass',
-  showCacheControl: 'cacheControl',
-  showContentDisposition: 'contentDisposition',
-  showContentEncoding: 'contentEncoding',
-  showContentLanguage: 'contentLanguage',
-  showExpires: 'expires',
-};
-
-const resolveInitialOverviewColumnVisibility = (): OverviewColumnVisibility => {
-  if (typeof window === 'undefined') {
-    return defaultOverviewColumnVisibility;
-  }
-
-  const stored = window.localStorage.getItem(OVERVIEW_COLUMNS_STORAGE_KEY);
-  if (!stored) {
-    return defaultOverviewColumnVisibility;
-  }
-
-  try {
-    const parsed = JSON.parse(stored) as Partial<OverviewColumnVisibility>;
-    return overviewColumnDefinitions.reduce<OverviewColumnVisibility>(
-      (next, column) => {
-        const parsedValue = parsed[column.key];
-        next[column.key] =
-          typeof parsedValue === 'boolean'
-            ? parsedValue
-            : defaultOverviewColumnVisibility[column.key];
-        return next;
-      },
-      { ...defaultOverviewColumnVisibility }
-    );
-  } catch {
-    return defaultOverviewColumnVisibility;
-  }
-};
-
-const resolveInitialBreadcrumbHintPaths = (): string[] => {
-  if (typeof window === 'undefined') {
-    return [];
-  }
-
-  const stored = window.sessionStorage.getItem(BREADCRUMB_HINTS_STORAGE_KEY);
-  if (!stored) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(stored);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    const unique = new Set<string>();
-    for (const entry of parsed) {
-      if (typeof entry !== 'string') {
-        continue;
-      }
-
-      const normalized = entry.trim().replace(/^\/+/, '').replace(/\/+$/, '');
-      if (!normalized) {
-        continue;
-      }
-
-      unique.add(normalized);
-    }
-
-    return Array.from(unique).slice(-600);
-  } catch {
-    return [];
-  }
-};
 
 const formatDate = (value: string | null): string => {
   if (!value) {
@@ -782,129 +146,6 @@ const formatDate = (value: string | null): string => {
   }
 
   return date.toLocaleString();
-};
-
-const tokenizeFilterQuery = (input: string): string[] => {
-  const tokens: string[] = [];
-  const matcher = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|\S+/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = matcher.exec(input)) !== null) {
-    const token = (match[1] ?? match[2] ?? match[0] ?? '').trim();
-    if (token.length > 0) {
-      tokens.push(token);
-    }
-  }
-
-  return tokens;
-};
-
-const parseSizeLiteralBytes = (value: string): number | null => {
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) {
-    return null;
-  }
-
-  const match = normalized.match(/^(\d+(?:\.\d+)?)(b|bytes?|kb|kib|mb|mib|gb|gib|tb|tib)?$/);
-  if (!match) {
-    return null;
-  }
-
-  const amount = Number.parseFloat(match[1] ?? '');
-  if (!Number.isFinite(amount)) {
-    return null;
-  }
-
-  const unit = match[2] ?? 'b';
-  const multiplierByUnit: Record<string, number> = {
-    b: 1,
-    byte: 1,
-    bytes: 1,
-    kb: 1024,
-    kib: 1024,
-    mb: 1024 ** 2,
-    mib: 1024 ** 2,
-    gb: 1024 ** 3,
-    gib: 1024 ** 3,
-    tb: 1024 ** 4,
-    tib: 1024 ** 4,
-  };
-
-  const multiplier = multiplierByUnit[unit];
-  if (!multiplier) {
-    return null;
-  }
-
-  return Math.round(amount * multiplier);
-};
-
-const parseFilterClauses = (query: string): QueryClause[] => {
-  const tokens = tokenizeFilterQuery(query);
-
-  return tokens.map<QueryClause>((token) => {
-    const trimmed = token.trim();
-    const negate = trimmed.startsWith('!') || trimmed.startsWith('-');
-    const raw = negate ? trimmed.slice(1).trim() : trimmed;
-
-    if (!raw) {
-      return {
-        kind: 'text',
-        value: '',
-        negate,
-      };
-    }
-
-    const comparisonMatch = raw.match(/^([a-zA-Z][a-zA-Z0-9_.-]*)(<=|>=|=|<|>)(.+)$/);
-    if (comparisonMatch) {
-      const [, field, operator, value] = comparisonMatch;
-      return {
-        kind: 'field',
-        field: field?.toLowerCase() ?? '',
-        operator: (operator as QueryOperator) ?? ':',
-        value: value?.trim() ?? '',
-        negate,
-      };
-    }
-
-    const colonIndex = raw.indexOf(':');
-    if (colonIndex > 0) {
-      const field = raw.slice(0, colonIndex).trim().toLowerCase();
-      const value = raw.slice(colonIndex + 1).trim();
-      if (field.length > 0) {
-        return {
-          kind: 'field',
-          field,
-          operator: ':',
-          value,
-          negate,
-        };
-      }
-    }
-
-    return {
-      kind: 'text',
-      value: raw,
-      negate,
-    };
-  });
-};
-
-const normalizeFieldName = (field: string): string => field.replace(/[-_]/g, '').toLowerCase();
-
-const normalizeText = (value: string): string => value.trim().toLowerCase();
-
-const doesStringMatch = (actual: string, expected: string, operator: QueryOperator): boolean => {
-  const normalizedActual = normalizeText(actual);
-  const normalizedExpected = normalizeText(expected);
-  if (!normalizedExpected) {
-    return true;
-  }
-
-  if (operator === '=') {
-    return normalizedActual === normalizedExpected;
-  }
-
-  return normalizedActual.includes(normalizedExpected);
 };
 
 export const BrowserPage = ({
@@ -2260,7 +1501,11 @@ export const BrowserPage = ({
         return typeof relativePath === 'string' && relativePath.includes('/');
       });
       const hasDirectoryItem = Array.from(dataTransfer.items ?? []).some((item) => {
-        const entry = (item as DataTransferItemWithEntry).webkitGetAsEntry?.();
+        const entry = (
+          item as DataTransferItem & {
+            webkitGetAsEntry?: () => { isDirectory?: boolean } | null;
+          }
+        ).webkitGetAsEntry?.();
         return Boolean(entry?.isDirectory);
       });
 
@@ -2763,7 +2008,9 @@ export const BrowserPage = ({
       });
     }
 
-    if (hasBucketContext) {
+    const hasWritableItemContext = hasBucketContext || contextMenu.item.type === 'file';
+
+    if (hasWritableItemContext) {
       actions.push({
         id: 'copy',
         label: 'Copy',
@@ -2775,7 +2022,7 @@ export const BrowserPage = ({
       });
     }
 
-    if (hasBucketContext && canWrite) {
+    if (hasWritableItemContext && canWrite) {
       actions.push({
         id: 'cut',
         label: 'Cut',
@@ -2787,7 +2034,7 @@ export const BrowserPage = ({
       });
     }
 
-    if (hasBucketContext && canWrite) {
+    if (hasWritableItemContext && canWrite) {
       actions.push({
         id: 'rename',
         label: 'Rename',
@@ -4156,122 +3403,13 @@ export const BrowserPage = ({
 
       {browse.data ? (
         <>
-          {isShortcutsModalOpen ? (
-            <div
-              className={styles.modalOverlay}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="shortcuts-modal-title"
-              aria-describedby="shortcuts-modal-description"
-              aria-label="Keyboard shortcuts"
-            >
-              <div
-                className={`${styles.modalCard} ${styles.shortcutsModalCard}`}
-                ref={activeModalRef}
-              >
-                <div className={styles.shortcutsModalHeader}>
-                  <Keyboard size={16} aria-hidden />
-                  <h3 id="shortcuts-modal-title">Keyboard shortcuts</h3>
-                </div>
-                <p id="shortcuts-modal-description" className={styles.shortcutsModalDescription}>
-                  Quick commands available in the browser view.
-                </p>
-                <div className={styles.shortcutsGrid}>
-                  <div className={styles.shortcutsTableHeader}>
-                    <span className={styles.shortcutsTableHeaderAction}>Action</span>
-                    <span className={styles.shortcutsTableHeaderKeys}>Shortcut</span>
-                  </div>
-                  {browserShortcuts.map(({ id, action, shortcuts, Icon }) => (
-                    <div key={id} className={styles.shortcutItem}>
-                      <span className={styles.shortcutIcon} aria-hidden>
-                        <Icon size={14} />
-                      </span>
-                      <span className={styles.shortcutAction}>{action}</span>
-                      <span className={styles.shortcutKeys}>
-                        {shortcuts.map((shortcut, shortcutIndex) => (
-                          <Fragment key={`${id}-${shortcut.join('+')}`}>
-                            <span className={styles.shortcutOption}>
-                              {shortcut.map((key, keyIndex) => (
-                                <Fragment key={`${id}-${shortcutIndex}-${key}`}>
-                                  {keyIndex > 0 ? (
-                                    <span className={styles.shortcutJoin}>+</span>
-                                  ) : null}
-                                  <kbd className={styles.shortcutKeycap}>{key}</kbd>
-                                </Fragment>
-                              ))}
-                            </span>
-                            {shortcutIndex < shortcuts.length - 1 ? (
-                              <span className={styles.shortcutOptionSeparator}>or</span>
-                            ) : null}
-                          </Fragment>
-                        ))}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div className={styles.modalActions}>
-                  <Button variant="muted" onClick={() => setIsShortcutsModalOpen(false)}>
-                    Close
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {isFilterHelpModalOpen ? (
-            <div
-              className={styles.modalOverlay}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="filter-help-modal-title"
-              aria-describedby="filter-help-modal-description"
-              aria-label="Filter query help"
-            >
-              <div
-                className={`${styles.modalCard} ${styles.shortcutsModalCard}`}
-                ref={activeModalRef}
-              >
-                <div className={styles.shortcutsModalHeader}>
-                  <BookOpenText size={16} aria-hidden />
-                  <h3 id="filter-help-modal-title">Filter query help</h3>
-                </div>
-                <p id="filter-help-modal-description" className={styles.shortcutsModalDescription}>
-                  Use plain text or field expressions in the filter input. Clauses are combined with
-                  AND.
-                </p>
-                <div className={styles.filterHelpList}>
-                  {filterHelpEntries.map((entry) => (
-                    <article key={entry.id} className={styles.filterHelpCard}>
-                      <p className={styles.filterHelpSectionLabel}>Query option</p>
-                      <p className={styles.filterHelpQuery}>
-                        <code>{entry.query}</code>
-                      </p>
-                      <p className={styles.filterHelpSectionLabel}>What it does</p>
-                      <p className={styles.filterHelpBody}>{entry.whatItDoes}</p>
-                      <p className={styles.filterHelpSectionLabel}>How it works</p>
-                      <p className={styles.filterHelpBody}>{entry.howItWorks}</p>
-                      <p className={styles.filterHelpSectionLabel}>Examples</p>
-                      <p className={styles.filterHelpExamples}>
-                        {entry.examples.map((example, index) => (
-                          <Fragment key={`${entry.id}-${example}`}>
-                            {index > 0 ? (
-                              <span className={styles.filterHelpExampleSeparator}> | </span>
-                            ) : null}
-                            <code>{example}</code>
-                          </Fragment>
-                        ))}
-                      </p>
-                    </article>
-                  ))}
-                </div>
-                <div className={styles.modalActions}>
-                  <Button variant="muted" onClick={() => setIsFilterHelpModalOpen(false)}>
-                    Close
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ) : null}
+          <BrowserInfoModals
+            isShortcutsModalOpen={isShortcutsModalOpen}
+            setIsShortcutsModalOpen={setIsShortcutsModalOpen}
+            isFilterHelpModalOpen={isFilterHelpModalOpen}
+            setIsFilterHelpModalOpen={setIsFilterHelpModalOpen}
+            activeModalRef={activeModalRef}
+          />
 
           <input
             ref={uploadFilesInputRef}
@@ -4701,110 +3839,18 @@ export const BrowserPage = ({
             ) : null}
           </div>
 
-          {contextMenu
-            ? createPortal(
-                <div
-                  ref={contextMenuRef}
-                  className={styles.contextMenu}
-                  role="menu"
-                  aria-label="Item actions"
-                  style={{ left: contextMenu.x, top: contextMenu.y }}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => event.stopPropagation()}
-                  onKeyDown={handleContextMenuKeyDown}
-                >
-                  {contextMenuActions.map((action, index) => {
-                    const previousAction = contextMenuActions[index - 1];
-                    const startsSecondarySection =
-                      ['rename', 'move', 'delete'].includes(action.id) &&
-                      previousAction &&
-                      !['rename', 'move', 'delete'].includes(previousAction.id);
-                    const hasSubmenu = Boolean(
-                      action.submenuActions && action.submenuActions.length > 0
-                    );
-                    const isSubmenuOpen = hasSubmenu && openSubmenuActionId === action.id;
-
-                    return (
-                      <Fragment key={action.id}>
-                        {startsSecondarySection ? (
-                          <div className={styles.contextMenuSeparator} />
-                        ) : null}
-                        <div className={styles.contextMenuRow}>
-                          <button
-                            ref={(element) => {
-                              contextMenuItemRefs.current[index] = element;
-                            }}
-                            role="menuitem"
-                            disabled={action.isDisabled}
-                            aria-haspopup={hasSubmenu ? 'menu' : undefined}
-                            aria-expanded={hasSubmenu ? isSubmenuOpen : undefined}
-                            className={`${styles.contextMenuItem} ${
-                              action.isDanger ? styles.contextMenuItemDanger : ''
-                            }`}
-                            onFocus={() => {
-                              if (!hasSubmenu) {
-                                setOpenSubmenuActionId(null);
-                              }
-                            }}
-                            onMouseEnter={() => {
-                              if (hasSubmenu) {
-                                setOpenSubmenuActionId(action.id);
-                              }
-                            }}
-                            onClick={() => {
-                              if (hasSubmenu) {
-                                setOpenSubmenuActionId((previous) =>
-                                  previous === action.id ? null : action.id
-                                );
-                                return;
-                              }
-
-                              action.onSelect();
-                            }}
-                          >
-                            <span>{action.label}</span>
-                            <span className={styles.contextMenuHint}>
-                              {hasSubmenu ? '>' : action.hint}
-                            </span>
-                          </button>
-                          {hasSubmenu && isSubmenuOpen ? (
-                            <div
-                              ref={contextSubmenuRef}
-                              className={`${styles.contextSubmenu} ${
-                                contextSubmenuSide === 'left' ? styles.contextSubmenuLeft : ''
-                              }`.trim()}
-                              role="menu"
-                              aria-label={`${action.label} options`}
-                            >
-                              {action.submenuActions?.map((submenuAction, submenuIndex) => (
-                                <button
-                                  key={submenuAction.id}
-                                  ref={(element) => {
-                                    contextSubmenuItemRefs.current[submenuIndex] = element;
-                                  }}
-                                  role="menuitem"
-                                  disabled={submenuAction.isDisabled}
-                                  className={styles.contextMenuItem}
-                                  onClick={submenuAction.onSelect}
-                                >
-                                  <span>{submenuAction.label}</span>
-                                  {submenuAction.hint ? (
-                                    <span className={styles.contextMenuHint}>
-                                      {submenuAction.hint}
-                                    </span>
-                                  ) : null}
-                                </button>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      </Fragment>
-                    );
-                  })}
-                </div>,
-                document.body
-              )
-            : null}
+          <BrowserContextMenu
+            contextMenu={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null}
+            contextMenuRef={contextMenuRef}
+            contextSubmenuRef={contextSubmenuRef}
+            contextMenuItemRefs={contextMenuItemRefs}
+            contextSubmenuItemRefs={contextSubmenuItemRefs}
+            contextSubmenuSide={contextSubmenuSide}
+            contextMenuActions={contextMenuActions}
+            openSubmenuActionId={openSubmenuActionId}
+            setOpenSubmenuActionId={setOpenSubmenuActionId}
+            handleContextMenuKeyDown={handleContextMenuKeyDown}
+          />
         </>
       ) : null}
     </>
