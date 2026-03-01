@@ -345,6 +345,8 @@ export const App = () => {
             userEmail={authMe.data?.email}
             selectedPath={selectedPath}
             permissions={permissions}
+            authenticated={authenticated}
+            onElevationGranted={refreshAuthState}
           />
         ) : null}
 

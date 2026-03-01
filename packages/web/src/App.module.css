@@ -201,6 +201,76 @@
   color: var(--muted);
 }
 
+.elevationCard {
+  display: grid;
+  gap: 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-soft) 90%, var(--surface));
+  padding: 0.52rem;
+}
+
+.elevationLabel {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.elevationSelect,
+.elevationTextarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.elevationSelect {
+  height: 2rem;
+  padding: 0 0.48rem;
+}
+
+.elevationTextarea {
+  resize: vertical;
+  min-height: 4.2rem;
+  padding: 0.42rem 0.5rem;
+}
+
+.elevationHint {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.elevationStatusCard {
+  display: grid;
+  gap: 0.18rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.35rem;
+}
+
+.elevationStatusTitle {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.elevationStatusPending {
+  color: var(--warning);
+}
+
+.elevationStatusGranted {
+  color: #2d936c;
+}
+
+.elevationStatusDenied {
+  color: var(--danger);
+}
+
 .finderContent {
   background: var(--surface);
   padding: 0.8rem;
