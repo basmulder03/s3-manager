@@ -1485,6 +1485,12 @@ export const useBrowserController = ({
     },
     onRename: renamePathItem,
     onMove: movePathItem,
+    onOpenProperties: (path) => {
+      void openProperties(path);
+    },
+    onCalculateFolderSize: (path) => {
+      void calculateFolderSize(path);
+    },
   });
 
   return {

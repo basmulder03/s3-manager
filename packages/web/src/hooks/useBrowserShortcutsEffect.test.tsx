@@ -10,6 +10,8 @@ interface HarnessProps {
   onCopySelection?: () => void;
   onCutSelection?: () => void;
   onPaste?: () => void;
+  onOpenProperties?: (path: string) => void;
+  onCalculateFolderSize?: (path: string) => void;
 }
 
 const renderHarness = ({
@@ -19,6 +21,8 @@ const renderHarness = ({
   onCopySelection = vi.fn(),
   onCutSelection = vi.fn(),
   onPaste = vi.fn(),
+  onOpenProperties = vi.fn(),
+  onCalculateFolderSize = vi.fn(),
 }: HarnessProps = {}) => {
   const Harness = () => {
     useBrowserShortcutsEffect({
@@ -43,6 +47,8 @@ const renderHarness = ({
       onPaste,
       onRename: vi.fn(),
       onMove: vi.fn(),
+      onOpenProperties,
+      onCalculateFolderSize,
     });
 
     return null;
@@ -53,6 +59,8 @@ const renderHarness = ({
     onCopySelection,
     onCutSelection,
     onPaste,
+    onOpenProperties,
+    onCalculateFolderSize,
   };
 };
 
@@ -103,6 +111,50 @@ describe('useBrowserShortcutsEffect clipboard shortcuts', () => {
   });
 });
 
-const fireShortcut = (key: string) => {
-  window.dispatchEvent(new KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true }));
+describe('useBrowserShortcutsEffect item action shortcuts', () => {
+  it('opens file properties on Alt+Enter for a selected file', () => {
+    const selectedRecords: BrowseItem[] = [
+      {
+        name: 'alpha.txt',
+        path: 'my-bucket/folder/alpha.txt',
+        type: 'file',
+        size: 12,
+        lastModified: null,
+      },
+    ];
+
+    const { onOpenProperties } = renderHarness({ selectedRecords });
+    fireShortcut('Enter', { altKey: true });
+
+    expect(onOpenProperties).toHaveBeenCalledWith('my-bucket/folder/alpha.txt');
+  });
+
+  it('calculates directory size on Ctrl/Cmd+Shift+S for a selected folder', () => {
+    const selectedRecords: BrowseItem[] = [
+      {
+        name: 'assets',
+        path: 'my-bucket/folder/assets',
+        type: 'directory',
+        size: null,
+        lastModified: null,
+      },
+    ];
+
+    const { onCalculateFolderSize } = renderHarness({ selectedRecords });
+    fireShortcut('s', { shiftKey: true });
+
+    expect(onCalculateFolderSize).toHaveBeenCalledWith('my-bucket/folder/assets');
+  });
+});
+
+const fireShortcut = (key: string, options?: { shiftKey?: boolean; altKey?: boolean }) => {
+  window.dispatchEvent(
+    new KeyboardEvent('keydown', {
+      key,
+      ctrlKey: !options?.altKey,
+      shiftKey: options?.shiftKey,
+      altKey: options?.altKey,
+      bubbles: true,
+    })
+  );
 };

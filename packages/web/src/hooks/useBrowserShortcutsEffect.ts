@@ -23,6 +23,8 @@ interface UseBrowserShortcutsOptions {
   onPaste: () => void;
   onRename: (path: string, name: string) => void;
   onMove: (path: string) => void;
+  onOpenProperties: (path: string) => void;
+  onCalculateFolderSize: (path: string) => void;
 }
 
 export const useBrowserShortcutsEffect = ({
@@ -47,6 +49,8 @@ export const useBrowserShortcutsEffect = ({
   onPaste,
   onRename,
   onMove,
+  onOpenProperties,
+  onCalculateFolderSize,
 }: UseBrowserShortcutsOptions) => {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -131,6 +135,23 @@ export const useBrowserShortcutsEffect = ({
         return;
       }
 
+      if (event.altKey && event.key === 'Enter' && selectedSingleItem?.type === 'file') {
+        event.preventDefault();
+        onOpenProperties(selectedSingleItem.path);
+        return;
+      }
+
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === 's' &&
+        selectedSingleItem?.type === 'directory'
+      ) {
+        event.preventDefault();
+        onCalculateFolderSize(selectedSingleItem.path);
+        return;
+      }
+
       if (
         (event.metaKey || event.ctrlKey) &&
         event.shiftKey &&
@@ -169,5 +190,7 @@ export const useBrowserShortcutsEffect = ({
     onPaste,
     onRename,
     onMove,
+    onOpenProperties,
+    onCalculateFolderSize,
   ]);
 };

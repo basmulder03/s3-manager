@@ -349,6 +349,8 @@ describe('BrowserPage sorting and filtering', () => {
     expect(screen.getByText('Refresh explorer contents')).toBeInTheDocument();
     expect(screen.getByText('Download selected files')).toBeInTheDocument();
     expect(screen.getByText('Rename selected item')).toBeInTheDocument();
+    expect(screen.getByText('Open selected file properties')).toBeInTheDocument();
+    expect(screen.getByText('Calculate selected folder size')).toBeInTheDocument();
     expect(screen.getByText('Move selected item')).toBeInTheDocument();
     expect(screen.getByText('Copy selected items')).toBeInTheDocument();
     expect(screen.getByText('Cut selected items')).toBeInTheDocument();

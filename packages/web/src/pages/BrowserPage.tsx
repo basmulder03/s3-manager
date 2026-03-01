@@ -265,6 +265,18 @@ const browserShortcuts: ShortcutDefinition[] = [
     Icon: PencilLine,
   },
   {
+    id: 'properties',
+    action: 'Open selected file properties',
+    shortcuts: [['Alt', 'Enter']],
+    Icon: BookOpenText,
+  },
+  {
+    id: 'calculate-folder-size',
+    action: 'Calculate selected folder size',
+    shortcuts: [['Ctrl/Cmd', 'Shift', 'S']],
+    Icon: Folder,
+  },
+  {
     id: 'move',
     action: 'Move selected item',
     shortcuts: [['Ctrl/Cmd', 'Shift', 'M']],
@@ -1954,6 +1966,7 @@ export const BrowserPage = ({
       actions.push({
         id: 'calculate-size',
         label: 'Calculate Size',
+        hint: formatShortcutHint(['Ctrl/Cmd', 'Shift', 'S']),
         onSelect: () => {
           void onCalculateFolderSize(contextMenu.item.path);
         },
@@ -2005,6 +2018,7 @@ export const BrowserPage = ({
       actions.push({
         id: 'properties',
         label: 'Properties',
+        hint: formatShortcutHint(['Alt', 'Enter']),
         onSelect: () => {
           void onOpenProperties(contextMenu.item.path);
         },
@@ -2693,7 +2707,7 @@ export const BrowserPage = ({
       return;
     }
 
-    if (event.key === 'Enter' || event.key === 'ArrowRight') {
+    if ((event.key === 'Enter' && !event.altKey) || event.key === 'ArrowRight') {
       event.preventDefault();
       if (isParentNavigation) {
         setSelectedPath(parentPath);
