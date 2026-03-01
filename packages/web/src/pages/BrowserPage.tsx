@@ -1,5 +1,19 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, ReactNode } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { createPortal } from 'react-dom';
+import type {
+  CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent,
+  ReactNode,
+} from 'react';
 import {
   ArrowDownToLine,
   ArrowRightLeft,
@@ -72,6 +86,7 @@ interface BrowserPageProps {
   onRename: (path: string, currentName: string) => void;
   onMove: (path: string) => void;
   onCopyItems: (items: BrowseItem[]) => void;
+  onCopyTextToClipboard: (value: string, label: string) => Promise<void>;
   onCutItems: (items: BrowseItem[]) => void;
   onPasteIntoPath: (destinationPath: string) => Promise<void>;
   hasClipboardItems: boolean;
@@ -167,6 +182,8 @@ interface ContextMenuAction {
   label: string;
   hint?: string;
   isDanger?: boolean;
+  isDisabled?: boolean;
+  submenuActions?: ContextMenuAction[];
   onSelect: () => void;
 }
 
@@ -631,6 +648,7 @@ export const BrowserPage = ({
   onRename,
   onMove,
   onCopyItems,
+  onCopyTextToClipboard,
   onCutItems,
   onPasteIntoPath,
   hasClipboardItems,
@@ -673,6 +691,9 @@ export const BrowserPage = ({
     { key: 'type', direction: 'asc' },
     { key: 'name', direction: 'asc' },
   ]);
+  const [openSubmenuActionId, setOpenSubmenuActionId] = useState<string | null>(null);
+  const [overviewFieldsMenuStyle, setOverviewFieldsMenuStyle] = useState<CSSProperties>({});
+  const [contextSubmenuSide, setContextSubmenuSide] = useState<'left' | 'right'>('right');
   const isShortcutsModalOpen = isShortcutsModalOpenProp ?? isShortcutsModalOpenInternal;
   const setIsShortcutsModalOpen = useCallback(
     (isOpen: boolean) => {
@@ -703,6 +724,9 @@ export const BrowserPage = ({
   const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const contextMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const contextSubmenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const contextSubmenuRef = useRef<HTMLDivElement>(null);
+  const overviewFieldsPanelRef = useRef<HTMLDivElement>(null);
   const contextMenuFocusRestoreRef = useRef<HTMLElement | null>(null);
   const wasContextMenuOpenRef = useRef(false);
   const wasBreadcrumbEditingRef = useRef(false);
@@ -851,6 +875,10 @@ export const BrowserPage = ({
         return;
       }
 
+      if (overviewFieldsPanelRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
       setIsOverviewFieldsMenuOpen(false);
     };
 
@@ -859,6 +887,82 @@ export const BrowserPage = ({
       window.removeEventListener('pointerdown', onPointerDown);
     };
   }, [isOverviewFieldsMenuOpen]);
+
+  const positionOverviewFieldsMenu = useCallback(() => {
+    if (!isOverviewFieldsMenuOpen) {
+      return;
+    }
+
+    const anchor = overviewFieldsMenuRef.current;
+    const menu = overviewFieldsPanelRef.current;
+    if (!anchor || !menu) {
+      return;
+    }
+
+    const viewportPadding = 8;
+    const gap = 6;
+    const anchorRect = anchor.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const menuWidth = menuRect.width || 240;
+    const menuHeight = menuRect.height || 320;
+
+    let left = anchorRect.right - menuWidth;
+    left = Math.max(
+      viewportPadding,
+      Math.min(left, window.innerWidth - menuWidth - viewportPadding)
+    );
+
+    const spaceBelow = window.innerHeight - anchorRect.bottom - gap - viewportPadding;
+    const spaceAbove = anchorRect.top - gap - viewportPadding;
+
+    let top = anchorRect.bottom + gap;
+    let maxHeight = Math.max(160, spaceBelow);
+    if (spaceBelow < 220 && spaceAbove > spaceBelow) {
+      top = Math.max(viewportPadding, anchorRect.top - gap - Math.min(menuHeight, spaceAbove));
+      maxHeight = Math.max(160, spaceAbove);
+    }
+
+    setOverviewFieldsMenuStyle({
+      position: 'fixed',
+      left,
+      top,
+      right: 'auto',
+      bottom: 'auto',
+      maxHeight: `${Math.floor(maxHeight)}px`,
+      visibility: 'visible',
+    });
+  }, [isOverviewFieldsMenuOpen]);
+
+  useLayoutEffect(() => {
+    if (!isOverviewFieldsMenuOpen) {
+      setOverviewFieldsMenuStyle({});
+      return;
+    }
+
+    positionOverviewFieldsMenu();
+
+    const frameId = window.requestAnimationFrame(positionOverviewFieldsMenu);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [isOverviewFieldsMenuOpen, overviewFieldsFilterQuery, positionOverviewFieldsMenu]);
+
+  useEffect(() => {
+    if (!isOverviewFieldsMenuOpen) {
+      return;
+    }
+
+    const reposition = () => {
+      positionOverviewFieldsMenu();
+    };
+
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [isOverviewFieldsMenuOpen, positionOverviewFieldsMenu]);
 
   useEffect(() => {
     if (!isFilterOpen) {
@@ -1758,6 +1862,79 @@ export const BrowserPage = ({
   const canDeleteContextItem =
     canDelete && !(contextMenu?.item.type === 'directory' && !contextMenu.item.path.includes('/'));
 
+  useEffect(() => {
+    if (!contextMenu || contextMenu.item.type !== 'file') {
+      return;
+    }
+
+    const targetPath = contextMenu.item.path;
+    if (propertiesByPath[targetPath] !== undefined || propertiesLoadingPaths.has(targetPath)) {
+      return;
+    }
+
+    setPropertiesLoadingPaths((previous) => {
+      if (previous.has(targetPath)) {
+        return previous;
+      }
+
+      const next = new Set(previous);
+      next.add(targetPath);
+      return next;
+    });
+
+    let cancelled = false;
+    const loadProperties = async () => {
+      try {
+        const details = await trpcProxyClient.s3.getProperties.query({ path: targetPath });
+        if (cancelled) {
+          return;
+        }
+
+        setPropertiesByPath((previous) => {
+          if (previous[targetPath] !== undefined) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            [targetPath]: details,
+          };
+        });
+      } catch {
+        if (cancelled) {
+          return;
+        }
+
+        setPropertiesByPath((previous) => {
+          if (previous[targetPath] !== undefined) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            [targetPath]: null,
+          };
+        });
+      } finally {
+        setPropertiesLoadingPaths((previous) => {
+          if (!previous.has(targetPath)) {
+            return previous;
+          }
+
+          const next = new Set(previous);
+          next.delete(targetPath);
+          return next;
+        });
+      }
+    };
+
+    void loadProperties();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contextMenu, propertiesByPath, propertiesLoadingPaths]);
+
   const contextMenuActions = useMemo<ContextMenuAction[]>(() => {
     if (!contextMenu) {
       return [];
@@ -1832,6 +2009,81 @@ export const BrowserPage = ({
           void onOpenProperties(contextMenu.item.path);
         },
       });
+
+      const details = propertiesByPath[contextMenu.item.path];
+      const isLoadingDetails = propertiesLoadingPaths.has(contextMenu.item.path);
+      const copyDetailActions: ContextMenuAction[] = [];
+      const pushCopyDetailAction = (
+        id: string,
+        label: string,
+        value: string | null | undefined
+      ) => {
+        if (value === null || value === undefined) {
+          return;
+        }
+
+        const normalizedValue = String(value).trim();
+        if (!normalizedValue) {
+          return;
+        }
+
+        copyDetailActions.push({
+          id,
+          label,
+          onSelect: () => {
+            onCloseContextMenu();
+            void onCopyTextToClipboard(normalizedValue, label);
+          },
+        });
+      };
+
+      pushCopyDetailAction('copy-detail-name', 'Name', contextMenu.item.name);
+      pushCopyDetailAction('copy-detail-path', 'Path', contextMenu.item.path);
+      pushCopyDetailAction(
+        'copy-detail-key',
+        'Object key',
+        details?.key ?? contextMenu.item.path.split('/').slice(1).join('/')
+      );
+      pushCopyDetailAction('copy-detail-size', 'Size', contextMenu.item.size?.toString());
+      pushCopyDetailAction(
+        'copy-detail-last-modified',
+        'Last modified',
+        contextMenu.item.lastModified ?? details?.lastModified
+      );
+      pushCopyDetailAction('copy-detail-etag', 'ETag', contextMenu.item.etag ?? details?.etag);
+      pushCopyDetailAction('copy-detail-content-type', 'Content type', details?.contentType);
+      pushCopyDetailAction('copy-detail-storage-class', 'Storage class', details?.storageClass);
+      pushCopyDetailAction('copy-detail-version-id', 'Version ID', details?.versionId);
+
+      const metadataEntries = details ? Object.entries(details.metadata) : [];
+      for (const [metadataKey, metadataValue] of metadataEntries) {
+        const metadataActionId = `copy-detail-metadata-${metadataKey.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+        pushCopyDetailAction(metadataActionId, `Metadata: ${metadataKey}`, metadataValue);
+      }
+
+      if (isLoadingDetails) {
+        copyDetailActions.push({
+          id: 'copy-detail-loading',
+          label: 'Loading properties...',
+          isDisabled: true,
+          onSelect: () => {},
+        });
+      } else if (copyDetailActions.length === 0) {
+        copyDetailActions.push({
+          id: 'copy-detail-empty',
+          label: 'No copyable details',
+          isDisabled: true,
+          onSelect: () => {},
+        });
+      }
+
+      actions.push({
+        id: 'copy-details',
+        label: 'Copy details',
+        hint: 'ArrowRight',
+        submenuActions: copyDetailActions,
+        onSelect: () => {},
+      });
     }
 
     actions.push({
@@ -1900,6 +2152,7 @@ export const BrowserPage = ({
     onCalculateFolderSize,
     onCloseContextMenu,
     onCopyItems,
+    onCopyTextToClipboard,
     onCutItems,
     onDeletePathItems,
     onDownload,
@@ -1909,6 +2162,8 @@ export const BrowserPage = ({
     onPasteIntoPath,
     onRename,
     onViewFile,
+    propertiesByPath,
+    propertiesLoadingPaths,
     setSelectedPath,
   ]);
 
@@ -2133,6 +2388,7 @@ export const BrowserPage = ({
 
     contextMenuFocusRestoreRef.current = document.activeElement as HTMLElement | null;
     wasContextMenuOpenRef.current = true;
+    setOpenSubmenuActionId(null);
     contextMenuItemRefs.current[0]?.focus();
   }, [contextMenu, contextMenuActions]);
 
@@ -2151,8 +2407,108 @@ export const BrowserPage = ({
     restoreTarget.focus();
   }, [contextMenu]);
 
-  const focusContextMenuItemAtIndex = useCallback((index: number) => {
+  useEffect(() => {
+    contextSubmenuItemRefs.current = [];
+  }, [openSubmenuActionId]);
+
+  const positionContextSubmenu = useCallback(() => {
+    if (!openSubmenuActionId) {
+      return;
+    }
+
+    const submenu = contextSubmenuRef.current;
+    const actionIndex = contextMenuActions.findIndex((action) => action.id === openSubmenuActionId);
+    const actionButton = actionIndex >= 0 ? contextMenuItemRefs.current[actionIndex] : null;
+    if (!submenu || !actionButton) {
+      return;
+    }
+
+    const viewportPadding = 8;
+    const gap = 6;
+    const triggerRect = actionButton.getBoundingClientRect();
+    const submenuRect = submenu.getBoundingClientRect();
+    const hasRoomOnRight =
+      triggerRect.right + gap + submenuRect.width <= window.innerWidth - viewportPadding;
+    setContextSubmenuSide(hasRoomOnRight ? 'right' : 'left');
+  }, [contextMenuActions, openSubmenuActionId]);
+
+  useEffect(() => {
+    if (!contextMenu) {
+      setOpenSubmenuActionId(null);
+      return;
+    }
+
+    if (
+      openSubmenuActionId &&
+      !contextMenuActions.some(
+        (action) => action.id === openSubmenuActionId && action.submenuActions
+      )
+    ) {
+      setOpenSubmenuActionId(null);
+    }
+  }, [contextMenu, contextMenuActions, openSubmenuActionId]);
+
+  useEffect(() => {
+    if (!openSubmenuActionId) {
+      setContextSubmenuSide('right');
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(positionContextSubmenu);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [openSubmenuActionId, positionContextSubmenu]);
+
+  useEffect(() => {
+    if (!openSubmenuActionId) {
+      return;
+    }
+
+    const reposition = () => {
+      positionContextSubmenu();
+    };
+
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [openSubmenuActionId, positionContextSubmenu]);
+
+  useEffect(() => {
+    if (!openSubmenuActionId) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const focusableSubmenuItems = contextSubmenuItemRefs.current.filter(
+        (item): item is HTMLButtonElement => item !== null && !item.disabled
+      );
+      focusableSubmenuItems[0]?.focus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [openSubmenuActionId]);
+
+  const focusRootContextMenuItemAtIndex = useCallback((index: number) => {
     const focusableItems = contextMenuItemRefs.current.filter(
+      (item): item is HTMLButtonElement => item !== null
+    );
+    if (focusableItems.length === 0) {
+      return;
+    }
+
+    const wrappedIndex =
+      ((index % focusableItems.length) + focusableItems.length) % focusableItems.length;
+    focusableItems[wrappedIndex]?.focus();
+  }, []);
+
+  const focusContextSubmenuItemAtIndex = useCallback((index: number) => {
+    const focusableItems = contextSubmenuItemRefs.current.filter(
       (item): item is HTMLButtonElement => item !== null
     );
     if (focusableItems.length === 0) {
@@ -2172,44 +2528,132 @@ export const BrowserPage = ({
       return;
     }
 
-    const focusableItems = contextMenuItemRefs.current.filter(
+    const rootItems = contextMenuItemRefs.current.filter(
       (item): item is HTMLButtonElement => item !== null
     );
-    if (focusableItems.length === 0) {
+    if (rootItems.length === 0) {
       return;
     }
 
+    const submenuItems = contextSubmenuItemRefs.current.filter(
+      (item): item is HTMLButtonElement => item !== null
+    );
     const focusedItem = document.activeElement;
-    const focusedIndex = focusableItems.findIndex((item) => item === focusedItem);
+    const isFocusedInSubmenu = submenuItems.includes(focusedItem as HTMLButtonElement);
+    const activeItems = isFocusedInSubmenu ? submenuItems : rootItems;
+    if (activeItems.length === 0) {
+      return;
+    }
+
+    const focusedIndex = activeItems.findIndex((item) => item === focusedItem);
     const currentIndex = focusedIndex >= 0 ? focusedIndex : 0;
+
+    const focusedRootIndex = rootItems.findIndex((item) => item === focusedItem);
+    const rootIndex = focusedRootIndex >= 0 ? focusedRootIndex : 0;
+    const focusedRootAction = contextMenuActions[rootIndex];
+    const canOpenFocusedSubmenu = Boolean(
+      focusedRootAction?.submenuActions?.some((action) => !action.isDisabled)
+    );
+
+    if (event.key === 'ArrowRight' && !isFocusedInSubmenu && canOpenFocusedSubmenu) {
+      event.preventDefault();
+      if (!focusedRootAction) {
+        return;
+      }
+
+      setOpenSubmenuActionId(focusedRootAction.id);
+      window.requestAnimationFrame(() => {
+        focusContextSubmenuItemAtIndex(0);
+      });
+      return;
+    }
+
+    if (event.key === 'ArrowLeft' && isFocusedInSubmenu) {
+      event.preventDefault();
+      const activeSubmenuActionId = openSubmenuActionId;
+      setOpenSubmenuActionId(null);
+
+      if (!activeSubmenuActionId) {
+        return;
+      }
+
+      const submenuParentIndex = contextMenuActions.findIndex(
+        (action) => action.id === activeSubmenuActionId
+      );
+      if (submenuParentIndex < 0) {
+        return;
+      }
+
+      window.requestAnimationFrame(() => {
+        contextMenuItemRefs.current[submenuParentIndex]?.focus();
+      });
+      return;
+    }
+
+    if (
+      (event.key === 'Enter' || event.key === ' ') &&
+      !isFocusedInSubmenu &&
+      canOpenFocusedSubmenu
+    ) {
+      event.preventDefault();
+      if (!focusedRootAction) {
+        return;
+      }
+
+      setOpenSubmenuActionId(focusedRootAction.id);
+      window.requestAnimationFrame(() => {
+        focusContextSubmenuItemAtIndex(0);
+      });
+      return;
+    }
 
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      focusContextMenuItemAtIndex(currentIndex + 1);
+      if (isFocusedInSubmenu) {
+        focusContextSubmenuItemAtIndex(currentIndex + 1);
+      } else {
+        focusRootContextMenuItemAtIndex(currentIndex + 1);
+      }
       return;
     }
 
     if (event.key === 'ArrowUp') {
       event.preventDefault();
-      focusContextMenuItemAtIndex(currentIndex - 1);
+      if (isFocusedInSubmenu) {
+        focusContextSubmenuItemAtIndex(currentIndex - 1);
+      } else {
+        focusRootContextMenuItemAtIndex(currentIndex - 1);
+      }
       return;
     }
 
     if (event.key === 'Home') {
       event.preventDefault();
-      focusContextMenuItemAtIndex(0);
+      if (isFocusedInSubmenu) {
+        focusContextSubmenuItemAtIndex(0);
+      } else {
+        focusRootContextMenuItemAtIndex(0);
+      }
       return;
     }
 
     if (event.key === 'End') {
       event.preventDefault();
-      focusContextMenuItemAtIndex(focusableItems.length - 1);
+      if (isFocusedInSubmenu) {
+        focusContextSubmenuItemAtIndex(activeItems.length - 1);
+      } else {
+        focusRootContextMenuItemAtIndex(activeItems.length - 1);
+      }
       return;
     }
 
     if (event.key === 'Tab') {
       event.preventDefault();
-      focusContextMenuItemAtIndex(currentIndex + (event.shiftKey ? -1 : 1));
+      if (isFocusedInSubmenu) {
+        focusContextSubmenuItemAtIndex(currentIndex + (event.shiftKey ? -1 : 1));
+      } else {
+        focusRootContextMenuItemAtIndex(currentIndex + (event.shiftKey ? -1 : 1));
+      }
     }
   };
 
@@ -2525,64 +2969,69 @@ export const BrowserPage = ({
               >
                 <SlidersHorizontal size={16} aria-hidden />
               </Button>
-              {isOverviewFieldsMenuOpen ? (
-                <div
-                  className={styles.overviewFieldsMenu}
-                  role="menu"
-                  aria-label="Visible fields menu"
-                >
-                  <div className={styles.overviewFieldsHeader}>
-                    <p className={styles.overviewFieldsTitle}>Visible fields</p>
-                    <Input
-                      className={styles.overviewFieldsSearchInput}
-                      value={overviewFieldsFilterQuery}
-                      onChange={(event) => setOverviewFieldsFilterQuery(event.target.value)}
-                      placeholder="Search fields"
-                      aria-label="Search visible fields"
-                    />
-                    <div className={styles.overviewFieldsActions}>
-                      <Button
-                        variant="muted"
-                        className={styles.overviewFieldsActionButton}
-                        onClick={() => {
-                          setOverviewColumnVisibility((previous) => {
-                            const next = { ...previous };
-                            for (const column of overviewColumnDefinitions) {
-                              next[column.key] = !allOverviewColumnsSelected;
-                            }
-                            return next;
-                          });
-                        }}
-                      >
-                        {allOverviewColumnsSelected ? 'Toggle all off' : 'Toggle all on'}
-                      </Button>
-                    </div>
-                  </div>
-                  <div className={styles.overviewFieldsList}>
-                    {filteredOverviewColumns.length === 0 ? (
-                      <p className={styles.overviewFieldsEmptyState}>
-                        No fields match this search.
-                      </p>
-                    ) : null}
-                    {filteredOverviewColumns.map((column) => (
-                      <label key={column.key} className={styles.overviewFieldsOption}>
-                        <input
-                          className={styles.overviewFieldsCheckbox}
-                          type="checkbox"
-                          checked={overviewColumnVisibility[column.key]}
-                          onChange={(event) =>
-                            setOverviewColumnVisibility((previous) => ({
-                              ...previous,
-                              [column.key]: event.target.checked,
-                            }))
-                          }
+              {isOverviewFieldsMenuOpen
+                ? createPortal(
+                    <div
+                      ref={overviewFieldsPanelRef}
+                      className={styles.overviewFieldsMenu}
+                      role="menu"
+                      aria-label="Visible fields menu"
+                      style={overviewFieldsMenuStyle}
+                    >
+                      <div className={styles.overviewFieldsHeader}>
+                        <p className={styles.overviewFieldsTitle}>Visible fields</p>
+                        <Input
+                          className={styles.overviewFieldsSearchInput}
+                          value={overviewFieldsFilterQuery}
+                          onChange={(event) => setOverviewFieldsFilterQuery(event.target.value)}
+                          placeholder="Search fields"
+                          aria-label="Search visible fields"
                         />
-                        <span>{column.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+                        <div className={styles.overviewFieldsActions}>
+                          <Button
+                            variant="muted"
+                            className={styles.overviewFieldsActionButton}
+                            onClick={() => {
+                              setOverviewColumnVisibility((previous) => {
+                                const next = { ...previous };
+                                for (const column of overviewColumnDefinitions) {
+                                  next[column.key] = !allOverviewColumnsSelected;
+                                }
+                                return next;
+                              });
+                            }}
+                          >
+                            {allOverviewColumnsSelected ? 'Toggle all off' : 'Toggle all on'}
+                          </Button>
+                        </div>
+                      </div>
+                      <div className={styles.overviewFieldsList}>
+                        {filteredOverviewColumns.length === 0 ? (
+                          <p className={styles.overviewFieldsEmptyState}>
+                            No fields match this search.
+                          </p>
+                        ) : null}
+                        {filteredOverviewColumns.map((column) => (
+                          <label key={column.key} className={styles.overviewFieldsOption}>
+                            <input
+                              className={styles.overviewFieldsCheckbox}
+                              type="checkbox"
+                              checked={overviewColumnVisibility[column.key]}
+                              onChange={(event) =>
+                                setOverviewColumnVisibility((previous) => ({
+                                  ...previous,
+                                  [column.key]: event.target.checked,
+                                }))
+                              }
+                            />
+                            <span>{column.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>,
+                    document.body
+                  )
+                : null}
             </div>
 
             {selectedRecordsCount > 0 ? (
@@ -3022,27 +3471,83 @@ export const BrowserPage = ({
                   ['rename', 'move', 'delete'].includes(action.id) &&
                   previousAction &&
                   !['rename', 'move', 'delete'].includes(previousAction.id);
+                const hasSubmenu = Boolean(
+                  action.submenuActions && action.submenuActions.length > 0
+                );
+                const isSubmenuOpen = hasSubmenu && openSubmenuActionId === action.id;
 
                 return (
                   <Fragment key={action.id}>
                     {startsSecondarySection ? (
                       <div className={styles.contextMenuSeparator} />
                     ) : null}
-                    <button
-                      ref={(element) => {
-                        contextMenuItemRefs.current[index] = element;
-                      }}
-                      role="menuitem"
-                      className={`${styles.contextMenuItem} ${
-                        action.isDanger ? styles.contextMenuItemDanger : ''
-                      }`}
-                      onClick={action.onSelect}
-                    >
-                      <span>{action.label}</span>
-                      {action.hint ? (
-                        <span className={styles.contextMenuHint}>{action.hint}</span>
+                    <div className={styles.contextMenuRow}>
+                      <button
+                        ref={(element) => {
+                          contextMenuItemRefs.current[index] = element;
+                        }}
+                        role="menuitem"
+                        disabled={action.isDisabled}
+                        aria-haspopup={hasSubmenu ? 'menu' : undefined}
+                        aria-expanded={hasSubmenu ? isSubmenuOpen : undefined}
+                        className={`${styles.contextMenuItem} ${
+                          action.isDanger ? styles.contextMenuItemDanger : ''
+                        }`}
+                        onFocus={() => {
+                          if (!hasSubmenu) {
+                            setOpenSubmenuActionId(null);
+                          }
+                        }}
+                        onMouseEnter={() => {
+                          if (hasSubmenu) {
+                            setOpenSubmenuActionId(action.id);
+                          }
+                        }}
+                        onClick={() => {
+                          if (hasSubmenu) {
+                            setOpenSubmenuActionId((previous) =>
+                              previous === action.id ? null : action.id
+                            );
+                            return;
+                          }
+
+                          action.onSelect();
+                        }}
+                      >
+                        <span>{action.label}</span>
+                        <span className={styles.contextMenuHint}>
+                          {hasSubmenu ? '>' : action.hint}
+                        </span>
+                      </button>
+                      {hasSubmenu && isSubmenuOpen ? (
+                        <div
+                          ref={contextSubmenuRef}
+                          className={`${styles.contextSubmenu} ${
+                            contextSubmenuSide === 'left' ? styles.contextSubmenuLeft : ''
+                          }`.trim()}
+                          role="menu"
+                          aria-label={`${action.label} options`}
+                        >
+                          {action.submenuActions?.map((submenuAction, submenuIndex) => (
+                            <button
+                              key={submenuAction.id}
+                              ref={(element) => {
+                                contextSubmenuItemRefs.current[submenuIndex] = element;
+                              }}
+                              role="menuitem"
+                              disabled={submenuAction.isDisabled}
+                              className={styles.contextMenuItem}
+                              onClick={submenuAction.onSelect}
+                            >
+                              <span>{submenuAction.label}</span>
+                              {submenuAction.hint ? (
+                                <span className={styles.contextMenuHint}>{submenuAction.hint}</span>
+                              ) : null}
+                            </button>
+                          ))}
+                        </div>
                       ) : null}
-                    </button>
+                    </div>
                   </Fragment>
                 );
               })}

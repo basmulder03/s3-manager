@@ -748,6 +748,36 @@ export const useBrowserController = ({
     });
   };
 
+  const copyTextToClipboard = async (value: string, label: string) => {
+    const normalizedValue = value.trim();
+    if (!normalizedValue) {
+      enqueueSnackbar({
+        message: `No ${label.toLowerCase()} value available to copy.`,
+        tone: 'info',
+      });
+      return;
+    }
+
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.clipboard ||
+      typeof navigator.clipboard.writeText !== 'function'
+    ) {
+      enqueueSnackbar({
+        message: 'Clipboard access is not available in this browser.',
+        tone: 'error',
+      });
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(normalizedValue);
+      enqueueSnackbar({ message: `Copied ${label.toLowerCase()} to clipboard.`, tone: 'success' });
+    } catch {
+      enqueueSnackbar({ message: `Failed to copy ${label.toLowerCase()}.`, tone: 'error' });
+    }
+  };
+
   const pasteClipboardItems = async (destinationPath: string) => {
     if (!canWrite) {
       enqueueSnackbar({ message: 'You do not have write permission.', tone: 'error' });
@@ -1507,6 +1537,7 @@ export const useBrowserController = ({
     renamePathItem,
     movePathItem,
     copyPathItems,
+    copyTextToClipboard,
     cutPathItems,
     pasteClipboardItems,
     downloadFile,

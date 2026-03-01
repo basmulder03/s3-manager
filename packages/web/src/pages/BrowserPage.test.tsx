@@ -78,6 +78,7 @@ const createProps = () => {
       onRename: vi.fn(),
       onMove: vi.fn(),
       onCopyItems: vi.fn(),
+      onCopyTextToClipboard: vi.fn(async () => {}),
       onCutItems: vi.fn(),
       onPasteIntoPath: vi.fn(async () => {}),
       hasClipboardItems: false,
@@ -504,11 +505,43 @@ describe('BrowserPage sorting and filtering', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('menuitem', { name: /Copy/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /CopyCtrl\/Cmd \+ C/ }));
     expect(props.onCopyItems).toHaveBeenCalledWith([selectedItem]);
 
-    fireEvent.click(screen.getByRole('menuitem', { name: /Cut/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /CutCtrl\/Cmd \+ X/ }));
     expect(props.onCutItems).toHaveBeenCalledWith([selectedItem]);
+  });
+
+  it('supports keyboard navigation in the copy details submenu', async () => {
+    const { props } = createProps();
+    const selectedItem: BrowseItem = {
+      name: 'alpha.txt',
+      type: 'file',
+      path: 'my-bucket/alpha.txt',
+      size: 4,
+      lastModified: '2026-01-01T00:00:00.000Z',
+      etag: 'abc123',
+    };
+
+    render(
+      <BrowserPage
+        {...props}
+        contextMenu={{ x: 120, y: 60, item: selectedItem }}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items: [selectedItem] } }}
+      />
+    );
+
+    const menu = screen.getByRole('menu', { name: 'Item actions' });
+    const copyDetailsItem = await screen.findByRole('menuitem', { name: /Copy details/ });
+    copyDetailsItem.focus();
+
+    fireEvent.keyDown(menu, { key: 'ArrowRight' });
+    const nameSubmenuItem = await screen.findByRole('menuitem', { name: 'Name' });
+
+    fireEvent.click(nameSubmenuItem);
+    expect(props.onCopyTextToClipboard).toHaveBeenCalledWith('alpha.txt', 'Name');
+    expect(props.onCloseContextMenu).toHaveBeenCalled();
   });
 
   it('shows paste action for directory context menu when clipboard has items', () => {

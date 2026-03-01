@@ -538,6 +538,7 @@ export const App = () => {
                     onRename={browser.renamePathItem}
                     onMove={browser.movePathItem}
                     onCopyItems={browser.copyPathItems}
+                    onCopyTextToClipboard={browser.copyTextToClipboard}
                     onCutItems={browser.cutPathItems}
                     onPasteIntoPath={browser.pasteClipboardItems}
                     hasClipboardItems={browser.hasClipboardItems}

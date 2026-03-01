@@ -1257,6 +1257,10 @@
   box-shadow: 0 14px 26px rgba(16, 24, 38, 0.2);
 }
 
+.contextMenuRow {
+  position: relative;
+}
+
 .contextMenuItem {
   width: 100%;
   display: flex;
@@ -1301,6 +1305,25 @@
   height: 1px;
   margin: 0.18rem 0.1rem;
   background: color-mix(in srgb, var(--line) 86%, var(--surface));
+}
+
+.contextSubmenu {
+  position: absolute;
+  top: -0.28rem;
+  left: calc(100% + 0.3rem);
+  min-width: 230px;
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.28rem;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 82%, #7a8797);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 14px 26px rgba(16, 24, 38, 0.2);
+}
+
+.contextSubmenuLeft {
+  left: auto;
+  right: calc(100% + 0.3rem);
 }
 
 .modalOverlay {
