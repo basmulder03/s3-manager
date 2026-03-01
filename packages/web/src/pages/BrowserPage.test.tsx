@@ -283,9 +283,7 @@ describe('BrowserPage sorting and filtering', () => {
 
   it('shows an overview of available keyboard shortcuts', () => {
     const { props } = createProps();
-    render(<BrowserPage {...props} />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open keyboard shortcuts' }));
+    render(<BrowserPage {...props} isShortcutsModalOpen />);
 
     expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
     expect(screen.getByText('Keyboard shortcuts')).toBeInTheDocument();
@@ -299,9 +297,7 @@ describe('BrowserPage sorting and filtering', () => {
 
   it('renders keyboard shortcut combinations and alternatives clearly', () => {
     const { props } = createProps();
-    render(<BrowserPage {...props} />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open keyboard shortcuts' }));
+    render(<BrowserPage {...props} isShortcutsModalOpen />);
 
     const parentShortcutRow = screen.getByText('Go to parent folder').closest('div');
     expect(parentShortcutRow).not.toBeNull();

@@ -70,6 +70,8 @@ interface BrowserPageProps {
   onDeletePathItems: (items: BrowseItem[]) => void;
   onViewFile: (path: string) => Promise<void>;
   onEditFile: (path: string) => Promise<void>;
+  isShortcutsModalOpen?: boolean;
+  setIsShortcutsModalOpen?: (isOpen: boolean) => void;
 }
 
 type SortKey = 'name' | 'size' | 'modified' | 'type';
@@ -361,6 +363,8 @@ export const BrowserPage = ({
   onDeletePathItems,
   onViewFile,
   onEditFile,
+  isShortcutsModalOpen: isShortcutsModalOpenProp,
+  setIsShortcutsModalOpen: setIsShortcutsModalOpenProp,
 }: BrowserPageProps) => {
   const [isBreadcrumbEditing, setIsBreadcrumbEditing] = useState(false);
   const [breadcrumbDraft, setBreadcrumbDraft] = useState(selectedPath ? `/${selectedPath}` : '/');
@@ -370,7 +374,7 @@ export const BrowserPage = ({
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filterQuery, setFilterQuery] = useState('');
   const [activeBreadcrumbHintIndex, setActiveBreadcrumbHintIndex] = useState(-1);
-  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [isShortcutsModalOpenInternal, setIsShortcutsModalOpenInternal] = useState(false);
   const [isOverviewFieldsMenuOpen, setIsOverviewFieldsMenuOpen] = useState(false);
   const [overviewFieldsFilterQuery, setOverviewFieldsFilterQuery] = useState('');
   const [overviewColumnVisibility, setOverviewColumnVisibility] =
@@ -385,6 +389,17 @@ export const BrowserPage = ({
     { key: 'type', direction: 'asc' },
     { key: 'name', direction: 'asc' },
   ]);
+  const isShortcutsModalOpen = isShortcutsModalOpenProp ?? isShortcutsModalOpenInternal;
+  const setIsShortcutsModalOpen = useCallback(
+    (isOpen: boolean) => {
+      if (isShortcutsModalOpenProp === undefined) {
+        setIsShortcutsModalOpenInternal(isOpen);
+      }
+
+      setIsShortcutsModalOpenProp?.(isOpen);
+    },
+    [isShortcutsModalOpenProp, setIsShortcutsModalOpenProp]
+  );
   const breadcrumbInputRef = useRef<HTMLInputElement>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
   const overviewFieldsMenuRef = useRef<HTMLDivElement>(null);
@@ -1894,16 +1909,6 @@ export const BrowserPage = ({
                 </Button>
               </>
             ) : null}
-
-            <Button
-              variant="muted"
-              className={styles.iconButton}
-              onClick={() => setIsShortcutsModalOpen(true)}
-              aria-label="Open keyboard shortcuts"
-              title="Keyboard shortcuts"
-            >
-              <Keyboard size={16} aria-hidden />
-            </Button>
 
             <Button
               variant="muted"

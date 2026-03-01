@@ -1,7 +1,7 @@
 import { AuthActions } from '@web/components';
 import { Button } from '@web/components/ui';
 import styles from '@web/App.module.css';
-import { Menu, Moon, Sun } from 'lucide-react';
+import { Keyboard, Menu, Moon, Sun } from 'lucide-react';
 
 interface FinderHeaderProps {
   theme: 'light' | 'dark';
@@ -9,6 +9,7 @@ interface FinderHeaderProps {
   authenticated: boolean;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
+  onOpenKeyboardShortcuts: () => void;
 }
 
 export const FinderHeader = ({
@@ -17,6 +18,7 @@ export const FinderHeader = ({
   authenticated,
   sidebarOpen,
   onToggleSidebar,
+  onOpenKeyboardShortcuts,
 }: FinderHeaderProps) => {
   return (
     <header className={styles.hero}>
@@ -44,6 +46,15 @@ export const FinderHeader = ({
             ) : (
               <Moon className={styles.iconToggleIcon} aria-hidden="true" />
             )}
+          </Button>
+          <Button
+            variant="muted"
+            className={styles.iconToggleButton}
+            onClick={onOpenKeyboardShortcuts}
+            aria-label="Open keyboard shortcuts"
+            title="Keyboard shortcuts"
+          >
+            <Keyboard className={styles.iconToggleIcon} aria-hidden="true" />
           </Button>
           <AuthActions authenticated={authenticated} />
         </div>

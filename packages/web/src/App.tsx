@@ -42,6 +42,7 @@ export const App = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [pendingDiscardAction, setPendingDiscardAction] = useState<
     { type: 'close' } | { type: 'open'; path: string; mode: 'view' | 'edit' } | null
   >(null);
@@ -430,6 +431,7 @@ export const App = () => {
         authenticated={authenticated}
         sidebarOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen((previous) => !previous)}
+        onOpenKeyboardShortcuts={() => setIsShortcutsModalOpen(true)}
       />
 
       <div
@@ -500,6 +502,8 @@ export const App = () => {
                     onCalculateFolderSize={browser.calculateFolderSize}
                     onOpenProperties={browser.openProperties}
                     onDeletePathItems={browser.deletePathItems}
+                    isShortcutsModalOpen={isShortcutsModalOpen}
+                    setIsShortcutsModalOpen={setIsShortcutsModalOpen}
                     onViewFile={async (path) => {
                       await runPreviewAction({ type: 'open', path, mode: 'view' });
                     }}
