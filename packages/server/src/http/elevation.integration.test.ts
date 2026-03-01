@@ -163,6 +163,20 @@ describe('auth elevation endpoints', () => {
       );
       expect(missingReasonResponse.status).toBe(400);
 
+      const csrfResponse = await app.request('http://localhost:3000/auth/elevation/request', {
+        method: 'POST',
+        headers: {
+          cookie,
+          origin: 'https://evil.example.com',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          entitlementKey: 'property-admin-temp',
+          justification: 'Cross-site attempt',
+        }),
+      });
+      expect(csrfResponse.status).toBe(403);
+
       const requestResponse = await app.request('http://localhost:3000/auth/elevation/request', {
         method: 'POST',
         headers: {
@@ -330,6 +344,28 @@ describe('auth elevation endpoints', () => {
       const afterDeactivate = await afterDeactivateResponse.json();
       expect(afterDeactivate.user.permissions).not.toContain('manage_properties');
       expect(afterDeactivate.user.elevationSources).toHaveLength(0);
+
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const throttledProbe = await app.request(
+          'http://localhost:3000/auth/elevation/deactivate',
+          {
+            method: 'POST',
+            headers: {
+              cookie,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              entitlementKey: 'property-admin-temp',
+            }),
+          }
+        );
+
+        if (attempt < 7) {
+          expect(throttledProbe.status).toBe(404);
+        } else {
+          expect(throttledProbe.status).toBe(429);
+        }
+      }
     } finally {
       server.stop(true);
       process.env.PIM_DEV_MOCK_ENABLED = 'false';

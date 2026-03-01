@@ -312,6 +312,20 @@ Set `PIM_DEV_MOCK_ENABLED=true` to simulate elevation in non-production environm
 **Default**: `https://cloudidentity.googleapis.com/v1`  
 **Description**: Google long-running operations API base used to poll elevation status
 
+#### PIM_RATE_LIMIT_WINDOW_MS
+
+**Required**: No  
+**Type**: Integer (milliseconds)  
+**Default**: `60000`  
+**Description**: Fixed window length for elevation mutation endpoint rate limiting
+
+#### PIM_RATE_LIMIT_MAX_REQUESTS
+
+**Required**: No  
+**Type**: Integer  
+**Default**: `8`  
+**Description**: Maximum elevation mutation requests allowed per user/IP per rate-limit window
+
 ### Entitlement Configuration (env-driven)
 
 Entitlements are the only escalation targets that users can request. They are configured with indexed variables and mapped directly to app permissions.

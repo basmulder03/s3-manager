@@ -299,6 +299,8 @@ const configSchema = z.object({
   pim: z.object({
     enabled: booleanString,
     devMockEnabled: booleanString,
+    rateLimitWindowMs: z.coerce.number().int().positive().default(60000),
+    rateLimitMaxRequests: z.coerce.number().int().positive().default(8),
     azure: z.object({
       assignmentScheduleRequestApi: z
         .string()
@@ -518,6 +520,8 @@ export const loadConfig = (): Config => {
       pim: {
         enabled: process.env.PIM_ENABLED,
         devMockEnabled: process.env.PIM_DEV_MOCK_ENABLED,
+        rateLimitWindowMs: process.env.PIM_RATE_LIMIT_WINDOW_MS,
+        rateLimitMaxRequests: process.env.PIM_RATE_LIMIT_MAX_REQUESTS,
         azure: {
           assignmentScheduleRequestApi: optionalEnv(
             process.env.PIM_AZURE_ASSIGNMENT_SCHEDULE_REQUEST_API

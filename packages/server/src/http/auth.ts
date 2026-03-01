@@ -36,8 +36,83 @@ const cookieBaseOptions = {
 const callbackPath = config.oidcRedirectPath.startsWith('/')
   ? config.oidcRedirectPath
   : `/${config.oidcRedirectPath}`;
+const elevationRateLimit = new Map<string, number[]>();
 
 const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, '');
+
+const sameOrigin = (rawOriginOrReferer: string | null): boolean => {
+  if (!rawOriginOrReferer) {
+    return true;
+  }
+
+  try {
+    const trustedOrigin = trimTrailingSlash(config.web.origin);
+    const parsed = new URL(rawOriginOrReferer);
+    return trimTrailingSlash(parsed.origin) === trustedOrigin;
+  } catch {
+    return false;
+  }
+};
+
+const enforceSameOriginForMutation = (c: Context): Response | null => {
+  const origin = c.req.header('origin') ?? null;
+  const referer = c.req.header('referer') ?? null;
+
+  if (origin && !sameOrigin(origin)) {
+    return c.json({ error: 'Blocked by CSRF protection' }, 403);
+  }
+
+  if (!origin && referer && !sameOrigin(referer)) {
+    return c.json({ error: 'Blocked by CSRF protection' }, 403);
+  }
+
+  return null;
+};
+
+const resolveClientIp = (c: Context): string => {
+  const forwarded = c.req.header('x-forwarded-for');
+  if (forwarded) {
+    const first = forwarded
+      .split(',')
+      .map((entry) => entry.trim())
+      .find((entry) => entry.length > 0);
+    if (first) {
+      return first;
+    }
+  }
+
+  const realIp = c.req.header('x-real-ip');
+  if (realIp && realIp.trim().length > 0) {
+    return realIp.trim();
+  }
+
+  return 'unknown';
+};
+
+const enforceElevationRateLimit = (c: Context, userId: string, route: string): Response | null => {
+  const now = Date.now();
+  const clientIp = resolveClientIp(c);
+  const key = `${route}:${userId}:${clientIp}`;
+  const existing = elevationRateLimit.get(key) ?? [];
+  const recent = existing.filter((timestamp) => now - timestamp <= config.pim.rateLimitWindowMs);
+
+  if (recent.length >= config.pim.rateLimitMaxRequests) {
+    const earliest = recent[0] ?? now;
+    const retryAfterMs = Math.max(1_000, config.pim.rateLimitWindowMs - (now - earliest));
+    return c.json(
+      {
+        error: 'Too many elevation requests. Please retry shortly.',
+        retryAfterSeconds: Math.ceil(retryAfterMs / 1000),
+      },
+      429
+    );
+  }
+
+  recent.push(now);
+  elevationRateLimit.set(key, recent);
+
+  return null;
+};
 
 const resolveReturnTo = (rawReturnTo: string | undefined): string => {
   const webOrigin = trimTrailingSlash(config.web.origin);
@@ -292,9 +367,19 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
   });
 
   app.post('/auth/pim/elevate', async (c) => {
+    const csrfFailure = enforceSameOriginForMutation(c);
+    if (csrfFailure) {
+      return csrfFailure;
+    }
+
     const user = await resolveAuthUser(c.req.raw);
     if (!user) {
       return c.json({ error: 'Authentication required' }, 401);
+    }
+
+    const rateLimited = enforceElevationRateLimit(c, user.id, '/auth/pim/elevate');
+    if (rateLimited) {
+      return rateLimited;
     }
 
     let entitlementKey = '';
@@ -361,9 +446,19 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
   });
 
   app.post('/auth/elevation/request', async (c) => {
+    const csrfFailure = enforceSameOriginForMutation(c);
+    if (csrfFailure) {
+      return csrfFailure;
+    }
+
     const user = await resolveAuthUser(c.req.raw);
     if (!user) {
       return c.json({ error: 'Authentication required' }, 401);
+    }
+
+    const rateLimited = enforceElevationRateLimit(c, user.id, '/auth/elevation/request');
+    if (rateLimited) {
+      return rateLimited;
     }
 
     let entitlementKey = '';
@@ -436,9 +531,19 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
   });
 
   app.post('/auth/elevation/deactivate', async (c) => {
+    const csrfFailure = enforceSameOriginForMutation(c);
+    if (csrfFailure) {
+      return csrfFailure;
+    }
+
     const user = await resolveAuthUser(c.req.raw);
     if (!user) {
       return c.json({ error: 'Authentication required' }, 401);
+    }
+
+    const rateLimited = enforceElevationRateLimit(c, user.id, '/auth/elevation/deactivate');
+    if (rateLimited) {
+      return rateLimited;
     }
 
     let entitlementKey = '';
