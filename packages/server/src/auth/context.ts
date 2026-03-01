@@ -2,7 +2,7 @@ import type { Permission } from '@/trpc';
 import { config } from '@/config';
 import { getLogger } from '@/telemetry';
 import { safeVerifyAccessToken } from '@/auth/jwt';
-import { localDevPermissions, mapRolesToPermissions } from '@/auth/permissions';
+import { localDevPermissions, mapRolesAndGroupIdsToPermissions } from '@/auth/permissions';
 import { providerName } from '@/auth/provider';
 import type { AuthUser } from '@/auth/types';
 
@@ -84,7 +84,7 @@ export const resolveAuthUser = async (req: Request): Promise<AuthUser | null> =>
     return null;
   }
 
-  const permissions = mapRolesToPermissions(verified.roles);
+  const permissions = mapRolesAndGroupIdsToPermissions(verified.roles, verified.groups);
 
   return {
     id: verified.subject,

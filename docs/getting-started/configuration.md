@@ -351,6 +351,14 @@ ELEVATION_0_REQUIRE_JUSTIFICATION=true
 5. App polls `GET /auth/elevation/status/{requestId}` until granted/denied
 6. Session is refreshed and new permissions become active in app
 
+### Group Claim Mapping
+
+When using group-based temporary elevation (for example Azure privileged access groups), ensure your token includes the group claim consumed by the app.
+
+- `AUTH_GROUPS_CLAIM`: claim name containing group IDs (default: `groups`)
+
+Entitlement `ELEVATION_N_TARGET` values are matched against this claim so temporary group activation can grant the configured app permissions.
+
 ### PIM Activation Duration
 
 Configure in Azure AD PIM settings:

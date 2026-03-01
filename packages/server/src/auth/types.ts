@@ -17,5 +17,6 @@ export interface VerifiedToken {
   email: string;
   name: string;
   roles: string[];
+  groups: string[];
   claims: Record<string, unknown>;
 }

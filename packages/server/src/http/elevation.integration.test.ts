@@ -23,6 +23,7 @@ describe('auth elevation endpoints', () => {
     process.env.AZURE_AD_CLIENT_SECRET = 'test-secret';
     process.env.AUTH_ISSUER = 'http://127.0.0.1:4201/issuer';
     process.env.AUTH_AUDIENCE = 'test-client';
+    process.env.AUTH_GROUPS_CLAIM = 'groups';
 
     process.env.PIM_ENABLED = 'true';
     process.env.PIM_AZURE_ASSIGNMENT_SCHEDULE_REQUEST_API =
@@ -51,6 +52,7 @@ describe('auth elevation endpoints', () => {
       email: 'alice@example.com',
       name: 'Alice',
       roles: ['S3-Viewer'],
+      groups: ['group-123'],
     })
       .setProtectedHeader({ alg: 'RS256', kid: 'kid-1' })
       .setIssuer(issuer)
@@ -134,6 +136,15 @@ describe('auth elevation endpoints', () => {
       const entitlementsJson = await entitlementsResponse.json();
       expect(entitlementsJson.entitlements).toHaveLength(1);
       expect(entitlementsJson.entitlements[0].key).toBe('property-admin-temp');
+
+      const userResponse = await app.request('http://localhost:3000/auth/user', {
+        headers: {
+          cookie,
+        },
+      });
+      expect(userResponse.status).toBe(200);
+      const userJson = await userResponse.json();
+      expect(userJson.user.permissions).toContain('manage_properties');
 
       const requestResponse = await app.request('http://localhost:3000/auth/elevation/request', {
         method: 'POST',

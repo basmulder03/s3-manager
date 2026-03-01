@@ -43,6 +43,21 @@ const extractRoles = (payload: JWTPayload): string[] => {
   return [];
 };
 
+const extractGroups = (payload: JWTPayload): string[] => {
+  const configuredClaim = config.auth.groupsClaim;
+  const directGroups = asStringArray(payload[configuredClaim]);
+  if (directGroups.length > 0) {
+    return Array.from(new Set(directGroups));
+  }
+
+  const fallbackGroups = asStringArray(payload.groups);
+  if (fallbackGroups.length > 0) {
+    return Array.from(new Set(fallbackGroups));
+  }
+
+  return [];
+};
+
 const extractAudience = (aud: JWTPayload['aud']): string[] => {
   if (Array.isArray(aud)) {
     return aud.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
@@ -125,6 +140,7 @@ export const verifyAccessToken = async (token: string): Promise<VerifiedToken> =
   const email = asString(payload.email) ?? asString(payload.preferred_username) ?? '';
   const name = (asString(payload.name) ?? email) || subject;
   const roles = extractRoles(payload);
+  const groups = extractGroups(payload);
 
   return {
     subject,
@@ -133,6 +149,7 @@ export const verifyAccessToken = async (token: string): Promise<VerifiedToken> =
     email,
     name,
     roles,
+    groups,
     claims: payload as Record<string, unknown>,
   };
 };
