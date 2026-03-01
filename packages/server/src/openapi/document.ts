@@ -181,6 +181,18 @@ export const getOpenApiDocument = (baseUrl: string): Record<string, unknown> => 
         },
       },
     },
+    '/auth/elevation/deactivate': {
+      post: {
+        summary: 'Deactivate elevated access for entitlement',
+        tags: ['auth'],
+        responses: {
+          '200': { description: 'Elevation deactivated' },
+          '400': { description: 'Invalid request' },
+          '401': { description: 'Authentication required' },
+          '404': { description: 'No active elevation found' },
+        },
+      },
+    },
     '/s3/upload/presigned': {
       post: {
         summary: 'Create presigned upload URL',

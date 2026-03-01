@@ -177,6 +177,20 @@
   white-space: nowrap;
 }
 
+.devMockBadge {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, #d77c00 55%, var(--line));
+  background: color-mix(in srgb, #d77c00 14%, var(--surface));
+  color: #aa5e00;
+  border-radius: 999px;
+  padding: 0.12rem 0.48rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  justify-self: start;
+}
+
 .elevationSourceList {
   display: grid;
   gap: 0.28rem;
@@ -199,6 +213,11 @@
   color: var(--muted);
   text-transform: none;
   letter-spacing: 0;
+}
+
+.elevationRevokeButton {
+  width: fit-content;
+  margin-top: 0.2rem;
 }
 
 .permissionChips {
@@ -232,6 +251,10 @@
   border-radius: 8px;
   background: color-mix(in srgb, var(--surface-soft) 90%, var(--surface));
   padding: 0.52rem;
+}
+
+.requestAccessButton {
+  width: 100%;
 }
 
 .elevationLabel {

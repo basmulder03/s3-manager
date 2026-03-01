@@ -9,6 +9,7 @@ vi.mock('@web/components/UploadPanel', () => ({
 
 let mockAuthRequired = false;
 let mockAuthenticated = false;
+let mockPimDevMockEnabled = false;
 let mockPermissions: Array<'view' | 'write' | 'delete' | 'manage_properties'> = [];
 let mockElevationSources: Array<{
   entitlementKey: string;
@@ -33,7 +34,11 @@ vi.mock('@web/trpc/client', () => ({
     auth: {
       status: {
         useQuery: () => ({
-          data: { authRequired: mockAuthRequired, provider: 'keycloak' },
+          data: {
+            authRequired: mockAuthRequired,
+            provider: 'keycloak',
+            pimDevMockEnabled: mockPimDevMockEnabled,
+          },
           refetch: mockAuthStatusRefetch,
         }),
       },
@@ -109,6 +114,7 @@ describe('App routes', () => {
   beforeEach(() => {
     mockAuthRequired = false;
     mockAuthenticated = false;
+    mockPimDevMockEnabled = false;
     mockPermissions = [];
     mockElevationSources = [];
     mockAuthStatusRefetch.mockReset();
@@ -247,6 +253,22 @@ describe('App routes', () => {
     expect(screen.getByText('property-admin-temp')).toBeInTheDocument();
     expect(screen.getByText('azure · group-123')).toBeInTheDocument();
     expect(screen.getByText('grants: manage_properties')).toBeInTheDocument();
+  });
+
+  it('shows mock authorization badge in dev when enabled', async () => {
+    mockAuthenticated = true;
+    mockPermissions = ['view'];
+    mockPimDevMockEnabled = true;
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show session panel' }));
+
+    expect(screen.getByText('Mock authz mode')).toBeInTheDocument();
   });
 
   it('closes file preview modal when close button is pressed', async () => {

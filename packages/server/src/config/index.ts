@@ -298,6 +298,7 @@ const configSchema = z.object({
   // PIM Configuration
   pim: z.object({
     enabled: booleanString,
+    devMockEnabled: booleanString,
     azure: z.object({
       assignmentScheduleRequestApi: z
         .string()
@@ -516,6 +517,7 @@ export const loadConfig = (): Config => {
       // PIM
       pim: {
         enabled: process.env.PIM_ENABLED,
+        devMockEnabled: process.env.PIM_DEV_MOCK_ENABLED,
         azure: {
           assignmentScheduleRequestApi: optionalEnv(
             process.env.PIM_AZURE_ASSIGNMENT_SCHEDULE_REQUEST_API
@@ -593,6 +595,9 @@ export const loadConfig = (): Config => {
       }
       if (config.localDevMode) {
         throw new Error('LOCAL_DEV_MODE cannot be enabled in production');
+      }
+      if (config.pim.devMockEnabled) {
+        throw new Error('PIM_DEV_MOCK_ENABLED cannot be enabled in production');
       }
       if (!config.auth.required) {
         throw new Error('AUTH_REQUIRED must be true in production');

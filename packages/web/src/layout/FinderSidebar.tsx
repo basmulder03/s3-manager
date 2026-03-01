@@ -13,9 +13,12 @@ interface FinderSidebarProps {
     provider: 'azure' | 'google';
     target: string;
     permissions: string[];
+    expiresAt?: string;
   }>;
   authenticated: boolean;
-  onElevationGranted?: () => void;
+  showMockBadge: boolean;
+  onElevationGranted?: (request: ElevationRequest) => void;
+  onElevationRevoked?: (entitlementKey: string) => void;
 }
 
 interface ElevationEntitlement {
@@ -44,37 +47,47 @@ export const FinderSidebar = ({
   permissions,
   elevationSources,
   authenticated,
+  showMockBadge,
   onElevationGranted,
+  onElevationRevoked,
 }: FinderSidebarProps) => {
   const [entitlements, setEntitlements] = useState<ElevationEntitlement[]>([]);
   const [entitlementsLoading, setEntitlementsLoading] = useState(false);
-  const [entitlementsError, setEntitlementsError] = useState<string | null>(null);
+  const [temporaryAccessSupported, setTemporaryAccessSupported] = useState(true);
   const [selectedEntitlementKey, setSelectedEntitlementKey] = useState('');
   const [justification, setJustification] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeRequest, setActiveRequest] = useState<ElevationRequest | null>(null);
   const [isPolling, setIsPolling] = useState(false);
+  const [isElevationModalOpen, setIsElevationModalOpen] = useState(false);
+  const [isRevokingEntitlementKey, setIsRevokingEntitlementKey] = useState('');
   const lastGrantedRequestIdRef = useRef('');
 
   const selectedEntitlement = useMemo(
     () => entitlements.find((entry) => entry.key === selectedEntitlementKey) ?? null,
     [entitlements, selectedEntitlementKey]
   );
+  const selectedEntitlementAlreadyActive =
+    selectedEntitlementKey.length > 0 &&
+    elevationSources.some((entry) => entry.entitlementKey === selectedEntitlementKey);
+  const selectedEntitlementPending =
+    activeRequest?.status === 'pending' && activeRequest.entitlementKey === selectedEntitlementKey;
 
   useEffect(() => {
     if (!authenticated) {
       setEntitlements([]);
       setSelectedEntitlementKey('');
-      setEntitlementsError(null);
+      setTemporaryAccessSupported(true);
       setActiveRequest(null);
+      setIsElevationModalOpen(false);
       return;
     }
 
     let cancelled = false;
     const load = async () => {
       setEntitlementsLoading(true);
-      setEntitlementsError(null);
+      setTemporaryAccessSupported(true);
 
       try {
         const response = await fetch(`${API_ORIGIN}/auth/elevation/entitlements`, {
@@ -82,8 +95,13 @@ export const FinderSidebar = ({
         });
 
         if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-          throw new Error(payload?.error ?? 'Failed to load elevation entitlements');
+          if (cancelled) {
+            return;
+          }
+
+          setEntitlements([]);
+          setTemporaryAccessSupported(false);
+          return;
         }
 
         const payload = (await response.json()) as {
@@ -95,20 +113,20 @@ export const FinderSidebar = ({
 
         const next = payload.entitlements ?? [];
         setEntitlements(next);
+        setTemporaryAccessSupported(next.length > 0);
         setSelectedEntitlementKey((previous) => {
           if (previous && next.some((entry) => entry.key === previous)) {
             return previous;
           }
           return next[0]?.key ?? '';
         });
-      } catch (error) {
+      } catch {
         if (cancelled) {
           return;
         }
 
-        setEntitlementsError(
-          error instanceof Error ? error.message : 'Failed to load entitlements'
-        );
+        setEntitlements([]);
+        setTemporaryAccessSupported(false);
       } finally {
         if (!cancelled) {
           setEntitlementsLoading(false);
@@ -181,11 +199,18 @@ export const FinderSidebar = ({
     }
 
     lastGrantedRequestIdRef.current = activeRequest.id;
-    onElevationGranted?.();
+    setIsElevationModalOpen(false);
+    setSubmitError(null);
+    onElevationGranted?.(activeRequest);
   }, [activeRequest, onElevationGranted]);
 
   const submitElevationRequest = async (): Promise<void> => {
-    if (!selectedEntitlementKey || isSubmitting) {
+    if (
+      !selectedEntitlementKey ||
+      isSubmitting ||
+      selectedEntitlementAlreadyActive ||
+      selectedEntitlementPending
+    ) {
       return;
     }
 
@@ -225,6 +250,42 @@ export const FinderSidebar = ({
     }
   };
 
+  const deactivateEntitlement = async (entitlementKey: string): Promise<void> => {
+    if (isRevokingEntitlementKey.length > 0) {
+      return;
+    }
+
+    setSubmitError(null);
+    setIsRevokingEntitlementKey(entitlementKey);
+    try {
+      const response = await fetch(`${API_ORIGIN}/auth/elevation/deactivate`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ entitlementKey }),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error ?? 'Failed to deactivate elevated access');
+      }
+
+      if (activeRequest?.entitlementKey === entitlementKey) {
+        setActiveRequest(null);
+      }
+
+      onElevationRevoked?.(entitlementKey);
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error ? error.message : 'Failed to deactivate elevated access'
+      );
+    } finally {
+      setIsRevokingEntitlementKey('');
+    }
+  };
+
   return (
     <aside className={styles.finderSidebar} aria-label="Workspace sidebar">
       <section>
@@ -233,6 +294,7 @@ export const FinderSidebar = ({
           <span>Provider</span>
           <strong>{provider ?? '-'}</strong>
         </div>
+        {showMockBadge ? <p className={styles.devMockBadge}>Mock authz mode</p> : null}
         <div className={styles.finderMeta}>
           <span>User</span>
           <strong>{userEmail ?? 'Not signed in'}</strong>
@@ -257,11 +319,35 @@ export const FinderSidebar = ({
                     {source.provider} · {source.target}
                   </span>
                   <span>grants: {source.permissions.join(', ')}</span>
+                  {source.expiresAt ? (
+                    <span>expires: {new Date(source.expiresAt).toLocaleString()}</span>
+                  ) : null}
+                  <Button
+                    variant="muted"
+                    className={styles.elevationRevokeButton}
+                    disabled={isRevokingEntitlementKey.length > 0}
+                    onClick={() => {
+                      void deactivateEntitlement(source.entitlementKey);
+                    }}
+                  >
+                    {isRevokingEntitlementKey === source.entitlementKey
+                      ? 'Turning off...'
+                      : 'Turn off'}
+                  </Button>
                 </p>
               ))}
             </div>
           )}
         </div>
+        {authenticated && temporaryAccessSupported ? (
+          <Button
+            variant="muted"
+            className={styles.requestAccessButton}
+            onClick={() => setIsElevationModalOpen(true)}
+          >
+            Request Temporary Access
+          </Button>
+        ) : null}
       </section>
 
       <section>
@@ -279,106 +365,128 @@ export const FinderSidebar = ({
         </div>
       </section>
 
-      <section>
-        <p className={styles.finderSidebarTitle}>Temporary Access</p>
-        {!authenticated ? (
-          <p className={styles.state}>Sign in to request elevation.</p>
-        ) : entitlementsLoading ? (
-          <p className={styles.state}>Loading entitlements...</p>
-        ) : entitlementsError ? (
-          <p className={`${styles.state} ${styles.stateError}`}>{entitlementsError}</p>
-        ) : entitlements.length === 0 ? (
-          <p className={styles.state}>No requestable entitlements configured.</p>
-        ) : (
-          <div className={styles.elevationCard}>
-            <label className={styles.elevationLabel} htmlFor="elevation-entitlement-select">
-              Entitlement
-            </label>
-            <select
-              id="elevation-entitlement-select"
-              className={styles.elevationSelect}
-              value={selectedEntitlementKey}
-              onChange={(event) => {
-                setSelectedEntitlementKey(event.target.value);
-                setSubmitError(null);
-              }}
-            >
-              {entitlements.map((entitlement) => (
-                <option key={entitlement.key} value={entitlement.key}>
-                  {entitlement.key}
-                </option>
-              ))}
-            </select>
+      {isElevationModalOpen && authenticated && temporaryAccessSupported ? (
+        <div
+          className={styles.modalOverlay}
+          role="presentation"
+          onClick={() => setIsElevationModalOpen(false)}
+        >
+          <section
+            className={styles.modalCard}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Request temporary access"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3>Request Temporary Access</h3>
+            {entitlementsLoading ? (
+              <p className={styles.state}>Loading entitlements...</p>
+            ) : (
+              <div className={styles.elevationCard}>
+                <label className={styles.elevationLabel} htmlFor="elevation-entitlement-select">
+                  Entitlement
+                </label>
+                <select
+                  id="elevation-entitlement-select"
+                  className={styles.elevationSelect}
+                  value={selectedEntitlementKey}
+                  onChange={(event) => {
+                    setSelectedEntitlementKey(event.target.value);
+                    setSubmitError(null);
+                  }}
+                >
+                  {entitlements.map((entitlement) => (
+                    <option key={entitlement.key} value={entitlement.key}>
+                      {entitlement.key}
+                    </option>
+                  ))}
+                </select>
 
-            <p className={styles.elevationHint}>
-              Duration: up to {selectedEntitlement?.maxDurationMinutes ?? '-'} min
-            </p>
-            <p className={styles.elevationHint}>
-              Grants: {selectedEntitlement?.permissions.join(', ') ?? '-'}
-            </p>
-
-            <label className={styles.elevationLabel} htmlFor="elevation-justification-input">
-              Justification{' '}
-              {selectedEntitlement?.requiresJustification ? '(required)' : '(optional)'}
-            </label>
-            <textarea
-              id="elevation-justification-input"
-              className={styles.elevationTextarea}
-              value={justification}
-              onChange={(event) => setJustification(event.target.value)}
-              placeholder="Reason for temporary elevation"
-              rows={3}
-            />
-
-            {submitError ? (
-              <p className={`${styles.state} ${styles.stateError}`}>{submitError}</p>
-            ) : null}
-
-            <Button
-              variant="muted"
-              disabled={
-                isSubmitting ||
-                (selectedEntitlement?.requiresJustification && !justification.trim())
-              }
-              onClick={() => {
-                void submitElevationRequest();
-              }}
-            >
-              {isSubmitting ? 'Submitting...' : 'Request Elevated Access'}
-            </Button>
-
-            {activeRequest ? (
-              <div className={styles.elevationStatusCard}>
-                <p className={styles.elevationStatusTitle}>Latest Request</p>
-                <p className={styles.elevationHint}>Entitlement: {activeRequest.entitlementKey}</p>
                 <p className={styles.elevationHint}>
-                  Status:{' '}
-                  <strong
-                    className={
-                      activeRequest.status === 'granted'
-                        ? styles.elevationStatusGranted
-                        : activeRequest.status === 'pending'
-                          ? styles.elevationStatusPending
-                          : styles.elevationStatusDenied
-                    }
-                  >
-                    {activeRequest.status}
-                  </strong>
-                  {isPolling && activeRequest.status === 'pending' ? ' (refreshing...)' : ''}
+                  Grants: {selectedEntitlement?.permissions.join(', ') ?? '-'}
                 </p>
-                {activeRequest.expiresAt ? (
+
+                <label className={styles.elevationLabel} htmlFor="elevation-justification-input">
+                  Reason (required)
+                </label>
+                <textarea
+                  id="elevation-justification-input"
+                  className={styles.elevationTextarea}
+                  value={justification}
+                  onChange={(event) => setJustification(event.target.value)}
+                  placeholder="Reason for temporary elevation"
+                  rows={3}
+                />
+
+                {submitError ? (
+                  <p className={`${styles.state} ${styles.stateError}`}>{submitError}</p>
+                ) : null}
+
+                {selectedEntitlementAlreadyActive ? (
+                  <p className={styles.elevationHint}>This entitlement is already active.</p>
+                ) : null}
+                {selectedEntitlementPending ? (
                   <p className={styles.elevationHint}>
-                    Expires: {new Date(activeRequest.expiresAt).toLocaleString()}
+                    A request for this entitlement is still pending.
                   </p>
                 ) : null}
-                {activeRequest.message ? (
-                  <p className={styles.elevationHint}>{activeRequest.message}</p>
+
+                <div className={styles.modalActions}>
+                  <Button variant="muted" onClick={() => setIsElevationModalOpen(false)}>
+                    Close
+                  </Button>
+                  <Button
+                    variant="default"
+                    disabled={
+                      isSubmitting ||
+                      !justification.trim() ||
+                      selectedEntitlementAlreadyActive ||
+                      selectedEntitlementPending
+                    }
+                    onClick={() => {
+                      void submitElevationRequest();
+                    }}
+                  >
+                    {isSubmitting ? 'Submitting...' : 'Request Elevated Access'}
+                  </Button>
+                </div>
+
+                {activeRequest ? (
+                  <div className={styles.elevationStatusCard}>
+                    <p className={styles.elevationStatusTitle}>Latest Request</p>
+                    <p className={styles.elevationHint}>
+                      Entitlement: {activeRequest.entitlementKey}
+                    </p>
+                    <p className={styles.elevationHint}>
+                      Status:{' '}
+                      <strong
+                        className={
+                          activeRequest.status === 'granted'
+                            ? styles.elevationStatusGranted
+                            : activeRequest.status === 'pending'
+                              ? styles.elevationStatusPending
+                              : styles.elevationStatusDenied
+                        }
+                      >
+                        {activeRequest.status}
+                      </strong>
+                      {isPolling && activeRequest.status === 'pending' ? ' (refreshing...)' : ''}
+                    </p>
+                    {activeRequest.expiresAt ? (
+                      <p className={styles.elevationHint}>
+                        Expires: {new Date(activeRequest.expiresAt).toLocaleString()}
+                      </p>
+                    ) : null}
+                    {activeRequest.message ? (
+                      <p className={styles.elevationHint}>{activeRequest.message}</p>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
-            ) : null}
-          </div>
-        )}
-      </section>
+            )}
+          </section>
+        </div>
+      ) : null}
     </aside>
   );
 };

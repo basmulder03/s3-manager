@@ -36,6 +36,8 @@ export const App = () => {
     { type: 'close' } | { type: 'open'; path: string; mode: 'view' | 'edit' } | null
   >(null);
   const lastOpenedPreviewKeyRef = useRef('');
+  const hadElevationRef = useRef(false);
+  const suppressNextElevationDropNoticeRef = useRef(false);
 
   const selectedPath = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -87,7 +89,10 @@ export const App = () => {
 
   const authRequired = authStatus.data?.authRequired ?? true;
   const authenticated = authMe.isSuccess;
+  const showMockBadge =
+    __DEV_PIM_MOCK_BADGE__ && Boolean(authStatus.data?.pimDevMockEnabled && authenticated);
   const permissions = authMe.data?.permissions ?? (authRequired ? [] : ['view', 'write', 'delete']);
+  const elevationSources = authMe.data?.elevationSources ?? [];
   const canView = permissions.includes('view');
   const canWrite = permissions.includes('write');
   const canDelete = permissions.includes('delete');
@@ -194,6 +199,51 @@ export const App = () => {
       };
     },
   });
+
+  useEffect(() => {
+    const hasElevation = authenticated && elevationSources.length > 0;
+    const previouslyElevated = hadElevationRef.current;
+
+    if (previouslyElevated && !hasElevation) {
+      if (suppressNextElevationDropNoticeRef.current) {
+        suppressNextElevationDropNoticeRef.current = false;
+      } else {
+        browser.enqueueSnackbar({
+          tone: 'info',
+          message: 'Temporary elevated access expired.',
+        });
+      }
+    }
+
+    hadElevationRef.current = hasElevation;
+  }, [authenticated, elevationSources, browser]);
+
+  useEffect(() => {
+    if (!authenticated || elevationSources.length === 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const expiryTimes = elevationSources
+      .map((source) => source.expiresAt)
+      .filter((value): value is string => typeof value === 'string' && value.length > 0)
+      .map((value) => Date.parse(value))
+      .filter((value) => !Number.isNaN(value) && value > now);
+
+    if (expiryTimes.length === 0) {
+      return;
+    }
+
+    const nearestExpiry = Math.min(...expiryTimes);
+    const delayMs = Math.max(1_000, nearestExpiry - now + 1_000);
+    const timerId = window.setTimeout(() => {
+      refreshAuthState();
+    }, delayMs);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [authenticated, elevationSources, refreshAuthState]);
 
   const setOpenedFileInUrl = useCallback(
     (path: string, mode: 'view' | 'edit') => {
@@ -345,9 +395,24 @@ export const App = () => {
             userEmail={authMe.data?.email}
             selectedPath={selectedPath}
             permissions={permissions}
-            elevationSources={authMe.data?.elevationSources ?? []}
+            elevationSources={elevationSources}
             authenticated={authenticated}
-            onElevationGranted={refreshAuthState}
+            showMockBadge={showMockBadge}
+            onElevationGranted={(request) => {
+              refreshAuthState();
+              browser.enqueueSnackbar({
+                tone: 'success',
+                message: `Temporary access granted for ${request.entitlementKey}.`,
+              });
+            }}
+            onElevationRevoked={(entitlementKey) => {
+              suppressNextElevationDropNoticeRef.current = true;
+              refreshAuthState();
+              browser.enqueueSnackbar({
+                tone: 'success',
+                message: `Temporary access turned off for ${entitlementKey}.`,
+              });
+            }}
           />
         ) : null}
 

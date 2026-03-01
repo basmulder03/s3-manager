@@ -273,6 +273,15 @@ az ad group member add \
 2. **Privileged Role Administrator**: Setup role assignments
 3. **Configure eligible roles**: Set up roles that can be activated
 
+### Development Mock Mode
+
+Set `PIM_DEV_MOCK_ENABLED=true` to simulate elevation in non-production environments without calling Azure/Google APIs.
+
+- Requests are granted immediately with an expiry based on entitlement duration
+- Effective permissions are merged from active mock elevation requests
+- Intended for local/dev testing only
+- Blocked automatically in production
+
 ### API Endpoints
 
 #### PIM_AZURE_ASSIGNMENT_SCHEDULE_REQUEST_API

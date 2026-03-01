@@ -12,7 +12,7 @@ export interface SnackbarItem {
   onAction: (() => void) | null;
 }
 
-interface EnqueueSnackbarInput {
+export interface EnqueueSnackbarInput {
   message: string;
   tone?: SnackbarTone;
   durationMs?: number;

@@ -1285,6 +1285,7 @@ export const useBrowserController = ({
     newFolderName,
     setNewFolderName,
     snackbars,
+    enqueueSnackbar,
     dismissSnackbar,
     selectedItems: selection.selectedItems,
     selectedFiles: selection.selectedFiles,

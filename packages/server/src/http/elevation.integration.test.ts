@@ -148,6 +148,21 @@ describe('auth elevation endpoints', () => {
       expect(userJson.user.elevationSources).toHaveLength(1);
       expect(userJson.user.elevationSources[0].entitlementKey).toBe('property-admin-temp');
 
+      const missingReasonResponse = await app.request(
+        'http://localhost:3000/auth/elevation/request',
+        {
+          method: 'POST',
+          headers: {
+            cookie,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            entitlementKey: 'property-admin-temp',
+          }),
+        }
+      );
+      expect(missingReasonResponse.status).toBe(400);
+
       const requestResponse = await app.request('http://localhost:3000/auth/elevation/request', {
         method: 'POST',
         headers: {
@@ -182,6 +197,146 @@ describe('auth elevation endpoints', () => {
       expect(statusJson.request.expiresAt).toBe('2026-01-01T00:00:00Z');
     } finally {
       server.stop(true);
+    }
+  }, 120000);
+
+  it('supports dev mock elevation without provider APIs', async () => {
+    process.env.PIM_DEV_MOCK_ENABLED = 'true';
+    process.env.OIDC_PROVIDER = 'keycloak';
+    process.env.AUTH_ISSUER = 'http://127.0.0.1:4202/issuer';
+    process.env.AUTH_AUDIENCE = 'test-client';
+    process.env.ELEVATION_0_PROVIDER = 'azure';
+    process.env.ELEVATION_0_TARGET = 'group-dev-mock-1';
+
+    resetConfigForTests();
+    resetElevationStoreForTests();
+
+    const { privateKey, publicKey } = await generateKeyPair('RS256');
+    const publicJwk = await exportJWK(publicKey);
+    const issuer = 'http://127.0.0.1:4202/issuer';
+
+    const accessToken = await new SignJWT({
+      email: 'dev@example.com',
+      name: 'Dev User',
+      roles: ['S3-Viewer'],
+      groups: [],
+    })
+      .setProtectedHeader({ alg: 'RS256', kid: 'kid-2' })
+      .setIssuer(issuer)
+      .setAudience('test-client')
+      .setSubject('dev-user-1')
+      .setIssuedAt()
+      .setExpirationTime('15m')
+      .sign(privateKey);
+
+    const server = Bun.serve({
+      port: 4202,
+      fetch: async (request) => {
+        const url = new URL(request.url);
+
+        if (url.pathname === '/issuer/.well-known/openid-configuration') {
+          return Response.json({
+            authorization_endpoint: `${issuer}/protocol/openid-connect/auth`,
+            token_endpoint: `${issuer}/protocol/openid-connect/token`,
+            jwks_uri: `${issuer}/protocol/openid-connect/certs`,
+          });
+        }
+
+        if (url.pathname === '/issuer/protocol/openid-connect/certs') {
+          return Response.json({
+            keys: [{ ...publicJwk, kid: 'kid-2', use: 'sig', alg: 'RS256' }],
+          });
+        }
+
+        return new Response('not-found', { status: 404 });
+      },
+    });
+
+    try {
+      const { createApp } = await import('../app');
+      const app = createApp();
+      const cookie = `s3_access_token=${encodeURIComponent(accessToken)}`;
+
+      const beforeUserResponse = await app.request('http://localhost:3000/auth/user', {
+        headers: {
+          cookie,
+        },
+      });
+      expect(beforeUserResponse.status).toBe(200);
+      const beforeUser = await beforeUserResponse.json();
+      expect(beforeUser.user.permissions).not.toContain('manage_properties');
+
+      const requestResponse = await app.request('http://localhost:3000/auth/elevation/request', {
+        method: 'POST',
+        headers: {
+          cookie,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          entitlementKey: 'property-admin-temp',
+          justification: 'Dev mock flow',
+        }),
+      });
+
+      expect(requestResponse.status).toBe(200);
+      const requestJson = await requestResponse.json();
+      expect(requestJson.request.status).toBe('granted');
+
+      const duplicateResponse = await app.request('http://localhost:3000/auth/elevation/request', {
+        method: 'POST',
+        headers: {
+          cookie,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          entitlementKey: 'property-admin-temp',
+          justification: 'Trying duplicate request',
+        }),
+      });
+      expect(duplicateResponse.status).toBe(409);
+
+      const afterUserResponse = await app.request('http://localhost:3000/auth/user', {
+        headers: {
+          cookie,
+        },
+      });
+      expect(afterUserResponse.status).toBe(200);
+      const afterUser = await afterUserResponse.json();
+      expect(afterUser.user.permissions).toContain('manage_properties');
+      expect(afterUser.user.elevationSources).toHaveLength(1);
+      expect(afterUser.user.elevationSources[0].entitlementKey).toBe('property-admin-temp');
+
+      const deactivateResponse = await app.request(
+        'http://localhost:3000/auth/elevation/deactivate',
+        {
+          method: 'POST',
+          headers: {
+            cookie,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            entitlementKey: 'property-admin-temp',
+          }),
+        }
+      );
+      expect(deactivateResponse.status).toBe(200);
+
+      const afterDeactivateResponse = await app.request('http://localhost:3000/auth/user', {
+        headers: {
+          cookie,
+        },
+      });
+      expect(afterDeactivateResponse.status).toBe(200);
+      const afterDeactivate = await afterDeactivateResponse.json();
+      expect(afterDeactivate.user.permissions).not.toContain('manage_properties');
+      expect(afterDeactivate.user.elevationSources).toHaveLength(0);
+    } finally {
+      server.stop(true);
+      process.env.PIM_DEV_MOCK_ENABLED = 'false';
+      process.env.OIDC_PROVIDER = 'azure';
+      process.env.AUTH_ISSUER = 'http://127.0.0.1:4201/issuer';
+      resetConfigForTests();
+      resetElevationStoreForTests();
     }
   }, 120000);
 });

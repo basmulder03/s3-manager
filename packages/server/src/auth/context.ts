@@ -8,7 +8,8 @@ import {
   resolveElevationSources,
 } from '@/auth/permissions';
 import { providerName } from '@/auth/provider';
-import type { AuthUser } from '@/auth/types';
+import type { AuthUser, ElevationSource } from '@/auth/types';
+import { resolveMockElevationStateForUser } from '@/auth/elevation';
 
 const authLogger = () => getLogger('Auth');
 
@@ -56,16 +57,41 @@ const extractBearerToken = (authorization: string | null): string | null => {
   return token.trim().length > 0 ? token.trim() : null;
 };
 
+const dedupeElevationSources = (sources: ElevationSource[]): ElevationSource[] => {
+  const byKey = new Map<string, ElevationSource>();
+
+  for (const source of sources) {
+    const key = `${source.entitlementKey}:${source.provider}:${source.target}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, {
+        ...source,
+        permissions: Array.from(new Set(source.permissions)),
+      });
+      continue;
+    }
+
+    existing.permissions = Array.from(new Set([...existing.permissions, ...source.permissions]));
+    if (!existing.expiresAt && source.expiresAt) {
+      existing.expiresAt = source.expiresAt;
+    }
+  }
+
+  return Array.from(byKey.values());
+};
+
 const localDevUser = (): AuthUser => {
   const role = config.defaultRole;
-  const permissions = localDevPermissions();
+  const basePermissions = localDevPermissions();
+  const mock = resolveMockElevationStateForUser('local-dev-user');
+  const permissions = Array.from(new Set([...basePermissions, ...mock.permissions]));
   return {
     id: 'local-dev-user',
     email: 'dev@localhost',
     name: 'Local Developer',
     roles: [role],
     permissions,
-    elevationSources: [],
+    elevationSources: mock.elevationSources,
     provider: 'local-dev',
     token: 'local-dev-token',
   };
@@ -91,14 +117,15 @@ export const resolveAuthUser = async (req: Request): Promise<AuthUser | null> =>
 
   const permissions = mapRolesAndGroupIdsToPermissions(verified.roles, verified.groups);
   const elevationSources = resolveElevationSources(verified.roles, verified.groups);
+  const mock = resolveMockElevationStateForUser(verified.subject);
 
   return {
     id: verified.subject,
     email: verified.email,
     name: verified.name,
     roles: verified.roles,
-    permissions,
-    elevationSources,
+    permissions: Array.from(new Set([...permissions, ...mock.permissions])),
+    elevationSources: dedupeElevationSources([...elevationSources, ...mock.elevationSources]),
     provider: providerName(),
     token,
   };

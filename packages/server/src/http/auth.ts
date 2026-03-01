@@ -17,6 +17,7 @@ import {
 } from '@/auth/oidc';
 import { createAuthState, consumeAuthState } from '@/auth/state';
 import {
+  deactivateElevation,
   getElevationRequestStatus,
   isElevationError,
   listElevationEntitlements,
@@ -431,6 +432,40 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
 
       authLogger().error({ err: error }, 'Failed to fetch elevation request status');
       return c.json({ error: 'Failed to fetch elevation request status' }, 500);
+    }
+  });
+
+  app.post('/auth/elevation/deactivate', async (c) => {
+    const user = await resolveAuthUser(c.req.raw);
+    if (!user) {
+      return c.json({ error: 'Authentication required' }, 401);
+    }
+
+    let entitlementKey = '';
+    try {
+      const body = await c.req.json<{ entitlementKey?: string }>();
+      entitlementKey = body.entitlementKey?.trim() ?? '';
+    } catch {
+      return c.json({ error: 'Invalid request body' }, 400);
+    }
+
+    if (!entitlementKey) {
+      return c.json({ error: 'entitlementKey is required' }, 400);
+    }
+
+    try {
+      const result = await deactivateElevation({
+        user,
+        entitlementKey,
+      });
+      return c.json(result);
+    } catch (error) {
+      if (isElevationError(error)) {
+        return c.json({ error: error.message }, error.status as never);
+      }
+
+      authLogger().error({ err: error }, 'Failed to deactivate elevation');
+      return c.json({ error: 'Failed to deactivate elevation' }, 500);
     }
   });
 };

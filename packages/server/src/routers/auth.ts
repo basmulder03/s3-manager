@@ -21,6 +21,7 @@ export const authRouter = router({
         authenticated: ctx.user !== null,
         authRequired: config.auth.required,
         localDevMode: config.localDevMode,
+        pimDevMockEnabled: config.pim.devMockEnabled,
         provider: providerName(),
         issuer: resolveIssuer() ?? null,
         audience: resolveAudience() ?? null,

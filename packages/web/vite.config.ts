@@ -2,8 +2,11 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'node:path';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
+  define: {
+    __DEV_PIM_MOCK_BADGE__: JSON.stringify(mode !== 'production'),
+  },
   resolve: {
     alias: {
       '@web': resolve(__dirname, './src'),
@@ -21,4 +24,4 @@ export default defineConfig({
     include: ['./src/**/*.test.tsx'],
     exclude: ['./e2e/**'],
   },
-});
+}));

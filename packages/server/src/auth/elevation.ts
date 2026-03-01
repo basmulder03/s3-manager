@@ -1,6 +1,6 @@
 import { config } from '@/config';
 import { getLogger } from '@/telemetry';
-import type { AuthUser } from '@/auth/types';
+import type { AuthUser, ElevationSource } from '@/auth/types';
 import type { Permission } from '@/trpc';
 
 const authLogger = () => getLogger('AuthElevation');
@@ -54,6 +54,11 @@ export interface ElevationRequestView {
   expiresAt?: string;
 }
 
+export interface MockElevationState {
+  permissions: Permission[];
+  elevationSources: ElevationSource[];
+}
+
 class ElevationError extends Error {
   status: number;
 
@@ -65,6 +70,47 @@ class ElevationError extends Error {
 }
 
 const requestStore = new Map<string, StoredRequest>();
+
+const dedupePermissions = (permissions: Permission[]): Permission[] => {
+  return Array.from(new Set(permissions));
+};
+
+const dedupeElevationSources = (sources: ElevationSource[]): ElevationSource[] => {
+  const merged = new Map<string, ElevationSource>();
+
+  for (const source of sources) {
+    const key = `${source.entitlementKey}:${source.provider}:${source.target}`;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, {
+        ...source,
+        permissions: dedupePermissions(source.permissions),
+      });
+      continue;
+    }
+
+    existing.permissions = dedupePermissions([...existing.permissions, ...source.permissions]);
+  }
+
+  return Array.from(merged.values());
+};
+
+const isRequestActive = (request: StoredRequest): boolean => {
+  if (request.status === 'pending') {
+    return true;
+  }
+
+  if (request.status !== 'granted') {
+    return false;
+  }
+
+  if (!request.expiresAt) {
+    return true;
+  }
+
+  const expiresAt = Date.parse(request.expiresAt);
+  return Number.isNaN(expiresAt) || expiresAt > Date.now();
+};
 
 const currentProvider = (): SupportedElevationProvider => {
   if (config.oidcProvider === 'azure' || config.oidcProvider === 'azuread') {
@@ -381,6 +427,17 @@ const fetchGoogleStatus = async (params: {
 };
 
 export const listElevationEntitlements = (): ElevationEntitlementView[] => {
+  if (config.pim.devMockEnabled || config.localDevMode) {
+    return config.pim.entitlements.map((entry) => ({
+      key: entry.key,
+      provider: entry.provider,
+      target: entry.target,
+      maxDurationMinutes: entry.maxDurationMinutes,
+      permissions: entry.permissions,
+      requiresJustification: entry.requireJustification,
+    }));
+  }
+
   const provider = currentProvider();
 
   return config.pim.entitlements
@@ -405,13 +462,15 @@ export const submitElevationRequest = async (params: {
     throw new ElevationError(400, 'Elevation is not enabled');
   }
 
-  const provider = currentProvider();
   const entitlement = config.pim.entitlements.find((entry) => entry.key === params.entitlementKey);
   if (!entitlement) {
     throw new ElevationError(400, `Unknown entitlement '${params.entitlementKey}'`);
   }
 
-  if (entitlement.provider !== provider) {
+  const provider =
+    config.pim.devMockEnabled || config.localDevMode ? entitlement.provider : currentProvider();
+
+  if (!config.pim.devMockEnabled && !config.localDevMode && entitlement.provider !== provider) {
     throw new ElevationError(
       400,
       `Entitlement '${params.entitlementKey}' requires provider '${entitlement.provider}'`
@@ -419,30 +478,49 @@ export const submitElevationRequest = async (params: {
   }
 
   const justification = params.justification?.trim();
-  if (entitlement.requireJustification && !justification) {
-    throw new ElevationError(400, 'Justification is required for this entitlement');
+  if (!justification) {
+    throw new ElevationError(400, 'Justification is required');
   }
 
   const requested = params.durationMinutes ?? entitlement.maxDurationMinutes;
   const durationMinutes = Math.max(1, Math.min(requested, entitlement.maxDurationMinutes));
 
-  let providerResult: ProviderRequestResult;
+  const alreadyActive = Array.from(requestStore.values()).some(
+    (request) =>
+      request.userId === params.user.id &&
+      request.entitlementKey === entitlement.key &&
+      isRequestActive(request)
+  );
 
-  if (provider === 'azure') {
-    providerResult = await requestAzureElevation({
-      token: params.user.token,
-      user: params.user,
-      groupId: entitlement.target,
-      durationMinutes,
-      justification,
-    });
+  if (alreadyActive) {
+    throw new ElevationError(409, `Entitlement '${entitlement.key}' is already active or pending`);
+  }
+
+  let providerResult: ProviderRequestResult;
+  if (config.pim.devMockEnabled || config.localDevMode) {
+    providerResult = {
+      providerRequestId: `mock-${crypto.randomUUID()}`,
+      status: 'granted',
+      expiresAt: new Date(Date.now() + durationMinutes * 60_000).toISOString(),
+      message: 'Granted by mock PIM provider',
+    };
   } else {
-    providerResult = await requestGoogleElevation({
-      token: params.user.token,
-      user: params.user,
-      groupResourceName: entitlement.target,
-      durationMinutes,
-    });
+    if (provider === 'azure') {
+      providerResult = await requestAzureElevation({
+        token: params.user.token,
+        user: params.user,
+        groupId: entitlement.target,
+        durationMinutes,
+        justification,
+      });
+    } else {
+      providerResult = await requestGoogleElevation({
+        token: params.user.token,
+        user: params.user,
+        groupResourceName: entitlement.target,
+        durationMinutes,
+      });
+    }
   }
 
   const id = crypto.randomUUID();
@@ -499,6 +577,10 @@ export const getElevationRequestStatus = async (params: {
     return toView(request);
   }
 
+  if (config.pim.devMockEnabled || config.localDevMode) {
+    return toView(request);
+  }
+
   if (request.status === 'granted' || request.status === 'denied' || request.status === 'error') {
     return toView(request);
   }
@@ -531,10 +613,102 @@ export const getElevationRequestStatus = async (params: {
   return toView(request);
 };
 
+export const deactivateElevation = async (params: {
+  user: AuthUser;
+  entitlementKey: string;
+}): Promise<{ revoked: number }> => {
+  const entitlementKey = params.entitlementKey.trim();
+  if (!entitlementKey) {
+    throw new ElevationError(400, 'entitlementKey is required');
+  }
+
+  if (!config.pim.devMockEnabled && !config.localDevMode) {
+    throw new ElevationError(400, 'Manual deactivation is not supported for this provider mode');
+  }
+
+  let revoked = 0;
+  for (const request of requestStore.values()) {
+    if (request.userId !== params.user.id || request.entitlementKey !== entitlementKey) {
+      continue;
+    }
+
+    if (!isRequestActive(request)) {
+      continue;
+    }
+
+    request.status = 'denied';
+    request.message = 'Revoked by user';
+    request.expiresAt = new Date().toISOString();
+    revoked += 1;
+  }
+
+  if (revoked === 0) {
+    throw new ElevationError(404, 'No active elevation found for entitlement');
+  }
+
+  authLogger().info(
+    {
+      userId: params.user.id,
+      userEmail: params.user.email,
+      entitlementKey,
+      revoked,
+    },
+    'Elevation revoked by user'
+  );
+
+  return { revoked };
+};
+
 export const isElevationError = (error: unknown): error is ElevationError => {
   return error instanceof ElevationError;
 };
 
 export const resetElevationStoreForTests = (): void => {
   requestStore.clear();
+};
+
+export const resolveMockElevationStateForUser = (userId: string): MockElevationState => {
+  if (!config.pim.devMockEnabled && !config.localDevMode) {
+    return {
+      permissions: [],
+      elevationSources: [],
+    };
+  }
+
+  const now = Date.now();
+  const active = Array.from(requestStore.values()).filter((request) => {
+    if (request.userId !== userId || request.status !== 'granted') {
+      return false;
+    }
+
+    if (!request.expiresAt) {
+      return true;
+    }
+
+    const expiresAt = Date.parse(request.expiresAt);
+    return Number.isNaN(expiresAt) || expiresAt > now;
+  });
+
+  if (active.length === 0) {
+    return {
+      permissions: [],
+      elevationSources: [],
+    };
+  }
+
+  const permissions = dedupePermissions(active.flatMap((request) => request.permissions));
+  const elevationSources = dedupeElevationSources(
+    active.map((request) => ({
+      entitlementKey: request.entitlementKey,
+      provider: request.provider,
+      target: request.target,
+      permissions: request.permissions,
+      expiresAt: request.expiresAt,
+    }))
+  );
+
+  return {
+    permissions,
+    elevationSources,
+  };
 };

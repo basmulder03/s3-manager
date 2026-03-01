@@ -5,6 +5,7 @@ export interface ElevationSource {
   provider: 'azure' | 'google';
   target: string;
   permissions: Permission[];
+  expiresAt?: string;
 }
 
 export interface AuthUser {
