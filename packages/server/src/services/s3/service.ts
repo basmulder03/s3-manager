@@ -1331,9 +1331,18 @@ export class S3Service {
       const sourceBucket = resolveBucketReference(sourceBucketReference);
 
       const sourceKeyRaw = sourceParts.join('/');
-      const sourcePrefix = input.sourcePath.trim().endsWith('/')
-        ? `${sourceKeyRaw.replace(/\/+$/, '')}/`
-        : sourceKeyRaw;
+      const client = this.clientProvider(sourceBucket.sourceId);
+      const sourcePrefix = (() => {
+        if (input.sourcePath.trim().endsWith('/')) {
+          return `${sourceKeyRaw.replace(/\/+$/, '')}/`;
+        }
+
+        if (sourceKeyRaw.length === 0) {
+          return sourceKeyRaw;
+        }
+
+        return sourceKeyRaw;
+      })();
 
       if (sourcePrefix.length === 0) {
         throw new S3ServiceError('Renaming bucket roots is not supported', 'INVALID_PATH');
@@ -1364,22 +1373,98 @@ export class S3Service {
         };
       })();
 
-      if (
-        destinationBase &&
-        (destinationBase.bucketName !== sourceBucket.bucketName ||
-          destinationBase.sourceId !== sourceBucket.sourceId)
-      ) {
-        throw new S3ServiceError('Cross-bucket move is not supported', 'INVALID_PATH');
+      const destinationSourceId = destinationBase?.sourceId ?? sourceBucket.sourceId;
+      const destinationBucketName = destinationBase?.bucketName ?? sourceBucket.bucketName;
+      const destinationBucketReference =
+        destinationBase?.bucketReference ?? sourceBucket.bucketReference;
+      const destinationClient =
+        destinationSourceId === sourceBucket.sourceId
+          ? client
+          : this.clientProvider(destinationSourceId);
+
+      const copyObjectToDestination = async (sourceKey: string, destinationKey: string) => {
+        if (destinationSourceId === sourceBucket.sourceId) {
+          await destinationClient.send(
+            new CopyObjectCommand({
+              Bucket: destinationBucketName,
+              CopySource: toCopySource(sourceBucket.bucketName, sourceKey),
+              Key: destinationKey,
+            })
+          );
+          return;
+        }
+
+        const [sourceHeadResponse, sourceObjectResponse] = await Promise.all([
+          client.send(
+            new HeadObjectCommand({
+              Bucket: sourceBucket.bucketName,
+              Key: sourceKey,
+            })
+          ),
+          client.send(
+            new GetObjectCommand({
+              Bucket: sourceBucket.bucketName,
+              Key: sourceKey,
+            })
+          ),
+        ]);
+
+        const sourceBody = sourceObjectResponse.Body;
+        if (!sourceBody) {
+          throw new S3ServiceError('Source object body is missing', 'NoSuchKey');
+        }
+
+        await destinationClient.send(
+          new PutObjectCommand({
+            Bucket: destinationBucketName,
+            Key: destinationKey,
+            Body: sourceBody,
+            ContentLength: sourceHeadResponse.ContentLength,
+            ContentType: sourceHeadResponse.ContentType,
+            CacheControl: sourceHeadResponse.CacheControl,
+            ContentDisposition: sourceHeadResponse.ContentDisposition,
+            ContentEncoding: sourceHeadResponse.ContentEncoding,
+            ContentLanguage: sourceHeadResponse.ContentLanguage,
+            Expires: sourceHeadResponse.Expires,
+            Metadata: sourceHeadResponse.Metadata,
+            StorageClass: sourceHeadResponse.StorageClass,
+          })
+        );
+      };
+
+      let resolvedSourcePrefix = sourcePrefix;
+      if (!resolvedSourcePrefix.endsWith('/')) {
+        const sourceLookup = await client.send(
+          new ListObjectsV2Command({
+            Bucket: sourceBucket.bucketName,
+            Prefix: resolvedSourcePrefix,
+            Delimiter: '/',
+            MaxKeys: 2,
+          })
+        );
+        const folderPrefix = `${resolvedSourcePrefix.replace(/\/+$/, '')}/`;
+        const hasExactObject = (sourceLookup.Contents ?? []).some(
+          (item) => item.Key === resolvedSourcePrefix
+        );
+        const hasFolderContents = (sourceLookup.CommonPrefixes ?? []).some(
+          (commonPrefix) => commonPrefix.Prefix === folderPrefix
+        );
+
+        if (!hasExactObject && hasFolderContents) {
+          resolvedSourcePrefix = folderPrefix;
+        }
       }
 
-      const targetKey = ensureRenameTarget(sourcePrefix, input.newName, destinationBase?.prefix);
-      if (targetKey === sourcePrefix) {
+      const targetKey = ensureRenameTarget(
+        resolvedSourcePrefix,
+        input.newName,
+        destinationBase?.prefix
+      );
+      if (targetKey === resolvedSourcePrefix) {
         throw new S3ServiceError('Source and destination are identical', 'INVALID_PATH');
       }
 
-      const client = this.clientProvider(sourceBucket.sourceId);
-
-      if (sourcePrefix.endsWith('/')) {
+      if (resolvedSourcePrefix.endsWith('/')) {
         let continuationToken: string | undefined;
         const sourceKeys: string[] = [];
 
@@ -1387,7 +1472,7 @@ export class S3Service {
           const response = await client.send(
             new ListObjectsV2Command({
               Bucket: sourceBucket.bucketName,
-              Prefix: sourcePrefix,
+              Prefix: resolvedSourcePrefix,
               ContinuationToken: continuationToken,
             })
           );
@@ -1406,16 +1491,10 @@ export class S3Service {
         }
 
         for (const sourceKey of sourceKeys) {
-          const suffix = sourceKey.slice(sourcePrefix.length);
+          const suffix = sourceKey.slice(resolvedSourcePrefix.length);
           const destinationKey = `${targetKey}${suffix}`;
 
-          await client.send(
-            new CopyObjectCommand({
-              Bucket: sourceBucket.bucketName,
-              CopySource: toCopySource(sourceBucket.bucketName, sourceKey),
-              Key: destinationKey,
-            })
-          );
+          await copyObjectToDestination(sourceKey, destinationKey);
         }
 
         for (let i = 0; i < sourceKeys.length; i += 1000) {
@@ -1432,8 +1511,8 @@ export class S3Service {
           {
             operation: 'write',
             actor: safeActor,
-            bucket: sourceBucket.bucketReference,
-            objectKey: sourcePrefix,
+            bucket: destinationBucketReference,
+            objectKey: resolvedSourcePrefix,
             result: 'success',
           },
           Date.now() - startedAt
@@ -1441,23 +1520,17 @@ export class S3Service {
 
         return {
           sourcePath: input.sourcePath,
-          destinationPath: `${sourceBucket.bucketReference}/${targetKey.replace(/\/$/, '')}`,
+          destinationPath: `${destinationBucketReference}/${targetKey.replace(/\/$/, '')}`,
           movedObjects: sourceKeys.length,
         };
       }
 
-      await client.send(
-        new CopyObjectCommand({
-          Bucket: sourceBucket.bucketName,
-          CopySource: toCopySource(sourceBucket.bucketName, sourcePrefix),
-          Key: targetKey,
-        })
-      );
+      await copyObjectToDestination(resolvedSourcePrefix, targetKey);
 
       await client.send(
         new DeleteObjectCommand({
           Bucket: sourceBucket.bucketName,
-          Key: sourcePrefix,
+          Key: resolvedSourcePrefix,
         })
       );
 
@@ -1465,8 +1538,8 @@ export class S3Service {
         {
           operation: 'write',
           actor: safeActor,
-          bucket: sourceBucket.bucketReference,
-          objectKey: sourcePrefix,
+          bucket: destinationBucketReference,
+          objectKey: resolvedSourcePrefix,
           result: 'success',
         },
         Date.now() - startedAt
@@ -1474,7 +1547,7 @@ export class S3Service {
 
       return {
         sourcePath: input.sourcePath,
-        destinationPath: `${sourceBucket.bucketReference}/${targetKey}`,
+        destinationPath: `${destinationBucketReference}/${targetKey}`,
         movedObjects: 1,
       };
     } catch (error) {

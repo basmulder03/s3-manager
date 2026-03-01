@@ -17,7 +17,7 @@ class MockS3Client {
     this.calls.push(command);
 
     if (command instanceof ListObjectsV2Command) {
-      const input = (command as CommandInput).input;
+      const input = (command as unknown as CommandInput).input;
       const token = input.ContinuationToken as string | undefined;
 
       if (!token) {
@@ -71,6 +71,15 @@ class RenameFolderMockS3Client {
     this.calls.push(command);
 
     if (command instanceof ListObjectsV2Command) {
+      const input = (command as unknown as CommandInput).input;
+      if (input.Delimiter === '/') {
+        return {
+          Contents: [],
+          CommonPrefixes: [{ Prefix: 'folder/sub/' }],
+          IsTruncated: false,
+        };
+      }
+
       return {
         Contents: [{ Key: 'folder/sub/file-a.txt' }, { Key: 'folder/sub/file-b.txt' }],
         IsTruncated: false,
@@ -154,7 +163,7 @@ class UpdatePropertiesMockS3Client {
 class DeleteMultipleMockS3Client {
   async send(command: unknown): Promise<unknown> {
     if (command instanceof ListObjectsV2Command) {
-      const input = (command as CommandInput).input;
+      const input = (command as unknown as CommandInput).input;
       const prefix = input.Prefix as string | undefined;
 
       if (prefix === 'folder/') {
@@ -175,7 +184,7 @@ class DeleteMultipleMockS3Client {
     }
 
     if (command instanceof DeleteObjectCommand) {
-      const input = (command as CommandInput).input;
+      const input = (command as unknown as CommandInput).input;
       if (input.Key === 'broken.txt') {
         throw new Error('forced delete failure');
       }
@@ -197,7 +206,7 @@ describe('S3Service deleteFolder', () => {
 
     const deleteCalls = client.calls.filter(
       (call) => call instanceof DeleteObjectsCommand
-    ) as CommandInput[];
+    ) as unknown as CommandInput[];
     expect(deleteCalls).toHaveLength(2);
 
     const firstBatch = deleteCalls[0].input.Delete as { Objects: Array<{ Key: string }> };
@@ -255,18 +264,50 @@ describe('S3Service renameItem', () => {
     expect(deleteBatchCalls).toHaveLength(1);
   });
 
-  it('rejects cross-bucket move', async () => {
-    const service = new S3Service(() => ({ send: async () => ({}) }) as never);
+  it('moves a virtual folder path without trailing slash', async () => {
+    const client = new RenameFolderMockS3Client();
+    const service = new S3Service(() => client as never);
 
-    await expect(
-      service.renameItem(
-        {
-          sourcePath: 'my-bucket/folder/report.txt',
-          destinationPath: 'other-bucket/archive',
-        },
-        'tester@example.com'
-      )
-    ).rejects.toMatchObject({ code: 'INVALID_PATH' });
+    const result = await service.renameItem(
+      {
+        sourcePath: 'my-bucket/folder/sub',
+        destinationPath: 'my-bucket/archive',
+      },
+      'tester@example.com'
+    );
+
+    expect(result.destinationPath).toBe('my-bucket/archive/sub');
+    expect(result.movedObjects).toBe(2);
+
+    const listCalls = client.calls.filter((call) => call instanceof ListObjectsV2Command);
+    const copyCalls = client.calls.filter((call) => call instanceof CopyObjectCommand);
+    const deleteBatchCalls = client.calls.filter((call) => call instanceof DeleteObjectsCommand);
+
+    expect(listCalls).toHaveLength(2);
+    expect(copyCalls).toHaveLength(2);
+    expect(deleteBatchCalls).toHaveLength(1);
+  });
+
+  it('moves a file across buckets in the same source', async () => {
+    const client = new RenameMockS3Client();
+    const service = new S3Service(() => client as never);
+
+    const result = await service.renameItem(
+      {
+        sourcePath: 'my-bucket/folder/report.txt',
+        destinationPath: 'other-bucket/archive',
+      },
+      'tester@example.com'
+    );
+
+    expect(result.destinationPath).toBe('other-bucket/archive/report.txt');
+    expect(result.movedObjects).toBe(1);
+
+    const copyCall = client.calls.find((call) => call instanceof CopyObjectCommand) as
+      | undefined
+      | (unknown & CommandInput);
+    expect(copyCall).toBeTruthy();
+    expect(copyCall?.input.Bucket).toBe('other-bucket');
   });
 });
 
@@ -313,10 +354,12 @@ describe('S3Service updateObjectProperties', () => {
     expect(result.contentLanguage).toBe('en-US');
     expect(result.metadata.environment).toBe('prod');
 
-    const copyCall = client.calls.find((call) => call instanceof CopyObjectCommand) as CommandInput;
+    const copyCall = client.calls.find((call) => call instanceof CopyObjectCommand) as
+      | undefined
+      | (unknown & CommandInput);
     expect(copyCall).toBeTruthy();
-    expect(copyCall.input.MetadataDirective).toBe('REPLACE');
-    expect(copyCall.input.ContentType).toBe('application/json');
+    expect(copyCall?.input.MetadataDirective).toBe('REPLACE');
+    expect(copyCall?.input.ContentType).toBe('application/json');
   });
 });
 

@@ -124,6 +124,28 @@ export const useBrowserController = ({
     };
   };
 
+  const resolveMoveDestinationPath = (sourcePath: string, rawDestinationPath: string): string => {
+    const destinationPath = rawDestinationPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!destinationPath) {
+      return '';
+    }
+
+    const sourceBucketReference = sourcePath.split('/')[0] ?? '';
+    if (!sourceBucketReference) {
+      return destinationPath;
+    }
+
+    if (destinationPath.includes('/')) {
+      return destinationPath;
+    }
+
+    if (destinationPath.includes(':') || destinationPath === sourceBucketReference) {
+      return destinationPath;
+    }
+
+    return `${sourceBucketReference}/${destinationPath}`;
+  };
+
   const isBucketRootPath = (path: string): boolean => {
     return !path.includes('/');
   };
@@ -1182,7 +1204,10 @@ export const useBrowserController = ({
       return;
     }
 
-    const destinationPath = moveModal.destinationPath.trim();
+    const destinationPath = resolveMoveDestinationPath(
+      moveModal.sourcePath,
+      moveModal.destinationPath
+    );
     if (!destinationPath) {
       setModalError('Destination path is required.');
       return;
@@ -1205,8 +1230,9 @@ export const useBrowserController = ({
       }
 
       refreshBrowse();
-    } catch {
-      setModalError('Failed to move item.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message.trim() : '';
+      setModalError(message || 'Failed to move item.');
     }
   };
 
