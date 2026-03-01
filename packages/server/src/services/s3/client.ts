@@ -1,4 +1,6 @@
 import { S3Client } from '@aws-sdk/client-s3';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
+import { Agent as HttpsAgent } from 'node:https';
 import { config } from '@/config';
 
 const clientsBySource = new Map<string, S3Client>();
@@ -74,6 +76,13 @@ export const getS3Client = (sourceId = config.s3.defaultSourceId): S3Client => {
     },
     forcePathStyle: true,
     tls: source.useSsl,
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
+    requestHandler: new NodeHttpHandler({
+      httpsAgent: new HttpsAgent({
+        rejectUnauthorized: source.verifySsl,
+      }),
+    }),
   });
 
   clientsBySource.set(sourceId, client);

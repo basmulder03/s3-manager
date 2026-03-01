@@ -38,6 +38,9 @@ const app = createApp();
 const server = Bun.serve({
   fetch: app.fetch,
   port: config.port,
+  // Keep this high so Bun does not reject large proxy uploads before app middleware runs.
+  // If this limit is exceeded, Bun returns 413 before CORS headers can be added.
+  maxRequestBodySize: 10 * 1024 * 1024 * 1024,
 });
 
 startupLogger.info(

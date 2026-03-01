@@ -6,8 +6,8 @@ import { createContext } from '@/trpc';
 import { config } from '@/config';
 import { getLogger, getTelemetryStatus, telemetryMiddleware } from '@/telemetry';
 import { registerAuthHttpRoutes } from '@/http/auth';
+import { enforceSameOriginForMutation } from '@/http/csrf';
 import { registerUploadHttpRoutes } from '@/http/upload';
-import { getOpenApiDocument, getScalarHtml } from '@/openapi/document';
 
 /**
  * Create and configure Hono application
@@ -16,10 +16,12 @@ export const createApp = () => {
   const app = new Hono();
   const appLogger = getLogger('App');
 
+  const apiCsp = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+
   // Middleware
   app.use('*', telemetryMiddleware());
 
-  // CORS configuration
+  // CORS configuration (must run before CSRF guards so failures still include CORS headers)
   app.use(
     '*',
     cors({
@@ -27,6 +29,29 @@ export const createApp = () => {
       credentials: true,
     })
   );
+
+  app.use('*', async (c, next) => {
+    const csrfFailure = enforceSameOriginForMutation(c);
+    if (csrfFailure) {
+      return csrfFailure;
+    }
+
+    await next();
+  });
+
+  app.use('*', async (c, next) => {
+    await next();
+
+    c.header('X-Content-Type-Options', 'nosniff');
+    c.header('X-Frame-Options', 'DENY');
+    c.header('Referrer-Policy', 'no-referrer');
+    c.header('Permissions-Policy', 'accelerometer=(), camera=(), geolocation=(), microphone=()');
+    c.header('Content-Security-Policy', apiCsp);
+
+    if (config.nodeEnv === 'production') {
+      c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+  });
 
   app.onError((error, c) => {
     appLogger.error(
@@ -68,16 +93,6 @@ export const createApp = () => {
         },
       },
     });
-  });
-
-  app.get('/openapi.json', (c) => {
-    const baseUrl = new URL(c.req.url).origin;
-    return c.json(getOpenApiDocument(baseUrl));
-  });
-
-  app.get('/docs', (c) => {
-    const baseUrl = new URL(c.req.url).origin;
-    return c.html(getScalarHtml(baseUrl));
   });
 
   registerAuthHttpRoutes(app);

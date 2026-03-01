@@ -947,6 +947,7 @@ export class S3Service {
           Bucket: target.bucketName,
           Key: input.objectKey,
           Body: input.body,
+          ...(input.contentLength ? { ContentLength: input.contentLength } : {}),
           ContentType: input.contentType,
           Metadata: metadata,
         })

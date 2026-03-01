@@ -44,12 +44,6 @@ curl http://localhost:3000/health/ready
 # Server info
 curl http://localhost:3000/trpc/health.info
 
-# OpenAPI JSON (auto-generated)
-curl http://localhost:3000/openapi.json
-
-# API reference UI (Scalar)
-# Open in browser: http://localhost:3000/docs
-
 # Auth status
 curl http://localhost:3000/trpc/auth.status
 
@@ -70,8 +64,8 @@ curl -i http://localhost:3000/auth/user
 # Refresh tokens using refresh cookie
 curl -i -X POST http://localhost:3000/auth/refresh
 
-# Logout (revokes access/refresh tokens when revocation endpoint is available)
-curl -i http://localhost:3000/auth/logout
+# Logout (POST; revokes access/refresh tokens when revocation endpoint is available)
+curl -i -X POST "http://localhost:3000/auth/logout?returnTo=%2F"
 
 # S3 buckets
 curl http://localhost:3000/trpc/s3.listBuckets

@@ -1,4 +1,5 @@
 import type { Hono } from 'hono';
+import { Readable } from 'node:stream';
 import { S3Service } from '@/services/s3/service';
 import { resolveAuthUser, resolvePermissions, shouldRequireAuth } from '@/auth/context';
 
@@ -51,7 +52,8 @@ export const registerUploadHttpRoutes = (app: Hono) => {
       {
         bucketName,
         objectKey,
-        body: new Uint8Array(await filePart.arrayBuffer()),
+        body: Readable.fromWeb(filePart.stream() as ReadableStream<Uint8Array>),
+        contentLength: filePart.size,
         contentType: contentType || filePart.type || undefined,
         metadata,
       },

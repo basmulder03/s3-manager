@@ -6,7 +6,7 @@ const getCookieHeader = (setCookieHeaders: string[]): string => {
 };
 
 describe('auth http flow', () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     process.env.SECRET_KEY = 'test-secret';
     process.env.S3_SOURCE_0_ID = 'test';
     process.env.S3_SOURCE_0_ENDPOINT = 'http://localhost:4566';
@@ -24,6 +24,9 @@ describe('auth http flow', () => {
     process.env.KEYCLOAK_CLIENT_ID = 'test-client';
     process.env.KEYCLOAK_CLIENT_SECRET = 'test-secret';
     process.env.KEYCLOAK_SCOPES = 'openid profile email';
+
+    const { resetConfigForTests } = await import('../config');
+    resetConfigForTests();
   });
 
   it('handles login callback refresh and user resolution', async () => {
@@ -155,6 +158,46 @@ describe('auth http flow', () => {
       const refreshSetCookie = refreshResponse.headers.getSetCookie();
       expect(refreshSetCookie.some((entry) => entry.startsWith('s3_access_token='))).toBeTrue();
       expect(refreshSetCookie.some((entry) => entry.startsWith('s3_refresh_token='))).toBeTrue();
+
+      const logoutCsrfResponse = await app.request(
+        'http://localhost:3000/auth/logout?returnTo=%2Fdashboard',
+        {
+          method: 'POST',
+          headers: {
+            cookie: cookieHeader,
+            origin: 'http://evil.example',
+          },
+        }
+      );
+
+      expect(logoutCsrfResponse.status).toBe(403);
+
+      const logoutResponse = await app.request(
+        'http://localhost:3000/auth/logout?returnTo=%2Fdashboard',
+        {
+          method: 'POST',
+          headers: {
+            cookie: cookieHeader,
+            origin: 'http://localhost:5173',
+          },
+        }
+      );
+
+      expect(logoutResponse.status).toBe(200);
+      const logoutJson = await logoutResponse.json();
+      expect(typeof logoutJson.logoutUrl).toBe('string');
+      const providerLogoutUrl = new URL(logoutJson.logoutUrl as string);
+      expect(providerLogoutUrl.pathname).toBe('/realms/test-realm/protocol/openid-connect/logout');
+      expect(providerLogoutUrl.searchParams.get('post_logout_redirect_uri')).toBe(
+        'http://localhost:5173/dashboard'
+      );
+
+      const logoutSetCookie = logoutResponse.headers.getSetCookie();
+      expect(logoutSetCookie.some((entry) => entry.startsWith('s3_access_token='))).toBeTrue();
+      expect(logoutSetCookie.some((entry) => entry.startsWith('s3_refresh_token='))).toBeTrue();
+
+      const logoutGetResponse = await app.request('http://localhost:3000/auth/logout');
+      expect(logoutGetResponse.status).toBe(405);
     } finally {
       oidcServer.stop(true);
     }

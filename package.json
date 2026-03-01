@@ -17,7 +17,6 @@
     "test:server": "bun run --filter server test",
     "test:web": "bun run --filter web test",
     "test:e2e:web": "bun run --filter web test:e2e",
-    "docs:api:check": "bun run --filter server docs:api:check",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"packages/**/*.{ts,tsx,json}\"",
     "typecheck": "bun run --filter server typecheck && bun run --filter web typecheck"
@@ -26,10 +25,14 @@
     "@types/bun": "latest",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
-    "eslint": "^8.56.0",
+    "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",
     "prettier": "^3.2.4",
     "typescript": "^5.3.3"
+  },
+  "overrides": {
+    "minimatch": "^9.0.6",
+    "fast-xml-parser": "^5.3.8"
   },
   "engines": {
     "node": ">=20.0.0",

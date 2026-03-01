@@ -138,7 +138,8 @@ export interface PresignedUploadResult {
 export interface ProxyUploadInput {
   bucketName: string;
   objectKey: string;
-  body: Uint8Array;
+  body: Uint8Array | ReadableStream<Uint8Array> | Readable;
+  contentLength?: number;
   contentType?: string;
   metadata?: Record<string, string>;
 }
@@ -242,3 +243,4 @@ export interface RenameItemResult {
   destinationPath: string;
   movedObjects: number;
 }
+import type { Readable } from 'node:stream';

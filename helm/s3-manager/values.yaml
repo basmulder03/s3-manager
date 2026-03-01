@@ -298,6 +298,13 @@ config:
   # Browser origin for CORS
   webOrigin: 'https://s3-manager.example.com'
 
+  # Trust x-forwarded-for / x-real-ip from ingress for rate-limit keying
+  trustProxyHeaders: true
+
+  # Allow HTTP upstreams / disabled TLS verification in production.
+  # Keep false for hardened deployments.
+  allowInsecureUpstreams: true
+
   # Require authenticated users (recommended in production)
   authRequired: true
 

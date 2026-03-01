@@ -38,6 +38,26 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 
 **Note**: Set to `true` in production when using HTTPS.
 
+#### TRUST_PROXY_HEADERS
+
+**Required**: No  
+**Type**: Boolean  
+**Default**: `false`  
+**Description**: Trust `X-Forwarded-For` and `X-Real-IP` headers when deriving client IP for rate limiting  
+**Example**: `TRUST_PROXY_HEADERS=true`
+
+Enable this only when running behind a trusted reverse proxy/ingress that sanitizes forwarding headers.
+
+#### ALLOW_INSECURE_UPSTREAMS
+
+**Required**: No  
+**Type**: Boolean  
+**Default**: `false`  
+**Description**: Allow non-HTTPS upstreams and disabled TLS verification in production  
+**Example**: `ALLOW_INSECURE_UPSTREAMS=true`
+
+Keep this `false` in production. Set to `true` only for local/dev or controlled transitional environments.
+
 ## Authentication Configuration
 
 ### Microsoft Entra ID (Azure AD)
@@ -150,7 +170,13 @@ kubectl get secret -n rook-ceph rook-ceph-object-user-my-store-my-user \
 **Description**: Verify SSL certificates  
 **Example**: `S3_VERIFY_SSL=false`
 
-Set to `false` for self-signed certificates.
+Set to `false` for self-signed certificates in development only.
+
+In production, when `ALLOW_INSECURE_UPSTREAMS=false`, each S3 source must use:
+
+- `S3_SOURCE_<N>_ENDPOINT=https://...`
+- `S3_SOURCE_<N>_USE_SSL=true`
+- `S3_SOURCE_<N>_VERIFY_SSL=true`
 
 ## Role and Permission Configuration
 

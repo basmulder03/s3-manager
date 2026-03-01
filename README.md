@@ -29,7 +29,6 @@ bun run dev:web
 
 - API: `http://localhost:3000`
 - Web: `http://localhost:5173`
-- API Docs (Scalar): `http://localhost:3000/docs`
 
 ## Commands
 

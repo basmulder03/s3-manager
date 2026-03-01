@@ -28,6 +28,14 @@ const optionalEnv = (value: string | undefined): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+const isHttpsUrl = (value: string): boolean => {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
 type MutableS3Source = {
   id?: string;
   endpoint?: string;
@@ -395,6 +403,14 @@ const configSchema = z.object({
     origin: z.string().url().default('http://localhost:5173'),
   }),
 
+  http: z.object({
+    trustProxyHeaders: booleanString,
+  }),
+
+  security: z.object({
+    allowInsecureUpstreams: booleanString,
+  }),
+
   // Telemetry / Observability Configuration
   telemetry: z.object({
     enabled: trueBooleanString,
@@ -551,6 +567,16 @@ export const loadConfig = (): Config => {
         origin: optionalEnv(process.env.WEB_ORIGIN),
       },
 
+      // HTTP
+      http: {
+        trustProxyHeaders: process.env.TRUST_PROXY_HEADERS,
+      },
+
+      // Security
+      security: {
+        allowInsecureUpstreams: process.env.ALLOW_INSECURE_UPSTREAMS,
+      },
+
       // Telemetry
       telemetry: {
         enabled: process.env.OTEL_ENABLED,
@@ -594,6 +620,9 @@ export const loadConfig = (): Config => {
       if (!config.session.cookieSecure) {
         console.warn('[WARN] SESSION_COOKIE_SECURE should be true in production');
       }
+      if (!config.http.trustProxyHeaders) {
+        console.warn('[WARN] TRUST_PROXY_HEADERS is false; rate limits will not use client IPs');
+      }
       if (config.session.cookieSameSite === 'None' && !config.session.cookieSecure) {
         throw new Error('SESSION_COOKIE_SECURE must be true when SESSION_COOKIE_SAME_SITE=None');
       }
@@ -605,6 +634,42 @@ export const loadConfig = (): Config => {
       }
       if (!config.auth.required) {
         throw new Error('AUTH_REQUIRED must be true in production');
+      }
+
+      if (config.security.allowInsecureUpstreams) {
+        console.warn(
+          '[WARN] ALLOW_INSECURE_UPSTREAMS=true: HTTP upstreams and relaxed TLS verification are allowed in production'
+        );
+      } else {
+        const insecureDetails: string[] = [];
+
+        if (config.oidcProvider === 'keycloak' && !isHttpsUrl(config.keycloak.serverUrl)) {
+          insecureDetails.push('KEYCLOAK_SERVER_URL must use https://');
+        }
+
+        if (config.auth.issuer && !isHttpsUrl(config.auth.issuer)) {
+          insecureDetails.push('AUTH_ISSUER must use https://');
+        }
+
+        for (const source of config.s3.sources) {
+          if (!isHttpsUrl(source.endpoint)) {
+            insecureDetails.push(`S3 source '${source.id}' endpoint must use https://`);
+          }
+
+          if (!source.useSsl) {
+            insecureDetails.push(`S3 source '${source.id}' must set USE_SSL=true`);
+          }
+
+          if (!source.verifySsl) {
+            insecureDetails.push(`S3 source '${source.id}' must set VERIFY_SSL=true`);
+          }
+        }
+
+        if (insecureDetails.length > 0) {
+          throw new Error(
+            `Insecure upstream configuration is not allowed in production: ${insecureDetails.join('; ')}`
+          );
+        }
       }
     }
 

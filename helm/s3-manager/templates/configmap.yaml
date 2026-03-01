@@ -9,6 +9,8 @@ data:
   NODE_ENV: "production"
   LOCAL_DEV_MODE: {{ .Values.config.localDevMode | default false | quote }}
   WEB_ORIGIN: {{ .Values.config.webOrigin | quote }}
+  TRUST_PROXY_HEADERS: {{ .Values.config.trustProxyHeaders | default false | quote }}
+  ALLOW_INSECURE_UPSTREAMS: {{ .Values.config.allowInsecureUpstreams | default false | quote }}
   OIDC_PROVIDER: {{ .Values.config.oidcProvider | quote }}
   AUTH_REQUIRED: {{ .Values.config.authRequired | quote }}
   DEFAULT_ROLE: {{ .Values.config.defaultRole | quote }}

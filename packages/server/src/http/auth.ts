@@ -16,6 +16,7 @@ import {
   revokeToken,
 } from '@/auth/oidc';
 import { createAuthState, consumeAuthState } from '@/auth/state';
+import { enforceSameOriginForMutation } from '@/http/csrf';
 import {
   deactivateElevation,
   getElevationRequestStatus,
@@ -36,40 +37,24 @@ const cookieBaseOptions = {
 const callbackPath = config.oidcRedirectPath.startsWith('/')
   ? config.oidcRedirectPath
   : `/${config.oidcRedirectPath}`;
-const elevationRateLimit = new Map<string, number[]>();
-
+const elevationRateLimit = new Map<string, { timestamps: number[]; lastSeenAt: number }>();
 const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, '');
 
-const sameOrigin = (rawOriginOrReferer: string | null): boolean => {
-  if (!rawOriginOrReferer) {
-    return true;
+const pruneElevationRateLimit = (now: number): void => {
+  const staleAfterMs = Math.max(config.pim.rateLimitWindowMs * 3, 5 * 60 * 1000);
+
+  for (const [key, entry] of elevationRateLimit.entries()) {
+    if (now - entry.lastSeenAt > staleAfterMs) {
+      elevationRateLimit.delete(key);
+    }
   }
-
-  try {
-    const trustedOrigin = trimTrailingSlash(config.web.origin);
-    const parsed = new URL(rawOriginOrReferer);
-    return trimTrailingSlash(parsed.origin) === trustedOrigin;
-  } catch {
-    return false;
-  }
-};
-
-const enforceSameOriginForMutation = (c: Context): Response | null => {
-  const origin = c.req.header('origin') ?? null;
-  const referer = c.req.header('referer') ?? null;
-
-  if (origin && !sameOrigin(origin)) {
-    return c.json({ error: 'Blocked by CSRF protection' }, 403);
-  }
-
-  if (!origin && referer && !sameOrigin(referer)) {
-    return c.json({ error: 'Blocked by CSRF protection' }, 403);
-  }
-
-  return null;
 };
 
 const resolveClientIp = (c: Context): string => {
+  if (!config.http.trustProxyHeaders) {
+    return 'unknown';
+  }
+
   const forwarded = c.req.header('x-forwarded-for');
   if (forwarded) {
     const first = forwarded
@@ -91,9 +76,11 @@ const resolveClientIp = (c: Context): string => {
 
 const enforceElevationRateLimit = (c: Context, userId: string, route: string): Response | null => {
   const now = Date.now();
+  pruneElevationRateLimit(now);
+
   const clientIp = resolveClientIp(c);
   const key = `${route}:${userId}:${clientIp}`;
-  const existing = elevationRateLimit.get(key) ?? [];
+  const existing = elevationRateLimit.get(key)?.timestamps ?? [];
   const recent = existing.filter((timestamp) => now - timestamp <= config.pim.rateLimitWindowMs);
 
   if (recent.length >= config.pim.rateLimitMaxRequests) {
@@ -109,7 +96,10 @@ const enforceElevationRateLimit = (c: Context, userId: string, route: string): R
   }
 
   recent.push(now);
-  elevationRateLimit.set(key, recent);
+  elevationRateLimit.set(key, {
+    timestamps: recent,
+    lastSeenAt: now,
+  });
 
   return null;
 };
@@ -238,6 +228,15 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
   });
 
   app.get('/auth/logout', async (c) => {
+    return c.json(
+      {
+        error: 'Use POST /auth/logout',
+      },
+      405
+    );
+  });
+
+  app.post('/auth/logout', async (c) => {
     const returnTo = resolveReturnTo(c.req.query('returnTo'));
     const accessToken = getCookie(c, ACCESS_TOKEN_COOKIE);
     const refreshToken = getCookie(c, REFRESH_TOKEN_COOKIE);
@@ -245,7 +244,9 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
 
     if (config.localDevMode) {
       clearAuthCookies(c);
-      return c.redirect(returnTo);
+      return c.json({
+        logoutUrl: returnTo,
+      });
     }
 
     try {
@@ -270,15 +271,15 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
 
       clearAuthCookies(c);
 
-      if (logoutUrl) {
-        return c.redirect(logoutUrl);
-      }
-
-      return c.redirect(returnTo);
+      return c.json({
+        logoutUrl: logoutUrl || returnTo,
+      });
     } catch (error) {
       authLogger().warn({ err: error }, 'Failed to build provider logout URL, using local logout');
       clearAuthCookies(c);
-      return c.redirect(returnTo);
+      return c.json({
+        logoutUrl: returnTo,
+      });
     }
   });
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AuthActions } from '@web/components/AuthActions';
 
 afterEach(() => {
@@ -31,12 +31,30 @@ describe('AuthActions', () => {
     expect(navigateTo).toHaveBeenCalledWith('http://localhost:3000/auth/login?returnTo=%2F');
   });
 
-  it('navigates to logout endpoint when logout is clicked', () => {
+  it('requests logout URL and navigates when logout is clicked', async () => {
     const navigateTo = vi.fn();
+    const logoutRequest = vi.fn(async () => 'http://localhost:3000/provider-logout');
 
-    render(<AuthActions authenticated navigateTo={navigateTo} />);
+    render(<AuthActions authenticated navigateTo={navigateTo} logoutRequest={logoutRequest} />);
     fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
 
-    expect(navigateTo).toHaveBeenCalledWith('http://localhost:3000/auth/logout?returnTo=%2F');
+    await waitFor(() => {
+      expect(logoutRequest).toHaveBeenCalledWith('http://localhost:3000/auth/logout?returnTo=%2F');
+      expect(navigateTo).toHaveBeenCalledWith('http://localhost:3000/provider-logout');
+    });
+  });
+
+  it('falls back to current path when logout request fails', async () => {
+    const navigateTo = vi.fn();
+    const logoutRequest = vi.fn(async () => {
+      throw new Error('failed');
+    });
+
+    render(<AuthActions authenticated navigateTo={navigateTo} logoutRequest={logoutRequest} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
+
+    await waitFor(() => {
+      expect(navigateTo).toHaveBeenCalledWith('/');
+    });
   });
 });
