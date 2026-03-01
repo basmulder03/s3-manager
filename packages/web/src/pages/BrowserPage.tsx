@@ -35,6 +35,8 @@ interface BrowseData {
 interface BrowserPageProps {
   selectedPath: string;
   setSelectedPath: (path: string) => void;
+  filterQuery: string;
+  setFilterQuery: (query: string) => void;
   knownBucketNames: string[];
   breadcrumbValidationMessage?: string;
   canWrite: boolean;
@@ -543,6 +545,8 @@ const doesStringMatch = (actual: string, expected: string, operator: QueryOperat
 export const BrowserPage = ({
   selectedPath,
   setSelectedPath,
+  filterQuery,
+  setFilterQuery,
   knownBucketNames,
   breadcrumbValidationMessage,
   canWrite,
@@ -586,9 +590,9 @@ export const BrowserPage = ({
   const [cachedDirectoryHintPaths, setCachedDirectoryHintPaths] = useState<string[]>(
     resolveInitialBreadcrumbHintPaths
   );
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(() => filterQuery.trim().length > 0);
   const [isFilterHelpModalOpenInternal, setIsFilterHelpModalOpenInternal] = useState(false);
-  const [filterQuery, setFilterQuery] = useState('');
+  const [filterDraftQuery, setFilterDraftQuery] = useState(filterQuery);
   const [activeBreadcrumbHintIndex, setActiveBreadcrumbHintIndex] = useState(-1);
   const [isShortcutsModalOpenInternal, setIsShortcutsModalOpenInternal] = useState(false);
   const [isOverviewFieldsMenuOpen, setIsOverviewFieldsMenuOpen] = useState(false);
@@ -799,6 +803,27 @@ export const BrowserPage = ({
 
     filterInputRef.current?.focus();
   }, [isFilterOpen]);
+
+  useEffect(() => {
+    setFilterDraftQuery(filterQuery);
+    if (filterQuery.trim().length > 0) {
+      setIsFilterOpen(true);
+    }
+  }, [filterQuery]);
+
+  useEffect(() => {
+    if (filterDraftQuery === filterQuery) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setFilterQuery(filterDraftQuery);
+    }, 320);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [filterDraftQuery, filterQuery, setFilterQuery]);
 
   const breadcrumbSegments = useMemo(() => {
     const normalized = selectedPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
@@ -1667,6 +1692,7 @@ export const BrowserPage = ({
   };
 
   const closeFilter = () => {
+    setFilterDraftQuery('');
     setFilterQuery('');
     setIsFilterOpen(false);
   };
@@ -2236,8 +2262,8 @@ export const BrowserPage = ({
                   <Input
                     ref={filterInputRef}
                     className={styles.tableFilterInput}
-                    value={filterQuery}
-                    onChange={(event) => setFilterQuery(event.target.value)}
+                    value={filterDraftQuery}
+                    onChange={(event) => setFilterDraftQuery(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === 'Escape') {
                         closeFilter();

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useState } from 'react';
 import type { BrowseItem, ObjectPropertiesResult } from '@server/services/s3/types';
 import { BrowserPage } from '@web/pages/BrowserPage';
 
@@ -38,6 +39,8 @@ const createProps = () => {
     props: {
       selectedPath: 'my-bucket/folder',
       setSelectedPath,
+      filterQuery: '',
+      setFilterQuery: vi.fn(),
       knownBucketNames: ['my-bucket', 'archive-bucket'],
       breadcrumbValidationMessage: undefined,
       canWrite: true,
@@ -49,7 +52,7 @@ const createProps = () => {
             { name: 'my-bucket', path: 'my-bucket' },
             { name: 'folder', path: 'my-bucket/folder' },
           ],
-          items: [],
+          items: [] as BrowseItem[],
         },
         isLoading: false,
         isError: false,
@@ -82,6 +85,15 @@ const createProps = () => {
       onEditFile: vi.fn(async () => {}),
     },
   };
+};
+
+const renderWithFilterState = (props: ReturnType<typeof createProps>['props']) => {
+  const ControlledBrowserPage = () => {
+    const [filterQuery, setFilterQuery] = useState(props.filterQuery);
+    return <BrowserPage {...props} filterQuery={filterQuery} setFilterQuery={setFilterQuery} />;
+  };
+
+  return render(<ControlledBrowserPage />);
 };
 
 beforeEach(() => {
@@ -577,7 +589,7 @@ describe('BrowserPage sorting and filtering', () => {
     expect(rows[2]).toHaveTextContent('file10.txt');
   });
 
-  it('filters visible files and folders by query', () => {
+  it('filters visible files and folders by query', async () => {
     const { props } = createProps();
     const items: BrowseItem[] = [
       {
@@ -603,13 +615,11 @@ describe('BrowserPage sorting and filtering', () => {
       },
     ];
 
-    render(
-      <BrowserPage
-        {...props}
-        selectedPath=""
-        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
-      />
-    );
+    renderWithFilterState({
+      ...props,
+      selectedPath: '',
+      browse: { ...props.browse, data: { ...props.browse.data!, items } },
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Open filter' }));
 
@@ -617,9 +627,11 @@ describe('BrowserPage sorting and filtering', () => {
       target: { value: 'invoice-2' },
     });
 
-    expect(screen.getByText('invoice-2.pdf')).toBeInTheDocument();
-    expect(screen.queryByText('invoice-1.pdf')).not.toBeInTheDocument();
-    expect(screen.queryByText('photos')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('invoice-2.pdf')).toBeInTheDocument();
+      expect(screen.queryByText('invoice-1.pdf')).not.toBeInTheDocument();
+      expect(screen.queryByText('photos')).not.toBeInTheDocument();
+    });
   });
 
   it('supports advanced metadata filter queries in the filter input', async () => {
@@ -654,13 +666,11 @@ describe('BrowserPage sorting and filtering', () => {
       })
     );
 
-    render(
-      <BrowserPage
-        {...props}
-        selectedPath=""
-        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
-      />
-    );
+    renderWithFilterState({
+      ...props,
+      selectedPath: '',
+      browse: { ...props.browse, data: { ...props.browse.data!, items } },
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Open filter' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Filter files and folders' }), {
@@ -673,7 +683,7 @@ describe('BrowserPage sorting and filtering', () => {
     });
   });
 
-  it('supports advanced numeric comparisons in the filter input', () => {
+  it('supports advanced numeric comparisons in the filter input', async () => {
     const { props } = createProps();
     const items: BrowseItem[] = [
       {
@@ -692,21 +702,21 @@ describe('BrowserPage sorting and filtering', () => {
       },
     ];
 
-    render(
-      <BrowserPage
-        {...props}
-        selectedPath=""
-        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
-      />
-    );
+    renderWithFilterState({
+      ...props,
+      selectedPath: '',
+      browse: { ...props.browse, data: { ...props.browse.data!, items } },
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Open filter' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Filter files and folders' }), {
       target: { value: 'size>=1mb' },
     });
 
-    expect(screen.queryByText('small.bin')).not.toBeInTheDocument();
-    expect(screen.getByText('large.bin')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('small.bin')).not.toBeInTheDocument();
+      expect(screen.getByText('large.bin')).toBeInTheDocument();
+    });
   });
 
   it('renders filter query help modal when opened from header controls', () => {

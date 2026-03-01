@@ -66,6 +66,11 @@ export const App = () => {
     return params.get('mode') === 'edit' ? 'edit' : 'view';
   }, [location.search]);
 
+  const filterQuery = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('filter') ?? '';
+  }, [location.search]);
+
   const setSelectedPath = useCallback(
     (nextPath: string) => {
       const normalized = normalizeVirtualPath(nextPath);
@@ -327,6 +332,29 @@ export const App = () => {
     }
   }, [location.pathname, location.search, navigate]);
 
+  const setFilterQuery = useCallback(
+    (nextQuery: string) => {
+      const params = new URLSearchParams(location.search);
+
+      if (nextQuery.trim().length > 0) {
+        params.set('filter', nextQuery);
+      } else {
+        params.delete('filter');
+      }
+
+      const nextSearch = params.toString();
+      const nextUrl = nextSearch.length > 0 ? `/?${nextSearch}` : '/';
+      const currentUrl = `${location.pathname}${location.search}`;
+
+      if (nextUrl === currentUrl) {
+        return;
+      }
+
+      navigate(nextUrl, { replace: true });
+    },
+    [location.pathname, location.search, navigate]
+  );
+
   const hasUnsavedPreviewChanges =
     browser.filePreviewModal?.mode === 'text' &&
     browser.filePreviewModal.editable &&
@@ -475,6 +503,8 @@ export const App = () => {
                   <BrowserPage
                     selectedPath={selectedPath}
                     setSelectedPath={setSelectedPath}
+                    filterQuery={filterQuery}
+                    setFilterQuery={setFilterQuery}
                     knownBucketNames={knownBucketNames}
                     breadcrumbValidationMessage={breadcrumbValidationMessage}
                     canWrite={canWrite}
