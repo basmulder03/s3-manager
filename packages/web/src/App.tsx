@@ -374,9 +374,16 @@ export const App = () => {
         return;
       }
 
+      const opened = await browser.openFilePreview(action.path, action.mode);
+      if (!opened) {
+        return;
+      }
+
+      const previewKey = `${action.path}|${action.mode}`;
+      lastOpenedPreviewKeyRef.current = previewKey;
       setOpenedFileInUrl(action.path, action.mode);
     },
-    [clearOpenedFileInUrl, setOpenedFileInUrl]
+    [browser, clearOpenedFileInUrl, setOpenedFileInUrl]
   );
 
   const runPreviewAction = useCallback(
@@ -443,7 +450,6 @@ export const App = () => {
       }
 
       clearOpenedFileInUrl();
-      lastOpenedPreviewKeyRef.current = '';
     });
   }, [
     browser,

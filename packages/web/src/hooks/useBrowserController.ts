@@ -1230,9 +1230,8 @@ export const useBrowserController = ({
       }
 
       setFilePreviewModal(null);
-      window.open(metadata.downloadUrl, '_blank', 'noopener,noreferrer');
       enqueueSnackbar({
-        message: 'Preview is not available for this file type. Download link opened.',
+        message: 'Preview is not available for this file type. Use Download to access the file.',
         tone: 'info',
       });
       return false;
