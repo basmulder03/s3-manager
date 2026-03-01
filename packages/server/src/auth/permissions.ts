@@ -1,5 +1,6 @@
 import type { Permission } from '@/trpc';
 import { config } from '@/config';
+import type { ElevationSource } from '@/auth/types';
 
 const VALID_PERMISSIONS: Permission[] = ['view', 'write', 'delete', 'manage_properties'];
 
@@ -17,11 +18,14 @@ const isProviderMatch = (entitlementProvider: 'azure' | 'google'): boolean => {
   return config.oidcProvider === 'google';
 };
 
-export const mapRolesAndGroupIdsToPermissions = (
-  roles: string[],
-  groupIds: string[] = []
-): Permission[] => {
+interface PermissionResolution {
+  permissions: Permission[];
+  elevationSources: ElevationSource[];
+}
+
+const resolvePermissionState = (roles: string[], groupIds: string[] = []): PermissionResolution => {
   const permissions: Permission[] = [];
+  const elevationSources: ElevationSource[] = [];
 
   for (const role of roles) {
     const mapped = config.rolePermissions[role] ?? [];
@@ -44,6 +48,13 @@ export const mapRolesAndGroupIdsToPermissions = (
         continue;
       }
 
+      elevationSources.push({
+        entitlementKey: entitlement.key,
+        provider: entitlement.provider,
+        target: entitlement.target,
+        permissions: entitlement.permissions,
+      });
+
       for (const permission of entitlement.permissions) {
         if (VALID_PERMISSIONS.includes(permission)) {
           permissions.push(permission);
@@ -61,7 +72,24 @@ export const mapRolesAndGroupIdsToPermissions = (
     }
   }
 
-  return dedupePermissions(permissions);
+  return {
+    permissions: dedupePermissions(permissions),
+    elevationSources,
+  };
+};
+
+export const mapRolesAndGroupIdsToPermissions = (
+  roles: string[],
+  groupIds: string[] = []
+): Permission[] => {
+  return resolvePermissionState(roles, groupIds).permissions;
+};
+
+export const resolveElevationSources = (
+  roles: string[],
+  groupIds: string[] = []
+): ElevationSource[] => {
+  return resolvePermissionState(roles, groupIds).elevationSources;
 };
 
 export const mapRolesToPermissions = (roles: string[]): Permission[] => {

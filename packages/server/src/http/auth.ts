@@ -226,6 +226,7 @@ export const registerAuthHttpRoutes = (app: Hono): void => {
         name: user.name,
         roles: user.roles,
         permissions: user.permissions,
+        elevationSources: user.elevationSources,
         provider: user.provider,
       },
     });

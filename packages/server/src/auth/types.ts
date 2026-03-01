@@ -1,11 +1,19 @@
 import type { Permission } from '@/trpc';
 
+export interface ElevationSource {
+  entitlementKey: string;
+  provider: 'azure' | 'google';
+  target: string;
+  permissions: Permission[];
+}
+
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
   roles: string[];
   permissions: Permission[];
+  elevationSources: ElevationSource[];
   provider: string;
   token: string;
 }

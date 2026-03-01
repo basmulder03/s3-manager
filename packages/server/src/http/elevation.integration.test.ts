@@ -145,6 +145,8 @@ describe('auth elevation endpoints', () => {
       expect(userResponse.status).toBe(200);
       const userJson = await userResponse.json();
       expect(userJson.user.permissions).toContain('manage_properties');
+      expect(userJson.user.elevationSources).toHaveLength(1);
+      expect(userJson.user.elevationSources[0].entitlementKey).toBe('property-admin-temp');
 
       const requestResponse = await app.request('http://localhost:3000/auth/elevation/request', {
         method: 'POST',

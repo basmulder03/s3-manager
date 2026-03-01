@@ -2,7 +2,11 @@ import type { Permission } from '@/trpc';
 import { config } from '@/config';
 import { getLogger } from '@/telemetry';
 import { safeVerifyAccessToken } from '@/auth/jwt';
-import { localDevPermissions, mapRolesAndGroupIdsToPermissions } from '@/auth/permissions';
+import {
+  localDevPermissions,
+  mapRolesAndGroupIdsToPermissions,
+  resolveElevationSources,
+} from '@/auth/permissions';
 import { providerName } from '@/auth/provider';
 import type { AuthUser } from '@/auth/types';
 
@@ -61,6 +65,7 @@ const localDevUser = (): AuthUser => {
     name: 'Local Developer',
     roles: [role],
     permissions,
+    elevationSources: [],
     provider: 'local-dev',
     token: 'local-dev-token',
   };
@@ -85,6 +90,7 @@ export const resolveAuthUser = async (req: Request): Promise<AuthUser | null> =>
   }
 
   const permissions = mapRolesAndGroupIdsToPermissions(verified.roles, verified.groups);
+  const elevationSources = resolveElevationSources(verified.roles, verified.groups);
 
   return {
     id: verified.subject,
@@ -92,6 +98,7 @@ export const resolveAuthUser = async (req: Request): Promise<AuthUser | null> =>
     name: verified.name,
     roles: verified.roles,
     permissions,
+    elevationSources,
     provider: providerName(),
     token,
   };
@@ -150,6 +157,7 @@ export const logAuthResolution = (user: AuthUser | null): void => {
       email: user.email,
       roles: user.roles,
       permissions: user.permissions,
+      elevationSources: user.elevationSources,
       provider: user.provider,
     },
     'Authenticated user resolved for request context'

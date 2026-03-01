@@ -57,6 +57,7 @@ describe('tRPC auth boundaries', () => {
         name: 'Viewer',
         roles: ['S3-Viewer'],
         permissions: ['view'],
+        elevationSources: [],
         provider: 'keycloak',
         token: 'token',
       },
@@ -74,6 +75,35 @@ describe('tRPC auth boundaries', () => {
     }
   });
 
+  it('includes elevation sources in auth.me response', async () => {
+    const caller = appRouter.createCaller({
+      req: new Request('http://localhost:3000/trpc/auth.me'),
+      actor: 'viewer@example.com',
+      user: {
+        id: 'user-3',
+        email: 'viewer@example.com',
+        name: 'Viewer',
+        roles: ['S3-Viewer'],
+        permissions: ['view', 'manage_properties'],
+        elevationSources: [
+          {
+            entitlementKey: 'property-admin-temp',
+            provider: 'azure',
+            target: 'group-123',
+            permissions: ['manage_properties'],
+          },
+        ],
+        provider: 'azure',
+        token: 'token',
+      },
+      permissions: ['view', 'manage_properties'],
+    } as Context);
+
+    const me = await caller.auth.me({});
+    expect(me.elevationSources).toHaveLength(1);
+    expect(me.elevationSources[0].entitlementKey).toBe('property-admin-temp');
+  });
+
   it('returns FORBIDDEN when user lacks write permission for text edits', async () => {
     const caller = appRouter.createCaller({
       req: new Request('http://localhost:3000/trpc/s3.updateObjectTextContent'),
@@ -84,6 +114,7 @@ describe('tRPC auth boundaries', () => {
         name: 'Viewer',
         roles: ['S3-Viewer'],
         permissions: ['view'],
+        elevationSources: [],
         provider: 'keycloak',
         token: 'token',
       },
@@ -111,6 +142,7 @@ describe('tRPC auth boundaries', () => {
         name: 'Editor',
         roles: ['S3-Editor'],
         permissions: ['view', 'write'],
+        elevationSources: [],
         provider: 'keycloak',
         token: 'token',
       },

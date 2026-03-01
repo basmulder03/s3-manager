@@ -17,14 +17,14 @@ export const authRouter = router({
     .input(z.object({}))
     .output(z.any())
     .query(({ ctx }) => {
-    return {
-      authenticated: ctx.user !== null,
-      authRequired: config.auth.required,
-      localDevMode: config.localDevMode,
-      provider: providerName(),
-      issuer: resolveIssuer() ?? null,
-      audience: resolveAudience() ?? null,
-    };
+      return {
+        authenticated: ctx.user !== null,
+        authRequired: config.auth.required,
+        localDevMode: config.localDevMode,
+        provider: providerName(),
+        issuer: resolveIssuer() ?? null,
+        audience: resolveAudience() ?? null,
+      };
     }),
 
   me: protectedProcedure
@@ -40,16 +40,17 @@ export const authRouter = router({
     .input(z.object({}))
     .output(z.any())
     .query(({ ctx }) => {
-    const user = ctx.user!;
+      const user = ctx.user!;
 
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      roles: user.roles,
-      permissions: user.permissions,
-      provider: user.provider,
-    };
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        roles: user.roles,
+        permissions: user.permissions,
+        elevationSources: user.elevationSources,
+        provider: user.provider,
+      };
     }),
 
   introspect: protectedProcedure
@@ -65,26 +66,26 @@ export const authRouter = router({
     .input(z.object({}))
     .output(z.any())
     .query(async ({ ctx }) => {
-    const user = ctx.user!;
+      const user = ctx.user!;
 
-    const introspection = await introspectToken({
-      token: user.token,
-    });
+      const introspection = await introspectToken({
+        token: user.token,
+      });
 
-    if (!introspection) {
+      if (!introspection) {
+        return {
+          supported: false,
+          active: true,
+          provider: user.provider,
+        };
+      }
+
       return {
-        supported: false,
-        active: true,
+        supported: true,
+        active: introspection.active,
         provider: user.provider,
+        details: introspection,
       };
-    }
-
-    return {
-      supported: true,
-      active: introspection.active,
-      provider: user.provider,
-      details: introspection,
-    };
     }),
 
   authorizeHeaderExample: publicProcedure
