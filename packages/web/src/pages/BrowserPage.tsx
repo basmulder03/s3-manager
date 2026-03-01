@@ -3313,8 +3313,8 @@ export const BrowserPage = ({
             <div className={styles.breadcrumbField}>
               <div
                 className={`${styles.breadcrumbTrail} ${
-                  breadcrumbValidationMessage ? styles.breadcrumbTrailInvalid : ''
-                }`.trim()}
+                  isBrowseRefreshing ? styles.breadcrumbTrailRefreshing : ''
+                } ${breadcrumbValidationMessage ? styles.breadcrumbTrailInvalid : ''}`.trim()}
                 data-testid="breadcrumb-trail"
                 onDoubleClick={() => setIsBreadcrumbEditing(true)}
                 onClick={(event) => {
@@ -3731,7 +3731,9 @@ export const BrowserPage = ({
         </div>
       </div>
 
-      {browse.isLoading ? <p className={styles.state}>Loading objects...</p> : null}
+      {browse.isLoading ? (
+        <p className={`${styles.state} ${styles.loadingState}`}>Loading objects...</p>
+      ) : null}
       {browse.isError ? (
         <p className={`${styles.state} ${styles.stateError}`}>Failed to load S3 path data.</p>
       ) : null}

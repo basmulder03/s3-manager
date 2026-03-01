@@ -268,7 +268,9 @@ export const FileModals = ({
           <div className={styles.modalCard} ref={activeModalRef}>
             <h3 id="properties-modal-title">File Properties</h3>
             <p id="properties-modal-description">Path: {propertiesModal.path}</p>
-            {propertiesModal.loading ? <p className={styles.state}>Loading properties...</p> : null}
+            {propertiesModal.loading ? (
+              <p className={`${styles.state} ${styles.loadingState}`}>Loading properties...</p>
+            ) : null}
             {propertiesModal.error ? (
               <p className={`${styles.state} ${styles.stateError}`}>{propertiesModal.error}</p>
             ) : null}
@@ -527,7 +529,9 @@ export const FileModals = ({
             </h3>
             <p id="preview-modal-description">Path: {filePreviewModal.path}</p>
 
-            {filePreviewModal.loading ? <p className={styles.state}>Loading file...</p> : null}
+            {filePreviewModal.loading ? (
+              <p className={`${styles.state} ${styles.loadingState}`}>Loading file...</p>
+            ) : null}
             {filePreviewModal.error ? (
               <p className={`${styles.state} ${styles.stateError}`}>{filePreviewModal.error}</p>
             ) : null}

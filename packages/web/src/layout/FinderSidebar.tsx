@@ -388,7 +388,9 @@ export const FinderSidebar = ({
           >
             <h3>{t('sidebar.modal.title')}</h3>
             {entitlementsLoading ? (
-              <p className={styles.state}>{t('sidebar.modal.loading')}</p>
+              <p className={`${styles.state} ${styles.loadingState}`}>
+                {t('sidebar.modal.loading')}
+              </p>
             ) : (
               <div className={styles.elevationCard}>
                 <label className={styles.elevationLabel} htmlFor="elevation-entitlement-select">
