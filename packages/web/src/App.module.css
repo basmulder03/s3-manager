@@ -55,6 +55,18 @@
   stroke-width: 2;
 }
 
+.languageSelect {
+  height: 2rem;
+  min-width: 7.4rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0 0.45rem;
+}
+
 .hero h1 {
   margin: 0.28rem 0;
   font-size: clamp(1.2rem, 1.6vw, 1.6rem);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { API_ORIGIN } from '@web/trpc/client';
 import { Button } from '@web/components/ui';
+import { useI18n } from '@web/i18n';
 import styles from '@web/App.module.css';
 
 interface FinderSidebarProps {
@@ -51,6 +52,7 @@ export const FinderSidebar = ({
   onElevationGranted,
   onElevationRevoked,
 }: FinderSidebarProps) => {
+  const { locale, t } = useI18n();
   const [entitlements, setEntitlements] = useState<ElevationEntitlement[]>([]);
   const [entitlementsLoading, setEntitlementsLoading] = useState(false);
   const [temporaryAccessSupported, setTemporaryAccessSupported] = useState(true);
@@ -287,26 +289,26 @@ export const FinderSidebar = ({
   };
 
   return (
-    <aside className={styles.finderSidebar} aria-label="Workspace sidebar">
+    <aside className={styles.finderSidebar} aria-label={t('sidebar.aria')}>
       <section>
-        <p className={styles.finderSidebarTitle}>Session</p>
+        <p className={styles.finderSidebarTitle}>{t('sidebar.section.session')}</p>
         <div className={styles.finderMeta}>
-          <span>Provider</span>
+          <span>{t('sidebar.provider')}</span>
           <strong>{provider ?? '-'}</strong>
         </div>
-        {showMockBadge ? <p className={styles.devMockBadge}>Mock authz mode</p> : null}
+        {showMockBadge ? <p className={styles.devMockBadge}>{t('sidebar.mockMode')}</p> : null}
         <div className={styles.finderMeta}>
-          <span>User</span>
-          <strong>{userEmail ?? 'Not signed in'}</strong>
+          <span>{t('sidebar.user')}</span>
+          <strong>{userEmail ?? t('sidebar.notSignedIn')}</strong>
         </div>
         <div className={styles.finderMeta}>
-          <span>Path</span>
+          <span>{t('sidebar.path')}</span>
           <strong>{selectedPath || '/'}</strong>
         </div>
         <div className={styles.finderMeta}>
-          <span>Active Elevation</span>
+          <span>{t('sidebar.activeElevation')}</span>
           {elevationSources.length === 0 ? (
-            <strong>none</strong>
+            <strong>{t('sidebar.none')}</strong>
           ) : (
             <div className={styles.elevationSourceList}>
               {elevationSources.map((source) => (
@@ -318,9 +320,13 @@ export const FinderSidebar = ({
                   <span>
                     {source.provider} · {source.target}
                   </span>
-                  <span>grants: {source.permissions.join(', ')}</span>
+                  <span>{t('sidebar.grants', { permissions: source.permissions.join(', ') })}</span>
                   {source.expiresAt ? (
-                    <span>expires: {new Date(source.expiresAt).toLocaleString()}</span>
+                    <span>
+                      {t('sidebar.expires', {
+                        value: new Date(source.expiresAt).toLocaleString(locale),
+                      })}
+                    </span>
                   ) : null}
                   <Button
                     variant="muted"
@@ -331,8 +337,8 @@ export const FinderSidebar = ({
                     }}
                   >
                     {isRevokingEntitlementKey === source.entitlementKey
-                      ? 'Turning off...'
-                      : 'Turn off'}
+                      ? t('sidebar.turningOff')
+                      : t('sidebar.turnOff')}
                   </Button>
                 </p>
               ))}
@@ -345,13 +351,13 @@ export const FinderSidebar = ({
             className={styles.requestAccessButton}
             onClick={() => setIsElevationModalOpen(true)}
           >
-            Request Temporary Access
+            {t('sidebar.requestAccess')}
           </Button>
         ) : null}
       </section>
 
       <section>
-        <p className={styles.finderSidebarTitle}>Permissions</p>
+        <p className={styles.finderSidebarTitle}>{t('sidebar.section.permissions')}</p>
         <div className={styles.permissionChips}>
           {permissions.length > 0 ? (
             permissions.map((permission) => (
@@ -360,7 +366,9 @@ export const FinderSidebar = ({
               </span>
             ))
           ) : (
-            <span className={`${styles.permissionChip} ${styles.permissionChipEmpty}`}>none</span>
+            <span className={`${styles.permissionChip} ${styles.permissionChipEmpty}`}>
+              {t('sidebar.none')}
+            </span>
           )}
         </div>
       </section>
@@ -375,16 +383,16 @@ export const FinderSidebar = ({
             className={styles.modalCard}
             role="dialog"
             aria-modal="true"
-            aria-label="Request temporary access"
+            aria-label={t('sidebar.modal.aria')}
             onClick={(event) => event.stopPropagation()}
           >
-            <h3>Request Temporary Access</h3>
+            <h3>{t('sidebar.modal.title')}</h3>
             {entitlementsLoading ? (
-              <p className={styles.state}>Loading entitlements...</p>
+              <p className={styles.state}>{t('sidebar.modal.loading')}</p>
             ) : (
               <div className={styles.elevationCard}>
                 <label className={styles.elevationLabel} htmlFor="elevation-entitlement-select">
-                  Entitlement
+                  {t('sidebar.modal.entitlement')}
                 </label>
                 <select
                   id="elevation-entitlement-select"
@@ -403,18 +411,20 @@ export const FinderSidebar = ({
                 </select>
 
                 <p className={styles.elevationHint}>
-                  Grants: {selectedEntitlement?.permissions.join(', ') ?? '-'}
+                  {t('sidebar.modal.grants', {
+                    permissions: selectedEntitlement?.permissions.join(', ') ?? '-',
+                  })}
                 </p>
 
                 <label className={styles.elevationLabel} htmlFor="elevation-justification-input">
-                  Reason (required)
+                  {t('sidebar.modal.reason')}
                 </label>
                 <textarea
                   id="elevation-justification-input"
                   className={styles.elevationTextarea}
                   value={justification}
                   onChange={(event) => setJustification(event.target.value)}
-                  placeholder="Reason for temporary elevation"
+                  placeholder={t('sidebar.modal.reasonPlaceholder')}
                   rows={3}
                 />
 
@@ -423,17 +433,15 @@ export const FinderSidebar = ({
                 ) : null}
 
                 {selectedEntitlementAlreadyActive ? (
-                  <p className={styles.elevationHint}>This entitlement is already active.</p>
+                  <p className={styles.elevationHint}>{t('sidebar.modal.alreadyActive')}</p>
                 ) : null}
                 {selectedEntitlementPending ? (
-                  <p className={styles.elevationHint}>
-                    A request for this entitlement is still pending.
-                  </p>
+                  <p className={styles.elevationHint}>{t('sidebar.modal.pending')}</p>
                 ) : null}
 
                 <div className={styles.modalActions}>
                   <Button variant="muted" onClick={() => setIsElevationModalOpen(false)}>
-                    Close
+                    {t('sidebar.modal.close')}
                   </Button>
                   <Button
                     variant="default"
@@ -447,18 +455,22 @@ export const FinderSidebar = ({
                       void submitElevationRequest();
                     }}
                   >
-                    {isSubmitting ? 'Submitting...' : 'Request Elevated Access'}
+                    {isSubmitting ? t('sidebar.modal.submitting') : t('sidebar.modal.request')}
                   </Button>
                 </div>
 
                 {activeRequest ? (
                   <div className={styles.elevationStatusCard}>
-                    <p className={styles.elevationStatusTitle}>Latest Request</p>
-                    <p className={styles.elevationHint}>
-                      Entitlement: {activeRequest.entitlementKey}
+                    <p className={styles.elevationStatusTitle}>
+                      {t('sidebar.modal.latestRequest')}
                     </p>
                     <p className={styles.elevationHint}>
-                      Status:{' '}
+                      {t('sidebar.modal.requestEntitlement', {
+                        entitlementKey: activeRequest.entitlementKey,
+                      })}
+                    </p>
+                    <p className={styles.elevationHint}>
+                      {t('sidebar.modal.status')}{' '}
                       <strong
                         className={
                           activeRequest.status === 'granted'
@@ -470,11 +482,15 @@ export const FinderSidebar = ({
                       >
                         {activeRequest.status}
                       </strong>
-                      {isPolling && activeRequest.status === 'pending' ? ' (refreshing...)' : ''}
+                      {isPolling && activeRequest.status === 'pending'
+                        ? t('sidebar.modal.refreshing')
+                        : ''}
                     </p>
                     {activeRequest.expiresAt ? (
                       <p className={styles.elevationHint}>
-                        Expires: {new Date(activeRequest.expiresAt).toLocaleString()}
+                        {t('sidebar.modal.requestExpires', {
+                          value: new Date(activeRequest.expiresAt).toLocaleString(locale),
+                        })}
                       </p>
                     ) : null}
                     {activeRequest.message ? (

@@ -1,5 +1,6 @@
 import { API_ORIGIN } from '@web/trpc/client';
 import { Button } from '@web/components/ui';
+import { useI18n } from '@web/i18n';
 import styles from '@web/components/AuthActions.module.css';
 
 interface AuthActionsProps {
@@ -15,6 +16,8 @@ export const AuthActions = ({
   authenticated,
   navigateTo = defaultNavigateTo,
 }: AuthActionsProps) => {
+  const { t } = useI18n();
+
   const login = (): void => {
     const returnTo = window.location.pathname + window.location.search;
     navigateTo(`${API_ORIGIN}/auth/login?returnTo=${encodeURIComponent(returnTo || '/')}`);
@@ -27,12 +30,12 @@ export const AuthActions = ({
 
   return (
     <div className={styles.actions}>
-      {!authenticated ? <Button onClick={login}>Login</Button> : null}
+      {!authenticated ? <Button onClick={login}>{t('auth.login')}</Button> : null}
 
       {authenticated ? (
         <>
           <Button variant="muted" onClick={logout}>
-            Logout
+            {t('auth.logout')}
           </Button>
         </>
       ) : null}

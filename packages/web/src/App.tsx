@@ -2,24 +2,12 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { API_ORIGIN, trpc } from '@web/trpc/client';
 import { useUiStore } from '@web/state/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from '@web/i18n';
 import { FileModals, SignInGate, SnackbarHost } from '@web/components';
 import { useBrowserController } from '@web/hooks';
 import { FinderHeader, FinderSidebar } from '@web/layout';
 import { BrowserPage } from '@web/pages';
 import styles from '@web/App.module.css';
-
-const formatDate = (value: string | null): string => {
-  if (!value) {
-    return '-';
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString();
-};
 
 const normalizeVirtualPath = (value: string): string =>
   value.trim().replace(/^\/+/, '').replace(/\/+$/, '');
@@ -39,6 +27,7 @@ const SESSION_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 export const App = () => {
   const theme = useUiStore((state) => state.theme);
   const setTheme = useUiStore((state) => state.setTheme);
+  const { locale, t } = useI18n();
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -176,6 +165,22 @@ export const App = () => {
     void browse.refetch();
   };
 
+  const formatDate = useCallback(
+    (value: string | null): string => {
+      if (!value) {
+        return '-';
+      }
+
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return value;
+      }
+
+      return date.toLocaleString(locale);
+    },
+    [locale]
+  );
+
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
@@ -263,13 +268,13 @@ export const App = () => {
       } else {
         browser.enqueueSnackbar({
           tone: 'info',
-          message: 'Temporary elevated access expired.',
+          message: t('app.elevation.expired'),
         });
       }
     }
 
     hadElevationRef.current = hasElevation;
-  }, [authenticated, elevationSources, browser]);
+  }, [authenticated, elevationSources, browser, t]);
 
   useEffect(() => {
     if (!authenticated || elevationSources.length === 0) {
@@ -480,7 +485,7 @@ export const App = () => {
               refreshAuthState();
               browser.enqueueSnackbar({
                 tone: 'success',
-                message: `Temporary access granted for ${request.entitlementKey}.`,
+                message: t('app.elevation.granted', { entitlementKey: request.entitlementKey }),
               });
             }}
             onElevationRevoked={(entitlementKey) => {
@@ -488,7 +493,7 @@ export const App = () => {
               refreshAuthState();
               browser.enqueueSnackbar({
                 tone: 'success',
-                message: `Temporary access turned off for ${entitlementKey}.`,
+                message: t('app.elevation.revoked', { entitlementKey }),
               });
             }}
           />
@@ -546,7 +551,7 @@ export const App = () => {
                     }}
                   />
                 ) : (
-                  <p className={styles.state}>No file browsing permission available.</p>
+                  <p className={styles.state}>{t('app.noBrowsePermission')}</p>
                 )
               }
             />
