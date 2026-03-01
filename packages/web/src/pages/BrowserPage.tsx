@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, ReactNode } from 'react';
 import {
   ArrowDownToLine,
@@ -107,87 +107,97 @@ interface OverviewColumnDefinition {
 interface ShortcutDefinition {
   id: string;
   action: string;
-  keys: string[];
+  shortcuts: string[][];
   Icon: typeof Keyboard;
 }
+
+interface ContextMenuAction {
+  id: string;
+  label: string;
+  hint?: string;
+  isDanger?: boolean;
+  onSelect: () => void;
+}
+
+const formatShortcutHint = (shortcut: string[]): string => shortcut.join(' + ');
 
 const browserShortcuts: ShortcutDefinition[] = [
   {
     id: 'select-all',
     action: 'Select all visible items',
-    keys: ['Ctrl/Cmd', 'A'],
+    shortcuts: [['Ctrl/Cmd', 'A']],
     Icon: CheckSquare,
   },
   {
     id: 'focus-filter',
     action: 'Focus file filter',
-    keys: ['/'],
+    shortcuts: [['/']],
     Icon: Search,
   },
   {
     id: 'shortcuts-modal',
     action: 'Open shortcuts help',
-    keys: ['?'],
+    shortcuts: [['?']],
     Icon: Keyboard,
   },
   {
     id: 'parent',
     action: 'Go to parent folder',
-    keys: ['ArrowLeft', 'Backspace', 'Alt+ArrowUp'],
+    shortcuts: [['ArrowLeft'], ['Backspace'], ['Alt', 'ArrowUp']],
     Icon: Undo2,
   },
   {
     id: 'row-nav',
     action: 'Jump to explorer and move focus',
-    keys: ['Arrow keys', 'Home', 'End'],
+    shortcuts: [['Arrow keys'], ['Home'], ['End']],
     Icon: Folder,
   },
   {
     id: 'row-open',
     action: 'Open focused item',
-    keys: ['Enter', 'ArrowRight'],
+    shortcuts: [['Enter'], ['ArrowRight']],
     Icon: File,
   },
   {
     id: 'row-select',
     action: 'Select focused item',
-    keys: ['Space'],
+    shortcuts: [['Space']],
     Icon: CheckSquare,
   },
   {
     id: 'row-menu',
     action: 'Open item context menu',
-    keys: ['Shift', 'F10'],
+    shortcuts: [['Shift', 'F10'], ['ContextMenu']],
     Icon: Keyboard,
   },
   {
     id: 'download',
     action: 'Download selected files',
-    keys: ['Ctrl/Cmd', 'D'],
+    shortcuts: [['Ctrl/Cmd', 'D']],
     Icon: ArrowDownToLine,
   },
   {
     id: 'rename',
     action: 'Rename selected item',
-    keys: ['F2'],
+    shortcuts: [['F2']],
     Icon: PencilLine,
   },
   {
     id: 'move',
     action: 'Move selected item',
-    keys: ['Ctrl/Cmd', 'Shift', 'M'],
+    shortcuts: [['Ctrl/Cmd', 'Shift', 'M']],
     Icon: ArrowRightLeft,
   },
   {
     id: 'delete',
     action: 'Delete selected items',
-    keys: ['Delete'],
+    shortcuts: [['Delete']],
     Icon: Trash2,
   },
   {
     id: 'escape',
     action: 'Clear selection or close dialogs',
-    keys: ['Esc'],
+    shortcuts: [['Esc']],
     Icon: Eraser,
   },
 ];
@@ -336,6 +346,10 @@ export const BrowserPage = ({
   const uploadFilesInputRef = useRef<HTMLInputElement>(null);
   const uploadFolderInputRef = useRef<HTMLInputElement>(null);
   const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const contextMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const contextMenuFocusRestoreRef = useRef<HTMLElement | null>(null);
+  const wasContextMenuOpenRef = useRef(false);
   const folderInputAttributes = {
     directory: '',
     webkitdirectory: '',
@@ -824,6 +838,122 @@ export const BrowserPage = ({
   const canDeleteContextItem =
     canDelete && !(contextMenu?.item.type === 'directory' && !contextMenu.item.path.includes('/'));
 
+  const contextMenuActions = useMemo<ContextMenuAction[]>(() => {
+    if (!contextMenu) {
+      return [];
+    }
+
+    const actions: ContextMenuAction[] = [];
+    if (contextMenu.item.type === 'directory') {
+      actions.push({
+        id: 'open',
+        label: 'Open',
+        hint: 'Enter',
+        onSelect: () => {
+          onCloseContextMenu();
+          setSelectedPath(contextMenu.item.path);
+        },
+      });
+      actions.push({
+        id: 'calculate-size',
+        label: 'Calculate Size',
+        onSelect: () => {
+          void onCalculateFolderSize(contextMenu.item.path);
+        },
+      });
+    } else {
+      if (contextItemCapability?.canView) {
+        actions.push({
+          id: 'view',
+          label: 'View',
+          onSelect: () => {
+            onCloseContextMenu();
+            void onViewFile(contextMenu.item.path);
+          },
+        });
+      }
+
+      if (canWrite && contextItemCapability?.canEditText) {
+        actions.push({
+          id: 'edit',
+          label: 'Edit',
+          onSelect: () => {
+            onCloseContextMenu();
+            void onEditFile(contextMenu.item.path);
+          },
+        });
+      }
+
+      actions.push({
+        id: 'download',
+        label: 'Download',
+        hint: formatShortcutHint(['Ctrl/Cmd', 'D']),
+        onSelect: () => {
+          onCloseContextMenu();
+          void onDownload(contextMenu.item.path);
+        },
+      });
+      actions.push({
+        id: 'properties',
+        label: 'Properties',
+        onSelect: () => {
+          void onOpenProperties(contextMenu.item.path);
+        },
+      });
+    }
+
+    if (canWrite) {
+      actions.push({
+        id: 'rename',
+        label: 'Rename',
+        hint: 'F2',
+        onSelect: () => {
+          onCloseContextMenu();
+          onRename(contextMenu.item.path, contextMenu.item.name);
+        },
+      });
+      actions.push({
+        id: 'move',
+        label: 'Move',
+        hint: formatShortcutHint(['Ctrl/Cmd', 'Shift', 'M']),
+        onSelect: () => {
+          onCloseContextMenu();
+          onMove(contextMenu.item.path);
+        },
+      });
+    }
+
+    if (canDeleteContextItem) {
+      actions.push({
+        id: 'delete',
+        label: 'Delete',
+        hint: 'Delete',
+        isDanger: true,
+        onSelect: () => {
+          onCloseContextMenu();
+          onDeletePathItems([contextMenu.item]);
+        },
+      });
+    }
+
+    return actions;
+  }, [
+    canDeleteContextItem,
+    canWrite,
+    contextItemCapability,
+    contextMenu,
+    onCalculateFolderSize,
+    onCloseContextMenu,
+    onDeletePathItems,
+    onDownload,
+    onEditFile,
+    onMove,
+    onOpenProperties,
+    onRename,
+    onViewFile,
+    setSelectedPath,
+  ]);
+
   const openFilter = () => {
     if (isFilterOpen) {
       filterInputRef.current?.focus();
@@ -869,6 +999,7 @@ export const BrowserPage = ({
 
     if (
       isShortcutsModalOpen ||
+      contextMenu !== null ||
       pendingFolderUploadFiles.length > 0 ||
       isBreadcrumbEditing ||
       isFilterOpen
@@ -898,6 +1029,7 @@ export const BrowserPage = ({
     defaultRowIndex,
     focusRowAtIndex,
     isBreadcrumbEditing,
+    contextMenu,
     isFilterOpen,
     isShortcutsModalOpen,
     pendingFolderUploadFiles.length,
@@ -926,6 +1058,10 @@ export const BrowserPage = ({
       }
 
       if (isTypingInInput) {
+        return;
+      }
+
+      if (contextMenu) {
         return;
       }
 
@@ -1004,11 +1140,99 @@ export const BrowserPage = ({
     focusRowAtIndex,
     isShortcutsModalOpen,
     openFilter,
+    contextMenu,
     parentPath,
     renderedItems.length,
     selectedPath,
     setSelectedPath,
   ]);
+
+  useEffect(() => {
+    if (!contextMenu || contextMenuActions.length === 0) {
+      return;
+    }
+
+    contextMenuFocusRestoreRef.current = document.activeElement as HTMLElement | null;
+    wasContextMenuOpenRef.current = true;
+    contextMenuItemRefs.current[0]?.focus();
+  }, [contextMenu, contextMenuActions]);
+
+  useEffect(() => {
+    if (contextMenu || !wasContextMenuOpenRef.current) {
+      return;
+    }
+
+    wasContextMenuOpenRef.current = false;
+    const restoreTarget = contextMenuFocusRestoreRef.current;
+    contextMenuFocusRestoreRef.current = null;
+    if (!restoreTarget || !document.contains(restoreTarget)) {
+      return;
+    }
+
+    restoreTarget.focus();
+  }, [contextMenu]);
+
+  const focusContextMenuItemAtIndex = useCallback((index: number) => {
+    const focusableItems = contextMenuItemRefs.current.filter(
+      (item): item is HTMLButtonElement => item !== null
+    );
+    if (focusableItems.length === 0) {
+      return;
+    }
+
+    const wrappedIndex =
+      ((index % focusableItems.length) + focusableItems.length) % focusableItems.length;
+    focusableItems[wrappedIndex]?.focus();
+  }, []);
+
+  const handleContextMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      onCloseContextMenu();
+      return;
+    }
+
+    const focusableItems = contextMenuItemRefs.current.filter(
+      (item): item is HTMLButtonElement => item !== null
+    );
+    if (focusableItems.length === 0) {
+      return;
+    }
+
+    const focusedItem = document.activeElement;
+    const focusedIndex = focusableItems.findIndex((item) => item === focusedItem);
+    const currentIndex = focusedIndex >= 0 ? focusedIndex : 0;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      focusContextMenuItemAtIndex(currentIndex + 1);
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      focusContextMenuItemAtIndex(currentIndex - 1);
+      return;
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault();
+      focusContextMenuItemAtIndex(0);
+      return;
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault();
+      focusContextMenuItemAtIndex(focusableItems.length - 1);
+      return;
+    }
+
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      focusContextMenuItemAtIndex(currentIndex + (event.shiftKey ? -1 : 1));
+    }
+  };
 
   const handleRowKeyDown = (
     event: ReactKeyboardEvent<HTMLTableRowElement>,
@@ -1387,17 +1611,29 @@ export const BrowserPage = ({
                     <span className={styles.shortcutsTableHeaderAction}>Action</span>
                     <span className={styles.shortcutsTableHeaderKeys}>Shortcut</span>
                   </div>
-                  {browserShortcuts.map(({ id, action, keys, Icon }) => (
+                  {browserShortcuts.map(({ id, action, shortcuts, Icon }) => (
                     <div key={id} className={styles.shortcutItem}>
                       <span className={styles.shortcutIcon} aria-hidden>
                         <Icon size={14} />
                       </span>
                       <span className={styles.shortcutAction}>{action}</span>
                       <span className={styles.shortcutKeys}>
-                        {keys.map((key) => (
-                          <kbd key={`${id}-${key}`} className={styles.shortcutKeycap}>
-                            {key}
-                          </kbd>
+                        {shortcuts.map((shortcut, shortcutIndex) => (
+                          <Fragment key={`${id}-${shortcut.join('+')}`}>
+                            <span className={styles.shortcutOption}>
+                              {shortcut.map((key, keyIndex) => (
+                                <Fragment key={`${id}-${shortcutIndex}-${key}`}>
+                                  {keyIndex > 0 ? (
+                                    <span className={styles.shortcutJoin}>+</span>
+                                  ) : null}
+                                  <kbd className={styles.shortcutKeycap}>{key}</kbd>
+                                </Fragment>
+                              ))}
+                            </span>
+                            {shortcutIndex < shortcuts.length - 1 ? (
+                              <span className={styles.shortcutOptionSeparator}>or</span>
+                            ) : null}
+                          </Fragment>
                         ))}
                       </span>
                     </div>
@@ -1614,118 +1850,45 @@ export const BrowserPage = ({
 
           {contextMenu ? (
             <div
+              ref={contextMenuRef}
               className={styles.contextMenu}
+              role="menu"
+              aria-label="Item actions"
               style={{ left: contextMenu.x, top: contextMenu.y }}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
+              onKeyDown={handleContextMenuKeyDown}
             >
-              {contextMenu.item.type === 'directory' ? (
-                <>
-                  <button
-                    className={styles.contextMenuItem}
-                    onClick={() => {
-                      onCloseContextMenu();
-                      setSelectedPath(contextMenu.item.path);
-                    }}
-                  >
-                    <span>Open</span>
-                    <span className={styles.contextMenuHint}>Enter</span>
-                  </button>
-                  <button
-                    className={styles.contextMenuItem}
-                    onClick={() => {
-                      void onCalculateFolderSize(contextMenu.item.path);
-                    }}
-                  >
-                    <span>Calculate Size</span>
-                  </button>
-                </>
-              ) : (
-                <>
-                  {contextItemCapability?.canView ? (
+              {contextMenuActions.map((action, index) => {
+                const previousAction = contextMenuActions[index - 1];
+                const startsSecondarySection =
+                  ['rename', 'move', 'delete'].includes(action.id) &&
+                  previousAction &&
+                  !['rename', 'move', 'delete'].includes(previousAction.id);
+
+                return (
+                  <Fragment key={action.id}>
+                    {startsSecondarySection ? (
+                      <div className={styles.contextMenuSeparator} />
+                    ) : null}
                     <button
-                      className={styles.contextMenuItem}
-                      onClick={() => {
-                        onCloseContextMenu();
-                        void onViewFile(contextMenu.item.path);
+                      ref={(element) => {
+                        contextMenuItemRefs.current[index] = element;
                       }}
+                      role="menuitem"
+                      className={`${styles.contextMenuItem} ${
+                        action.isDanger ? styles.contextMenuItemDanger : ''
+                      }`}
+                      onClick={action.onSelect}
                     >
-                      <span>View</span>
+                      <span>{action.label}</span>
+                      {action.hint ? (
+                        <span className={styles.contextMenuHint}>{action.hint}</span>
+                      ) : null}
                     </button>
-                  ) : null}
-                  {canWrite && contextItemCapability?.canEditText ? (
-                    <button
-                      className={styles.contextMenuItem}
-                      onClick={() => {
-                        onCloseContextMenu();
-                        void onEditFile(contextMenu.item.path);
-                      }}
-                    >
-                      <span>Edit</span>
-                    </button>
-                  ) : null}
-                  <button
-                    className={styles.contextMenuItem}
-                    onClick={() => {
-                      onCloseContextMenu();
-                      void onDownload(contextMenu.item.path);
-                    }}
-                  >
-                    <span>Download</span>
-                    <span className={styles.contextMenuHint}>Ctrl/Cmd+D</span>
-                  </button>
-                  <button
-                    className={styles.contextMenuItem}
-                    onClick={() => {
-                      void onOpenProperties(contextMenu.item.path);
-                    }}
-                  >
-                    <span>Properties</span>
-                  </button>
-                </>
-              )}
-
-              {canWrite || canDeleteContextItem ? (
-                <div className={styles.contextMenuSeparator} />
-              ) : null}
-
-              {canWrite ? (
-                <button
-                  className={styles.contextMenuItem}
-                  onClick={() => {
-                    onCloseContextMenu();
-                    onRename(contextMenu.item.path, contextMenu.item.name);
-                  }}
-                >
-                  <span>Rename</span>
-                  <span className={styles.contextMenuHint}>F2</span>
-                </button>
-              ) : null}
-              {canWrite ? (
-                <button
-                  className={styles.contextMenuItem}
-                  onClick={() => {
-                    onCloseContextMenu();
-                    onMove(contextMenu.item.path);
-                  }}
-                >
-                  <span>Move</span>
-                  <span className={styles.contextMenuHint}>Ctrl/Cmd+Shift+M</span>
-                </button>
-              ) : null}
-
-              {canDeleteContextItem ? (
-                <button
-                  className={`${styles.contextMenuItem} ${styles.contextMenuItemDanger}`}
-                  onClick={() => {
-                    onCloseContextMenu();
-                    onDeletePathItems([contextMenu.item]);
-                  }}
-                >
-                  <span>Delete</span>
-                  <span className={styles.contextMenuHint}>Delete</span>
-                </button>
-              ) : null}
+                  </Fragment>
+                );
+              })}
             </div>
           ) : null}
         </>

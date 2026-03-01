@@ -739,6 +739,19 @@
   justify-content: flex-end;
 }
 
+.shortcutOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.shortcutJoin,
+.shortcutOptionSeparator {
+  color: var(--muted);
+  font-size: 0.67rem;
+  font-weight: 600;
+}
+
 .shortcutKeycap {
   display: inline-flex;
   align-items: center;
@@ -1061,6 +1074,11 @@
 
 .contextMenuItem:hover {
   background: color-mix(in srgb, var(--brand) 12%, var(--surface));
+}
+
+.contextMenuItem:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--brand) 14%, var(--surface));
 }
 
 .contextMenuItemDanger {

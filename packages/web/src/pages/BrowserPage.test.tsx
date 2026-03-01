@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { BrowseItem } from '@server/services/s3/types';
 import { BrowserPage } from '@web/pages/BrowserPage';
 
@@ -124,6 +124,31 @@ describe('BrowserPage sorting and filtering', () => {
     expect(screen.getByText('Clear selection or close dialogs')).toBeInTheDocument();
   });
 
+  it('renders keyboard shortcut combinations and alternatives clearly', () => {
+    const { props } = createProps();
+    render(<BrowserPage {...props} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open keyboard shortcuts' }));
+
+    const parentShortcutRow = screen.getByText('Go to parent folder').closest('div');
+    expect(parentShortcutRow).not.toBeNull();
+    if (!parentShortcutRow) {
+      return;
+    }
+    expect(within(parentShortcutRow).getByText('ArrowLeft')).toBeInTheDocument();
+    expect(within(parentShortcutRow).getByText('Backspace')).toBeInTheDocument();
+    expect(within(parentShortcutRow).getByText('Alt')).toBeInTheDocument();
+    expect(within(parentShortcutRow).getByText('ArrowUp')).toBeInTheDocument();
+    expect(within(parentShortcutRow).getAllByText('or')).toHaveLength(2);
+
+    const moveShortcutRow = screen.getByText('Move selected item').closest('div');
+    expect(moveShortcutRow).not.toBeNull();
+    if (!moveShortcutRow) {
+      return;
+    }
+    expect(within(moveShortcutRow).getAllByText('+')).toHaveLength(2);
+  });
+
   it('opens and closes shortcuts modal with keyboard keys', () => {
     const { props } = createProps();
     render(<BrowserPage {...props} />);
@@ -167,6 +192,43 @@ describe('BrowserPage sorting and filtering', () => {
 
     fireEvent.keyDown(firstDataRow, { key: 'F10', shiftKey: true });
     expect(props.onOpenItemContextMenu).toHaveBeenCalledWith(items[0]);
+  });
+
+  it('supports keyboard navigation inside the context menu', async () => {
+    const { props } = createProps();
+    const selectedItem: BrowseItem = {
+      name: 'alpha.txt',
+      type: 'file',
+      path: 'my-bucket/alpha.txt',
+      size: 4,
+      lastModified: null,
+    };
+
+    render(
+      <BrowserPage
+        {...props}
+        contextMenu={{ x: 120, y: 60, item: selectedItem }}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items: [selectedItem] } }}
+      />
+    );
+
+    const menu = screen.getByRole('menu', { name: 'Item actions' });
+    const viewItem = screen.getByRole('menuitem', { name: 'View' });
+    const editItem = screen.getByRole('menuitem', { name: 'Edit' });
+
+    await waitFor(() => {
+      expect(viewItem).toHaveFocus();
+    });
+
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(editItem).toHaveFocus();
+
+    fireEvent.keyDown(menu, { key: 'ArrowUp' });
+    expect(viewItem).toHaveFocus();
+
+    fireEvent.keyDown(menu, { key: 'Escape' });
+    expect(props.onCloseContextMenu).toHaveBeenCalledTimes(1);
   });
 
   it('moves focus into explorer rows when arrow key is pressed globally', () => {
