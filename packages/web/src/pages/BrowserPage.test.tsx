@@ -128,11 +128,12 @@ describe('BrowserPage create actions', () => {
     const { props } = createProps();
 
     render(<BrowserPage {...props} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Create File' })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Open actions menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Create File' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'File name' }), {
       target: { value: 'notes.txt' },
     });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Create File' })[1]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Create File' }));
 
     expect(props.onCreateFile).toHaveBeenCalledWith('notes.txt');
   });
@@ -141,11 +142,12 @@ describe('BrowserPage create actions', () => {
     const { props } = createProps();
 
     render(<BrowserPage {...props} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Create Folder' })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Open actions menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Create Folder' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Folder name' }), {
       target: { value: 'assets' },
     });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Create Folder' })[1]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Create Folder' }));
 
     expect(props.onCreateFolder).toHaveBeenCalledWith('assets');
   });
@@ -611,7 +613,7 @@ describe('BrowserPage sorting and filtering', () => {
       <BrowserPage
         {...props}
         contextMenu={{ x: 120, y: 60, item: selectedItem }}
-        selectedPath=""
+        selectedPath="my-bucket"
         browse={{ ...props.browse, data: { ...props.browse.data!, items: [selectedItem] } }}
       />
     );
@@ -677,6 +679,35 @@ describe('BrowserPage sorting and filtering', () => {
 
     fireEvent.click(screen.getByRole('menuitem', { name: /Paste into Folder/ }));
     expect(props.onPasteIntoPath).toHaveBeenCalledWith('archive-bucket/docs');
+  });
+
+  it('hides copy, cut, rename, move, and paste context actions at root', () => {
+    const { props } = createProps();
+    const directory: BrowseItem = {
+      name: 'docs',
+      type: 'directory',
+      path: 'archive-bucket/docs',
+      size: null,
+      lastModified: null,
+    };
+
+    render(
+      <BrowserPage
+        {...props}
+        hasClipboardItems
+        contextMenu={{ x: 120, y: 60, item: directory }}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items: [directory] } }}
+      />
+    );
+
+    expect(screen.queryByRole('menuitem', { name: /CopyCtrl\/Cmd \+ C/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /CutCtrl\/Cmd \+ X/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /RenameF2/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: /MoveCtrl\/Cmd \+ Shift \+ M/ })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /Paste into Folder/ })).not.toBeInTheDocument();
   });
 
   it('marks clipboard items in the table for copy and cut modes', () => {
@@ -1222,12 +1253,11 @@ describe('BrowserPage sorting and filtering', () => {
     expect(props.onMove).toHaveBeenCalledWith('my-bucket/folder/notes.txt', 'my-bucket/archive');
   });
 
-  it('disables upload buttons when not inside a bucket', () => {
+  it('disables actions menu when not inside a bucket', () => {
     const { props } = createProps();
     render(<BrowserPage {...props} selectedPath="" />);
 
-    expect(screen.getByRole('button', { name: 'Upload Files' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Upload Folder' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Open actions menu' })).toBeDisabled();
   });
 
   it('opens files in view mode on double click', () => {

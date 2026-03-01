@@ -366,6 +366,8 @@
 .browserToolbar {
   display: grid;
   gap: 0;
+  position: relative;
+  z-index: 12;
 }
 
 .browserControls {
@@ -384,6 +386,63 @@
 
 .overviewFieldsWrap {
   position: relative;
+}
+
+.actionsMenuWrap {
+  position: relative;
+}
+
+.actionsMenuTrigger {
+  width: 2rem;
+  height: 2rem;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+.actionsMenuPanel {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 60;
+  min-width: 190px;
+  display: grid;
+  gap: 0;
+  padding: 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 78%, var(--brand));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--surface-soft));
+  box-shadow:
+    0 12px 28px rgba(10, 22, 38, 0.2),
+    0 1px 0 color-mix(in srgb, var(--line) 40%, transparent) inset;
+}
+
+.actionsMenuItem {
+  appearance: none;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 0.44rem 0.52rem;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.actionsMenuItem:hover {
+  background: color-mix(in srgb, var(--surface-soft) 86%, var(--surface));
+}
+
+.actionsMenuItem:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 28%, transparent);
+}
+
+.actionsMenuItem:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  background: transparent;
 }
 
 .overviewFieldsMenu {

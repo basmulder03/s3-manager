@@ -29,6 +29,7 @@ import {
   Folder,
   House,
   Keyboard,
+  MoreVertical,
   PencilLine,
   RefreshCw,
   Scissors,
@@ -823,6 +824,7 @@ export const BrowserPage = ({
   const [activeBreadcrumbHintIndex, setActiveBreadcrumbHintIndex] = useState(-1);
   const [isShortcutsModalOpenInternal, setIsShortcutsModalOpenInternal] = useState(false);
   const [isOverviewFieldsMenuOpen, setIsOverviewFieldsMenuOpen] = useState(false);
+  const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
   const [overviewFieldsFilterQuery, setOverviewFieldsFilterQuery] = useState('');
   const [overviewColumnVisibility, setOverviewColumnVisibility] =
     useState<OverviewColumnVisibility>(resolveInitialOverviewColumnVisibility);
@@ -872,6 +874,7 @@ export const BrowserPage = ({
   );
   const breadcrumbInputRef = useRef<HTMLInputElement>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
   const overviewFieldsMenuRef = useRef<HTMLDivElement>(null);
   const uploadFilesInputRef = useRef<HTMLInputElement>(null);
   const uploadFolderInputRef = useRef<HTMLInputElement>(null);
@@ -1019,6 +1022,25 @@ export const BrowserPage = ({
       JSON.stringify(cachedDirectoryHintPaths)
     );
   }, [cachedDirectoryHintPaths]);
+
+  useEffect(() => {
+    if (!isActionsMenuOpen) {
+      return;
+    }
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (actionsMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      setIsActionsMenuOpen(false);
+    };
+
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [isActionsMenuOpen]);
 
   useEffect(() => {
     if (!isOverviewFieldsMenuOpen) {
@@ -2376,7 +2398,7 @@ export const BrowserPage = ({
         },
       });
 
-      if (hasClipboardItems && canWrite) {
+      if (hasBucketContext && hasClipboardItems && canWrite) {
         actions.push({
           id: 'paste',
           label: 'Paste into Folder',
@@ -2504,17 +2526,19 @@ export const BrowserPage = ({
       });
     }
 
-    actions.push({
-      id: 'copy',
-      label: 'Copy',
-      hint: formatShortcutHint(['Ctrl/Cmd', 'C']),
-      onSelect: () => {
-        onCloseContextMenu();
-        onCopyItems([contextMenu.item]);
-      },
-    });
+    if (hasBucketContext) {
+      actions.push({
+        id: 'copy',
+        label: 'Copy',
+        hint: formatShortcutHint(['Ctrl/Cmd', 'C']),
+        onSelect: () => {
+          onCloseContextMenu();
+          onCopyItems([contextMenu.item]);
+        },
+      });
+    }
 
-    if (canWrite) {
+    if (hasBucketContext && canWrite) {
       actions.push({
         id: 'cut',
         label: 'Cut',
@@ -2526,7 +2550,7 @@ export const BrowserPage = ({
       });
     }
 
-    if (canWrite) {
+    if (hasBucketContext && canWrite) {
       actions.push({
         id: 'rename',
         label: 'Rename',
@@ -2563,6 +2587,7 @@ export const BrowserPage = ({
     return actions;
   }, [
     canDeleteContextItem,
+    hasBucketContext,
     hasClipboardItems,
     canWrite,
     contextItemCapability,
@@ -2783,6 +2808,13 @@ export const BrowserPage = ({
         return;
       }
 
+      if (isActionsMenuOpen && event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        setIsActionsMenuOpen(false);
+        return;
+      }
+
       if (hasOpenModalDialog()) {
         return;
       }
@@ -2792,6 +2824,10 @@ export const BrowserPage = ({
       }
 
       if (contextMenu) {
+        return;
+      }
+
+      if (isActionsMenuOpen) {
         return;
       }
 
@@ -2879,6 +2915,7 @@ export const BrowserPage = ({
     focusRowAtIndex,
     isFilterHelpModalOpen,
     isModalNavigationBlocked,
+    isActionsMenuOpen,
     isShortcutsModalOpen,
     openFilter,
     contextMenu,
@@ -3583,53 +3620,6 @@ export const BrowserPage = ({
               </>
             ) : null}
 
-            {canWrite ? (
-              <>
-                <Button
-                  variant="muted"
-                  disabled={!hasBucketContext}
-                  onClick={() => openCreateEntryModal('file')}
-                  title={
-                    !hasBucketContext ? 'Navigate to a bucket before creating files' : 'Create file'
-                  }
-                >
-                  Create File
-                </Button>
-                <Button
-                  variant="muted"
-                  disabled={!hasBucketContext}
-                  onClick={() => openCreateEntryModal('folder')}
-                  title={
-                    !hasBucketContext
-                      ? 'Navigate to a bucket before creating folders'
-                      : 'Create folder'
-                  }
-                >
-                  Create Folder
-                </Button>
-                <Button
-                  variant="muted"
-                  disabled={uploadDisabled}
-                  onClick={() => uploadFilesInputRef.current?.click()}
-                  title={
-                    !hasBucketContext ? 'Navigate to a bucket before uploading' : 'Upload files'
-                  }
-                >
-                  Upload Files
-                </Button>
-                <Button
-                  variant="muted"
-                  disabled={uploadDisabled}
-                  onClick={() => void onSelectFolderForUpload()}
-                  title={
-                    !hasBucketContext ? 'Navigate to a bucket before uploading' : 'Upload folder'
-                  }
-                >
-                  Upload Folder
-                </Button>
-              </>
-            ) : null}
-
             <Button
               variant="muted"
               className={`${styles.iconButton} ${styles.refreshButton} ${isBrowseRefreshing ? styles.refreshButtonBusy : ''}`}
@@ -3642,6 +3632,101 @@ export const BrowserPage = ({
             >
               <RefreshCw size={16} aria-hidden />
             </Button>
+
+            {canWrite ? (
+              <div className={styles.actionsMenuWrap} ref={actionsMenuRef}>
+                <Button
+                  variant="muted"
+                  className={styles.actionsMenuTrigger}
+                  disabled={!hasBucketContext}
+                  onClick={() => setIsActionsMenuOpen((previous) => !previous)}
+                  aria-haspopup="menu"
+                  aria-expanded={isActionsMenuOpen}
+                  aria-label="Open actions menu"
+                  title={
+                    !hasBucketContext
+                      ? 'Navigate to a bucket before using file actions'
+                      : 'Open actions menu'
+                  }
+                >
+                  <MoreVertical size={14} aria-hidden />
+                </Button>
+                {isActionsMenuOpen ? (
+                  <div
+                    className={styles.actionsMenuPanel}
+                    role="menu"
+                    aria-label="File and folder actions"
+                  >
+                    <button
+                      className={styles.actionsMenuItem}
+                      type="button"
+                      role="menuitem"
+                      disabled={!hasBucketContext}
+                      onClick={() => {
+                        setIsActionsMenuOpen(false);
+                        openCreateEntryModal('file');
+                      }}
+                      title={
+                        !hasBucketContext
+                          ? 'Navigate to a bucket before creating files'
+                          : 'Create file'
+                      }
+                    >
+                      Create File
+                    </button>
+                    <button
+                      className={styles.actionsMenuItem}
+                      type="button"
+                      role="menuitem"
+                      disabled={!hasBucketContext}
+                      onClick={() => {
+                        setIsActionsMenuOpen(false);
+                        openCreateEntryModal('folder');
+                      }}
+                      title={
+                        !hasBucketContext
+                          ? 'Navigate to a bucket before creating folders'
+                          : 'Create folder'
+                      }
+                    >
+                      Create Folder
+                    </button>
+                    <button
+                      className={styles.actionsMenuItem}
+                      type="button"
+                      role="menuitem"
+                      disabled={uploadDisabled}
+                      onClick={() => {
+                        setIsActionsMenuOpen(false);
+                        uploadFilesInputRef.current?.click();
+                      }}
+                      title={
+                        !hasBucketContext ? 'Navigate to a bucket before uploading' : 'Upload files'
+                      }
+                    >
+                      Upload Files
+                    </button>
+                    <button
+                      className={styles.actionsMenuItem}
+                      type="button"
+                      role="menuitem"
+                      disabled={uploadDisabled}
+                      onClick={() => {
+                        setIsActionsMenuOpen(false);
+                        void onSelectFolderForUpload();
+                      }}
+                      title={
+                        !hasBucketContext
+                          ? 'Navigate to a bucket before uploading'
+                          : 'Upload folder'
+                      }
+                    >
+                      Upload Folder
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
