@@ -3,6 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, ReactNode } from 
 import {
   ArrowDownToLine,
   ArrowRightLeft,
+  BookOpenText,
   CheckSquare,
   ChevronDown,
   ChevronUp,
@@ -73,6 +74,8 @@ interface BrowserPageProps {
   onEditFile: (path: string) => Promise<void>;
   isShortcutsModalOpen?: boolean;
   setIsShortcutsModalOpen?: (isOpen: boolean) => void;
+  isFilterHelpModalOpen?: boolean;
+  setIsFilterHelpModalOpen?: (isOpen: boolean) => void;
 }
 
 type SortKey = 'name' | 'size' | 'modified' | 'type';
@@ -82,6 +85,23 @@ interface SortRule {
   key: SortKey;
   direction: SortDirection;
 }
+
+type QueryOperator = ':' | '=' | '>' | '>=' | '<' | '<=';
+
+type QueryClause = {
+  negate: boolean;
+} & (
+  | {
+      kind: 'text';
+      value: string;
+    }
+  | {
+      kind: 'field';
+      field: string;
+      operator: QueryOperator;
+      value: string;
+    }
+);
 
 type OverviewColumnKey =
   | 'showKey'
@@ -336,6 +356,129 @@ const formatDate = (value: string | null): string => {
   return date.toLocaleString();
 };
 
+const tokenizeFilterQuery = (input: string): string[] => {
+  const tokens: string[] = [];
+  const matcher = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|\S+/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = matcher.exec(input)) !== null) {
+    const token = (match[1] ?? match[2] ?? match[0] ?? '').trim();
+    if (token.length > 0) {
+      tokens.push(token);
+    }
+  }
+
+  return tokens;
+};
+
+const parseSizeLiteralBytes = (value: string): number | null => {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  const match = normalized.match(/^(\d+(?:\.\d+)?)(b|bytes?|kb|kib|mb|mib|gb|gib|tb|tib)?$/);
+  if (!match) {
+    return null;
+  }
+
+  const amount = Number.parseFloat(match[1] ?? '');
+  if (!Number.isFinite(amount)) {
+    return null;
+  }
+
+  const unit = match[2] ?? 'b';
+  const multiplierByUnit: Record<string, number> = {
+    b: 1,
+    byte: 1,
+    bytes: 1,
+    kb: 1024,
+    kib: 1024,
+    mb: 1024 ** 2,
+    mib: 1024 ** 2,
+    gb: 1024 ** 3,
+    gib: 1024 ** 3,
+    tb: 1024 ** 4,
+    tib: 1024 ** 4,
+  };
+
+  const multiplier = multiplierByUnit[unit];
+  if (!multiplier) {
+    return null;
+  }
+
+  return Math.round(amount * multiplier);
+};
+
+const parseFilterClauses = (query: string): QueryClause[] => {
+  const tokens = tokenizeFilterQuery(query);
+
+  return tokens.map<QueryClause>((token) => {
+    const trimmed = token.trim();
+    const negate = trimmed.startsWith('!') || trimmed.startsWith('-');
+    const raw = negate ? trimmed.slice(1).trim() : trimmed;
+
+    if (!raw) {
+      return {
+        kind: 'text',
+        value: '',
+        negate,
+      };
+    }
+
+    const comparisonMatch = raw.match(/^([a-zA-Z][a-zA-Z0-9_.-]*)(<=|>=|=|<|>)(.+)$/);
+    if (comparisonMatch) {
+      const [, field, operator, value] = comparisonMatch;
+      return {
+        kind: 'field',
+        field: field?.toLowerCase() ?? '',
+        operator: (operator as QueryOperator) ?? ':',
+        value: value?.trim() ?? '',
+        negate,
+      };
+    }
+
+    const colonIndex = raw.indexOf(':');
+    if (colonIndex > 0) {
+      const field = raw.slice(0, colonIndex).trim().toLowerCase();
+      const value = raw.slice(colonIndex + 1).trim();
+      if (field.length > 0) {
+        return {
+          kind: 'field',
+          field,
+          operator: ':',
+          value,
+          negate,
+        };
+      }
+    }
+
+    return {
+      kind: 'text',
+      value: raw,
+      negate,
+    };
+  });
+};
+
+const normalizeFieldName = (field: string): string => field.replace(/[-_]/g, '').toLowerCase();
+
+const normalizeText = (value: string): string => value.trim().toLowerCase();
+
+const doesStringMatch = (actual: string, expected: string, operator: QueryOperator): boolean => {
+  const normalizedActual = normalizeText(actual);
+  const normalizedExpected = normalizeText(expected);
+  if (!normalizedExpected) {
+    return true;
+  }
+
+  if (operator === '=') {
+    return normalizedActual === normalizedExpected;
+  }
+
+  return normalizedActual.includes(normalizedExpected);
+};
+
 export const BrowserPage = ({
   selectedPath,
   setSelectedPath,
@@ -372,6 +515,8 @@ export const BrowserPage = ({
   onEditFile,
   isShortcutsModalOpen: isShortcutsModalOpenProp,
   setIsShortcutsModalOpen: setIsShortcutsModalOpenProp,
+  isFilterHelpModalOpen: isFilterHelpModalOpenProp,
+  setIsFilterHelpModalOpen: setIsFilterHelpModalOpenProp,
 }: BrowserPageProps) => {
   const isBrowseRefreshing = browse.isFetching ?? browse.isLoading;
 
@@ -381,6 +526,7 @@ export const BrowserPage = ({
     resolveInitialBreadcrumbHintPaths
   );
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isFilterHelpModalOpenInternal, setIsFilterHelpModalOpenInternal] = useState(false);
   const [filterQuery, setFilterQuery] = useState('');
   const [activeBreadcrumbHintIndex, setActiveBreadcrumbHintIndex] = useState(-1);
   const [isShortcutsModalOpenInternal, setIsShortcutsModalOpenInternal] = useState(false);
@@ -408,6 +554,17 @@ export const BrowserPage = ({
       setIsShortcutsModalOpenProp?.(isOpen);
     },
     [isShortcutsModalOpenProp, setIsShortcutsModalOpenProp]
+  );
+  const isFilterHelpModalOpen = isFilterHelpModalOpenProp ?? isFilterHelpModalOpenInternal;
+  const setIsFilterHelpModalOpen = useCallback(
+    (isOpen: boolean) => {
+      if (isFilterHelpModalOpenProp === undefined) {
+        setIsFilterHelpModalOpenInternal(isOpen);
+      }
+
+      setIsFilterHelpModalOpenProp?.(isOpen);
+    },
+    [isFilterHelpModalOpenProp, setIsFilterHelpModalOpenProp]
   );
   const breadcrumbInputRef = useRef<HTMLInputElement>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
@@ -705,8 +862,20 @@ export const BrowserPage = ({
     [overviewColumnVisibility]
   );
 
+  const parsedFilterClauses = useMemo(() => parseFilterClauses(filterQuery), [filterQuery]);
+
+  const hasActiveAdvancedFilter = useMemo(
+    () =>
+      parsedFilterClauses.some((clause) =>
+        clause.kind === 'text' ? clause.value.trim().length > 0 : clause.value.trim().length > 0
+      ),
+    [parsedFilterClauses]
+  );
+
+  const shouldLoadPropertiesForFiltering = hasActiveAdvancedFilter;
+
   useEffect(() => {
-    if (!isAnyPropertyBackedColumnVisible) {
+    if (!isAnyPropertyBackedColumnVisible && !shouldLoadPropertiesForFiltering) {
       return;
     }
 
@@ -775,6 +944,7 @@ export const BrowserPage = ({
   }, [
     browse.data?.items,
     isAnyPropertyBackedColumnVisible,
+    shouldLoadPropertiesForFiltering,
     propertiesByPath,
     propertiesLoadingPaths,
   ]);
@@ -846,13 +1016,224 @@ export const BrowserPage = ({
 
   const renderedItems = useMemo(() => {
     const items = browse.data?.items ?? [];
+    const compareNumber = (left: number, right: number, operator: QueryOperator): boolean => {
+      if (operator === '>') {
+        return left > right;
+      }
+      if (operator === '>=') {
+        return left >= right;
+      }
+      if (operator === '<') {
+        return left < right;
+      }
+      if (operator === '<=') {
+        return left <= right;
+      }
+      if (operator === '=') {
+        return left === right;
+      }
+      return String(left).includes(String(right));
+    };
+
+    const compareDate = (
+      actualIso: string | null | undefined,
+      expectedRaw: string,
+      operator: QueryOperator
+    ) => {
+      if (!actualIso) {
+        return false;
+      }
+
+      const actual = Date.parse(actualIso);
+      const expected = Date.parse(expectedRaw);
+      if (!Number.isFinite(actual) || !Number.isFinite(expected)) {
+        return false;
+      }
+
+      return compareNumber(actual, expected, operator);
+    };
+
+    const doesClauseMatch = (item: BrowseItem, clause: QueryClause): boolean => {
+      const details = item.type === 'file' ? propertiesByPath[item.path] : undefined;
+      const metadata = details && details !== null ? details.metadata : undefined;
+      const metadataEntries = metadata ? Object.entries(metadata) : [];
+      const extension = item.name.includes('.') ? (item.name.split('.').pop() ?? '') : '';
+
+      if (clause.kind === 'text') {
+        const textTokens: string[] = [item.name, item.path, item.type];
+        if (item.type === 'file') {
+          textTokens.push(String(item.size ?? ''));
+          textTokens.push(item.lastModified ?? '');
+          textTokens.push(item.etag ?? '');
+          if (details && details !== null) {
+            textTokens.push(details.key);
+            textTokens.push(details.contentType);
+            textTokens.push(details.storageClass);
+            textTokens.push(details.cacheControl ?? '');
+            textTokens.push(details.contentDisposition ?? '');
+            textTokens.push(details.contentEncoding ?? '');
+            textTokens.push(details.contentLanguage ?? '');
+            textTokens.push(details.expires ?? '');
+            textTokens.push(details.versionId ?? '');
+            textTokens.push(details.serverSideEncryption ?? '');
+          }
+
+          for (const [key, value] of metadataEntries) {
+            textTokens.push(key);
+            textTokens.push(value);
+            textTokens.push(`${key}:${value}`);
+          }
+        }
+
+        const haystack = textTokens.join(' ').toLowerCase();
+        return haystack.includes(clause.value.toLowerCase());
+      }
+
+      const normalizedField = normalizeFieldName(clause.field);
+      const value = clause.value.trim();
+      const numericValue = parseSizeLiteralBytes(value) ?? Number.parseFloat(value);
+
+      const metadataMatch = (key: string): boolean => {
+        if (!metadata) {
+          return false;
+        }
+
+        const direct = metadata[key];
+        if (typeof direct === 'string') {
+          return doesStringMatch(direct, value, clause.operator);
+        }
+
+        const fallbackEntry = Object.entries(metadata).find(
+          ([entryKey]) => normalizeText(entryKey) === normalizeText(key)
+        );
+        return fallbackEntry ? doesStringMatch(fallbackEntry[1], value, clause.operator) : false;
+      };
+
+      if (normalizedField === 'name') {
+        return doesStringMatch(item.name, value, clause.operator);
+      }
+      if (normalizedField === 'path') {
+        return doesStringMatch(item.path, value, clause.operator);
+      }
+      if (normalizedField === 'type' || normalizedField === 'kind' || normalizedField === 'is') {
+        return doesStringMatch(item.type, value, '=');
+      }
+      if (normalizedField === 'ext' || normalizedField === 'extension') {
+        return doesStringMatch(extension, value.replace(/^\./, ''), clause.operator);
+      }
+      if (normalizedField === 'size') {
+        if (!Number.isFinite(numericValue) || item.size === null) {
+          return false;
+        }
+
+        return compareNumber(item.size, numericValue, clause.operator);
+      }
+      if (normalizedField === 'modified' || normalizedField === 'lastmodified') {
+        return compareDate(item.lastModified, value, clause.operator);
+      }
+      if (normalizedField === 'etag') {
+        const etag = item.etag ?? (details && details !== null ? details.etag : null) ?? '';
+        return doesStringMatch(etag, value, clause.operator);
+      }
+      if (normalizedField === 'key') {
+        const objectKey =
+          details && details !== null
+            ? details.key
+            : item.path.split('/').slice(1).join('/') || item.path;
+        return doesStringMatch(objectKey, value, clause.operator);
+      }
+      if (normalizedField === 'contenttype') {
+        return doesStringMatch(
+          details && details !== null ? details.contentType : '',
+          value,
+          clause.operator
+        );
+      }
+      if (normalizedField === 'storageclass') {
+        return doesStringMatch(
+          details && details !== null ? details.storageClass : '',
+          value,
+          clause.operator
+        );
+      }
+      if (normalizedField === 'cachecontrol') {
+        return doesStringMatch(
+          details && details !== null ? (details.cacheControl ?? '') : '',
+          value,
+          clause.operator
+        );
+      }
+      if (normalizedField === 'contentdisposition') {
+        return doesStringMatch(
+          details && details !== null ? (details.contentDisposition ?? '') : '',
+          value,
+          clause.operator
+        );
+      }
+      if (normalizedField === 'contentencoding') {
+        return doesStringMatch(
+          details && details !== null ? (details.contentEncoding ?? '') : '',
+          value,
+          clause.operator
+        );
+      }
+      if (normalizedField === 'contentlanguage') {
+        return doesStringMatch(
+          details && details !== null ? (details.contentLanguage ?? '') : '',
+          value,
+          clause.operator
+        );
+      }
+      if (normalizedField === 'versionid') {
+        return doesStringMatch(
+          details && details !== null ? (details.versionId ?? '') : '',
+          value,
+          clause.operator
+        );
+      }
+      if (normalizedField === 'expires') {
+        return compareDate(
+          details && details !== null ? (details.expires ?? null) : null,
+          value,
+          clause.operator
+        );
+      }
+      if (normalizedField === 'serversideencryption' || normalizedField === 'sse') {
+        return doesStringMatch(
+          details && details !== null ? (details.serverSideEncryption ?? '') : '',
+          value,
+          clause.operator
+        );
+      }
+      if (normalizedField === 'meta' || normalizedField === 'metadata') {
+        const allMetadata = metadataEntries
+          .map(([key, metadataValue]) => `${key}:${metadataValue}`)
+          .join(' ');
+        return doesStringMatch(allMetadata, value, clause.operator);
+      }
+      if (normalizedField.startsWith('meta.')) {
+        const metadataKey = normalizedField.slice('meta.'.length);
+        return metadataMatch(metadataKey);
+      }
+
+      return metadataMatch(clause.field);
+    };
+
     const filteredItems =
       normalizedFilter.length === 0
         ? items
-        : items.filter((item) => {
-            const haystack = `${item.name} ${item.path} ${item.type}`.toLowerCase();
-            return haystack.includes(normalizedFilter);
-          });
+        : items.filter((item) =>
+            parsedFilterClauses.every((clause) => {
+              const hasContent =
+                clause.kind === 'text' ? clause.value.length > 0 : clause.value.length > 0;
+              if (!hasContent) {
+                return true;
+              }
+
+              const matched = doesClauseMatch(item, clause);
+              return clause.negate ? !matched : matched;
+            })
+          );
 
     const sortedItems = [...filteredItems].sort(compareItems);
 
@@ -873,7 +1254,15 @@ export const BrowserPage = ({
       },
       ...sortedItems.map((item) => ({ item, isParentNavigation: false })),
     ];
-  }, [browse.data?.items, compareItems, normalizedFilter, parentPath, selectedPath]);
+  }, [
+    browse.data?.items,
+    compareItems,
+    normalizedFilter,
+    parentPath,
+    parsedFilterClauses,
+    propertiesByPath,
+    selectedPath,
+  ]);
 
   const setSortForColumn = (key: SortKey, additive: boolean) => {
     setSortRules((previous) => {
@@ -1252,6 +1641,7 @@ export const BrowserPage = ({
 
     if (
       isShortcutsModalOpen ||
+      isFilterHelpModalOpen ||
       contextMenu !== null ||
       pendingFolderUploadFiles.length > 0 ||
       isBreadcrumbEditing ||
@@ -1284,6 +1674,7 @@ export const BrowserPage = ({
     isBreadcrumbEditing,
     contextMenu,
     isFilterOpen,
+    isFilterHelpModalOpen,
     isShortcutsModalOpen,
     pendingFolderUploadFiles.length,
     selectedPath,
@@ -1307,6 +1698,13 @@ export const BrowserPage = ({
         event.preventDefault();
         event.stopPropagation();
         setIsShortcutsModalOpen(false);
+        return;
+      }
+
+      if (isFilterHelpModalOpen && event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        setIsFilterHelpModalOpen(false);
         return;
       }
 
@@ -1400,6 +1798,7 @@ export const BrowserPage = ({
   }, [
     defaultRowIndex,
     focusRowAtIndex,
+    isFilterHelpModalOpen,
     isShortcutsModalOpen,
     openFilter,
     contextMenu,
@@ -2004,6 +2403,76 @@ export const BrowserPage = ({
                 </div>
                 <div className={styles.modalActions}>
                   <Button variant="muted" onClick={() => setIsShortcutsModalOpen(false)}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {isFilterHelpModalOpen ? (
+            <div
+              className={styles.modalOverlay}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="filter-help-modal-title"
+              aria-describedby="filter-help-modal-description"
+              aria-label="Filter query help"
+            >
+              <div className={`${styles.modalCard} ${styles.shortcutsModalCard}`}>
+                <div className={styles.shortcutsModalHeader}>
+                  <BookOpenText size={16} aria-hidden />
+                  <h3 id="filter-help-modal-title">Filter query help</h3>
+                </div>
+                <p id="filter-help-modal-description" className={styles.shortcutsModalDescription}>
+                  Use plain text or field-based expressions in the filter input.
+                </p>
+                <div className={styles.shortcutsGrid}>
+                  <div className={styles.shortcutsTableHeader}>
+                    <span className={styles.shortcutsTableHeaderAction}>Pattern</span>
+                    <span className={styles.shortcutsTableHeaderKeys}>Meaning</span>
+                  </div>
+                  <div className={styles.shortcutItem}>
+                    <span className={styles.shortcutAction}>report</span>
+                    <span className={styles.shortcutKeys}>
+                      Text search across name, path, and metadata
+                    </span>
+                  </div>
+                  <div className={styles.shortcutItem}>
+                    <span className={styles.shortcutAction}>type:file</span>
+                    <span className={styles.shortcutKeys}>
+                      Only files (use type:directory for folders)
+                    </span>
+                  </div>
+                  <div className={styles.shortcutItem}>
+                    <span className={styles.shortcutAction}>size&gt;=10mb</span>
+                    <span className={styles.shortcutKeys}>
+                      Numeric size comparisons with units (kb, mb, gb)
+                    </span>
+                  </div>
+                  <div className={styles.shortcutItem}>
+                    <span className={styles.shortcutAction}>contentType:json</span>
+                    <span className={styles.shortcutKeys}>
+                      Property match (contentType, storageClass, etag, etc.)
+                    </span>
+                  </div>
+                  <div className={styles.shortcutItem}>
+                    <span className={styles.shortcutAction}>meta.owner:alice</span>
+                    <span className={styles.shortcutKeys}>
+                      Metadata key lookup (meta.&lt;key&gt;:&lt;value&gt;)
+                    </span>
+                  </div>
+                  <div className={styles.shortcutItem}>
+                    <span className={styles.shortcutAction}>-type:directory</span>
+                    <span className={styles.shortcutKeys}>Negate a clause with - or !</span>
+                  </div>
+                  <div className={styles.shortcutItem}>
+                    <span className={styles.shortcutAction}>"quarterly report"</span>
+                    <span className={styles.shortcutKeys}>Quoted phrase keeps spaces together</span>
+                  </div>
+                </div>
+                <div className={styles.modalActions}>
+                  <Button variant="muted" onClick={() => setIsFilterHelpModalOpen(false)}>
                     Close
                   </Button>
                 </div>

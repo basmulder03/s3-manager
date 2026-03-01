@@ -1,9 +1,34 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { BrowseItem } from '@server/services/s3/types';
+import type { BrowseItem, ObjectPropertiesResult } from '@server/services/s3/types';
 import { BrowserPage } from '@web/pages/BrowserPage';
 
 const OVERVIEW_COLUMNS_STORAGE_KEY = 'browser-overview-columns';
+
+const { getPropertiesQueryMock } = vi.hoisted(() => ({
+  getPropertiesQueryMock: vi.fn(
+    async ({ path }: { path: string }): Promise<ObjectPropertiesResult> => ({
+      name: path.split('/').pop() ?? path,
+      key: path.split('/').slice(1).join('/'),
+      size: 0,
+      contentType: 'application/octet-stream',
+      lastModified: null,
+      etag: null,
+      storageClass: 'STANDARD',
+      metadata: {},
+    })
+  ),
+}));
+
+vi.mock('@web/trpc/client', () => ({
+  trpcProxyClient: {
+    s3: {
+      getProperties: {
+        query: getPropertiesQueryMock,
+      },
+    },
+  },
+}));
 
 const createProps = () => {
   const setSelectedPath = vi.fn();
@@ -58,6 +83,22 @@ const createProps = () => {
     },
   };
 };
+
+beforeEach(() => {
+  getPropertiesQueryMock.mockClear();
+  getPropertiesQueryMock.mockImplementation(
+    async ({ path }: { path: string }): Promise<ObjectPropertiesResult> => ({
+      name: path.split('/').pop() ?? path,
+      key: path.split('/').slice(1).join('/'),
+      size: 0,
+      contentType: 'application/octet-stream',
+      lastModified: null,
+      etag: null,
+      storageClass: 'STANDARD',
+      metadata: {},
+    })
+  );
+});
 
 describe('BrowserPage breadcrumb editing', () => {
   beforeEach(() => {
@@ -579,6 +620,109 @@ describe('BrowserPage sorting and filtering', () => {
     expect(screen.getByText('invoice-2.pdf')).toBeInTheDocument();
     expect(screen.queryByText('invoice-1.pdf')).not.toBeInTheDocument();
     expect(screen.queryByText('photos')).not.toBeInTheDocument();
+  });
+
+  it('supports advanced metadata filter queries in the filter input', async () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'report-a.json',
+        type: 'file',
+        path: 'my-bucket/report-a.json',
+        size: 10,
+        lastModified: '2026-01-03T00:00:00.000Z',
+      },
+      {
+        name: 'report-b.json',
+        type: 'file',
+        path: 'my-bucket/report-b.json',
+        size: 10,
+        lastModified: '2026-01-03T00:00:00.000Z',
+      },
+    ];
+
+    getPropertiesQueryMock.mockImplementation(
+      async ({ path }: { path: string }): Promise<ObjectPropertiesResult> => ({
+        name: path.split('/').pop() ?? path,
+        key: path.split('/').slice(1).join('/'),
+        size: 10,
+        contentType: 'application/json',
+        lastModified: '2026-01-03T00:00:00.000Z',
+        etag: null,
+        storageClass: 'STANDARD',
+        metadata: path.includes('report-a') ? { owner: 'alice' } : { owner: 'bob' },
+      })
+    );
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open filter' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Filter files and folders' }), {
+      target: { value: 'meta.owner:alice' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('report-a.json')).toBeInTheDocument();
+      expect(screen.queryByText('report-b.json')).not.toBeInTheDocument();
+    });
+  });
+
+  it('supports advanced numeric comparisons in the filter input', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'small.bin',
+        type: 'file',
+        path: 'my-bucket/small.bin',
+        size: 1024,
+        lastModified: null,
+      },
+      {
+        name: 'large.bin',
+        type: 'file',
+        path: 'my-bucket/large.bin',
+        size: 3 * 1024 * 1024,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open filter' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Filter files and folders' }), {
+      target: { value: 'size>=1mb' },
+    });
+
+    expect(screen.queryByText('small.bin')).not.toBeInTheDocument();
+    expect(screen.getByText('large.bin')).toBeInTheDocument();
+  });
+
+  it('renders filter query help modal when opened from header controls', () => {
+    const { props } = createProps();
+    render(<BrowserPage {...props} isFilterHelpModalOpen />);
+
+    expect(
+      screen.queryByRole('button', { name: 'Open filter query help' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Open keyboard shortcuts' })
+    ).not.toBeInTheDocument();
+
+    expect(screen.getByRole('dialog', { name: 'Filter query help' })).toBeInTheDocument();
+    expect(screen.getByText('meta.owner:alice')).toBeInTheDocument();
+    expect(screen.getByText('size>=10mb')).toBeInTheDocument();
   });
 
   it('triggers file and folder upload handlers', () => {

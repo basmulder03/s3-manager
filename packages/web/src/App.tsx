@@ -43,6 +43,7 @@ export const App = () => {
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [isFilterHelpModalOpen, setIsFilterHelpModalOpen] = useState(false);
   const [pendingDiscardAction, setPendingDiscardAction] = useState<
     { type: 'close' } | { type: 'open'; path: string; mode: 'view' | 'edit' } | null
   >(null);
@@ -432,6 +433,7 @@ export const App = () => {
         sidebarOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen((previous) => !previous)}
         onOpenKeyboardShortcuts={() => setIsShortcutsModalOpen(true)}
+        onOpenFilterQueryHelp={() => setIsFilterHelpModalOpen(true)}
       />
 
       <div
@@ -504,6 +506,8 @@ export const App = () => {
                     onDeletePathItems={browser.deletePathItems}
                     isShortcutsModalOpen={isShortcutsModalOpen}
                     setIsShortcutsModalOpen={setIsShortcutsModalOpen}
+                    isFilterHelpModalOpen={isFilterHelpModalOpen}
+                    setIsFilterHelpModalOpen={setIsFilterHelpModalOpen}
                     onViewFile={async (path) => {
                       await runPreviewAction({ type: 'open', path, mode: 'view' });
                     }}
