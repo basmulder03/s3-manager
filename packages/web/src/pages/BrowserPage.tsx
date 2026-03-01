@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom';
 import type {
   CSSProperties,
+  DragEvent as ReactDragEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent,
   ReactNode,
@@ -86,7 +87,7 @@ interface BrowserPageProps {
   onOpenItemContextMenu: (item: BrowseItem) => void;
   onCloseContextMenu: () => void;
   onRename: (path: string, currentName: string) => void;
-  onMove: (path: string) => void;
+  onMove: (path: string, destinationPath?: string) => void;
   onCopyItems: (items: BrowseItem[]) => void;
   onCopyTextToClipboard: (value: string, label: string) => Promise<void>;
   onCutItems: (items: BrowseItem[]) => void;
@@ -105,6 +106,134 @@ interface BrowserPageProps {
   isFilterHelpModalOpen?: boolean;
   setIsFilterHelpModalOpen?: (isOpen: boolean) => void;
 }
+
+const INTERNAL_MOVE_DRAG_TYPE = 'application/x-s3-manager-move-path';
+
+type FileWithRelativePath = File & { webkitRelativePath?: string };
+
+type DataTransferItemWithEntry = DataTransferItem & {
+  webkitGetAsEntry?: () => FileSystemEntryLike | null;
+};
+
+type FileSystemEntryLike = {
+  name: string;
+  isFile: boolean;
+  isDirectory: boolean;
+};
+
+type FileSystemFileEntryLike = FileSystemEntryLike & {
+  isFile: true;
+  file: (
+    successCallback: (file: File) => void,
+    errorCallback?: (error: DOMException) => void
+  ) => void;
+};
+
+type FileSystemDirectoryReaderLike = {
+  readEntries: (
+    successCallback: (entries: FileSystemEntryLike[]) => void,
+    errorCallback?: (error: DOMException) => void
+  ) => void;
+};
+
+type FileSystemDirectoryEntryLike = FileSystemEntryLike & {
+  isDirectory: true;
+  createReader: () => FileSystemDirectoryReaderLike;
+};
+
+const readDirectoryEntries = async (
+  reader: FileSystemDirectoryReaderLike
+): Promise<FileSystemEntryLike[]> => {
+  const entries: FileSystemEntryLike[] = [];
+
+  while (true) {
+    const chunk = await new Promise<FileSystemEntryLike[]>((resolve, reject) => {
+      reader.readEntries(resolve, reject);
+    });
+
+    if (chunk.length === 0) {
+      break;
+    }
+
+    entries.push(...chunk);
+  }
+
+  return entries;
+};
+
+const fileFromEntry = async (
+  entry: FileSystemFileEntryLike,
+  relativePath: string
+): Promise<FileWithRelativePath> => {
+  const file = await new Promise<File>((resolve, reject) => {
+    entry.file(resolve, reject);
+  });
+
+  const normalizedRelativePath = relativePath.replace(/^\/+/, '');
+  if (normalizedRelativePath.length > 0) {
+    Object.defineProperty(file, 'webkitRelativePath', {
+      configurable: true,
+      value: normalizedRelativePath,
+    });
+  }
+
+  return file as FileWithRelativePath;
+};
+
+const cloneDroppedFile = (file: File): File => {
+  return new globalThis.File([file], file.name, {
+    type: file.type,
+    lastModified: file.lastModified,
+  });
+};
+
+const collectFilesFromEntry = async (
+  entry: FileSystemEntryLike,
+  parentPath: string
+): Promise<FileWithRelativePath[]> => {
+  if (entry.isFile) {
+    const fileEntry = entry as FileSystemFileEntryLike;
+    const relativePath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+    return [await fileFromEntry(fileEntry, relativePath)];
+  }
+
+  if (!entry.isDirectory) {
+    return [];
+  }
+
+  const directoryEntry = entry as FileSystemDirectoryEntryLike;
+  const nextParentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+  const reader = directoryEntry.createReader();
+  const childEntries = await readDirectoryEntries(reader);
+  const nestedFiles = await Promise.all(
+    childEntries.map((childEntry) => collectFilesFromEntry(childEntry, nextParentPath))
+  );
+
+  return nestedFiles.flat();
+};
+
+const extractFilesFromDroppedEntries = async (
+  dataTransfer: DataTransfer
+): Promise<{ files: FileWithRelativePath[]; hasDirectoryEntry: boolean }> => {
+  const rawEntryItems = Array.from(dataTransfer.items ?? []).map(
+    (item) => (item as DataTransferItemWithEntry).webkitGetAsEntry?.() ?? null
+  );
+  const entryItems: FileSystemEntryLike[] = [];
+  for (const entry of rawEntryItems) {
+    if (entry) {
+      entryItems.push(entry as FileSystemEntryLike);
+    }
+  }
+
+  if (entryItems.length === 0) {
+    return { files: [], hasDirectoryEntry: false };
+  }
+
+  const hasDirectoryEntry = entryItems.some((entry) => entry.isDirectory);
+  const fileLists = await Promise.all(entryItems.map((entry) => collectFilesFromEntry(entry, '')));
+  const files = fileLists.flat();
+  return { files, hasDirectoryEntry };
+};
 
 type SortKey =
   | 'name'
@@ -701,7 +830,11 @@ export const BrowserPage = ({
     Record<string, ObjectPropertiesResult | null>
   >({});
   const [propertiesLoadingPaths, setPropertiesLoadingPaths] = useState<Set<string>>(new Set());
+  const [pendingFileUploadFiles, setPendingFileUploadFiles] = useState<File[]>([]);
   const [pendingFolderUploadFiles, setPendingFolderUploadFiles] = useState<File[]>([]);
+  const [isUploadDropActive, setIsUploadDropActive] = useState(false);
+  const [draggedMovePath, setDraggedMovePath] = useState<string | null>(null);
+  const [moveDropTargetPath, setMoveDropTargetPath] = useState<string | null>(null);
   const [createEntryModal, setCreateEntryModal] = useState<{
     kind: 'file' | 'folder';
     value: string;
@@ -751,6 +884,7 @@ export const BrowserPage = ({
   const contextMenuFocusRestoreRef = useRef<HTMLElement | null>(null);
   const wasContextMenuOpenRef = useRef(false);
   const wasBreadcrumbEditingRef = useRef(false);
+  const uploadDropEnterDepthRef = useRef(0);
   const folderInputAttributes = {
     directory: '',
     webkitdirectory: '',
@@ -1757,7 +1891,235 @@ export const BrowserPage = ({
     column.label.toLowerCase().includes(normalizedOverviewFieldsFilterQuery)
   );
   const hasBucketContext = selectedPath.trim().replace(/^\/+/, '').length > 0;
-  const uploadDisabled = isUploading || !hasBucketContext;
+  const uploadDisabled = !hasBucketContext;
+
+  const getParentDirectoryPath = useCallback((path: string): string => {
+    const normalized = path.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!normalized) {
+      return '';
+    }
+
+    const parts = normalized.split('/');
+    return parts.slice(0, -1).join('/');
+  }, []);
+
+  const clearUploadDropState = useCallback(() => {
+    uploadDropEnterDepthRef.current = 0;
+    setIsUploadDropActive(false);
+  }, []);
+
+  const isInternalMoveDrag = useCallback((dataTransfer: DataTransfer | null): boolean => {
+    if (!dataTransfer) {
+      return false;
+    }
+
+    return Array.from(dataTransfer.types).includes(INTERNAL_MOVE_DRAG_TYPE);
+  }, []);
+
+  const hasFileDropPayload = useCallback((dataTransfer: DataTransfer | null): boolean => {
+    if (!dataTransfer) {
+      return false;
+    }
+
+    return Array.from(dataTransfer.types).includes('Files');
+  }, []);
+
+  const getDraggedMovePath = useCallback(
+    (dataTransfer: DataTransfer | null): string => {
+      if (draggedMovePath) {
+        return draggedMovePath;
+      }
+
+      if (!dataTransfer) {
+        return '';
+      }
+
+      const payload = dataTransfer.getData(INTERNAL_MOVE_DRAG_TYPE);
+      return payload.trim();
+    },
+    [draggedMovePath]
+  );
+
+  const canMoveToDestination = useCallback(
+    (sourcePath: string, destinationPath: string): boolean => {
+      const normalizedSource = sourcePath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+      const normalizedDestination = destinationPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+      if (!normalizedSource || !normalizedDestination) {
+        return false;
+      }
+
+      if (normalizedSource === normalizedDestination) {
+        return false;
+      }
+
+      if (normalizedDestination.startsWith(`${normalizedSource}/`)) {
+        return false;
+      }
+
+      return getParentDirectoryPath(normalizedSource) !== normalizedDestination;
+    },
+    [getParentDirectoryPath]
+  );
+
+  const handleDroppedUploadFiles = useCallback(
+    (files: FileList | File[]) => {
+      if (uploadDisabled) {
+        return;
+      }
+
+      const droppedFiles = Array.from(files);
+      if (droppedFiles.length === 0) {
+        return;
+      }
+
+      const folderFiles = droppedFiles.filter((file) => {
+        const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
+        return typeof relativePath === 'string' && relativePath.includes('/');
+      });
+
+      const folderFileSet = new Set(folderFiles);
+      const standaloneFiles = droppedFiles
+        .filter((file) => !folderFileSet.has(file))
+        .map((file) => cloneDroppedFile(file));
+
+      if (standaloneFiles.length > 0) {
+        setPendingFileUploadFiles(standaloneFiles);
+      }
+
+      if (folderFiles.length > 0) {
+        setPendingFolderUploadFiles(folderFiles);
+      }
+    },
+    [uploadDisabled]
+  );
+
+  const handleDroppedUploadDataTransfer = useCallback(
+    async (dataTransfer: DataTransfer) => {
+      const droppedFiles = Array.from(dataTransfer.files);
+      const hasRelativePaths = droppedFiles.some((file) => {
+        const relativePath = (file as FileWithRelativePath).webkitRelativePath;
+        return typeof relativePath === 'string' && relativePath.includes('/');
+      });
+      const hasDirectoryItem = Array.from(dataTransfer.items ?? []).some((item) => {
+        const entry = (item as DataTransferItemWithEntry).webkitGetAsEntry?.();
+        return Boolean(entry?.isDirectory);
+      });
+
+      if (hasDirectoryItem) {
+        try {
+          const { files: entryFiles } = await extractFilesFromDroppedEntries(dataTransfer);
+          if (entryFiles.length > 0) {
+            handleDroppedUploadFiles(entryFiles);
+            return;
+          }
+        } catch {
+          // ignore entry API issues and continue with fallback heuristics
+        }
+
+        const droppedFolderFiles = droppedFiles.filter((file) => {
+          const relativePath = (file as FileWithRelativePath).webkitRelativePath;
+          return typeof relativePath === 'string' && relativePath.includes('/');
+        });
+        if (droppedFolderFiles.length > 0) {
+          handleDroppedUploadFiles(droppedFolderFiles);
+        }
+        return;
+      }
+
+      if (hasRelativePaths || droppedFiles.length > 0) {
+        handleDroppedUploadFiles(droppedFiles);
+        return;
+      }
+
+      try {
+        const { files: entryFiles } = await extractFilesFromDroppedEntries(dataTransfer);
+        if (entryFiles.length > 0) {
+          handleDroppedUploadFiles(entryFiles);
+          return;
+        }
+      } catch {
+        // ignore entry API issues and fall back below
+      }
+
+      handleDroppedUploadFiles(dataTransfer.files);
+    },
+    [handleDroppedUploadFiles]
+  );
+
+  const handleUploadDropEnter = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (uploadDisabled) {
+        return;
+      }
+
+      if (isInternalMoveDrag(event.dataTransfer) || !hasFileDropPayload(event.dataTransfer)) {
+        return;
+      }
+
+      event.preventDefault();
+      uploadDropEnterDepthRef.current += 1;
+      setIsUploadDropActive(true);
+    },
+    [hasFileDropPayload, isInternalMoveDrag, uploadDisabled]
+  );
+
+  const handleUploadDropOver = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (uploadDisabled) {
+        return;
+      }
+
+      if (isInternalMoveDrag(event.dataTransfer) || !hasFileDropPayload(event.dataTransfer)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+    },
+    [hasFileDropPayload, isInternalMoveDrag, uploadDisabled]
+  );
+
+  const handleUploadDropLeave = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (uploadDisabled) {
+        return;
+      }
+
+      if (isInternalMoveDrag(event.dataTransfer) || !hasFileDropPayload(event.dataTransfer)) {
+        return;
+      }
+
+      event.preventDefault();
+      uploadDropEnterDepthRef.current = Math.max(0, uploadDropEnterDepthRef.current - 1);
+      if (uploadDropEnterDepthRef.current === 0) {
+        setIsUploadDropActive(false);
+      }
+    },
+    [hasFileDropPayload, isInternalMoveDrag, uploadDisabled]
+  );
+
+  const handleUploadDrop = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (uploadDisabled) {
+        return;
+      }
+
+      if (isInternalMoveDrag(event.dataTransfer) || !hasFileDropPayload(event.dataTransfer)) {
+        return;
+      }
+
+      event.preventDefault();
+      clearUploadDropState();
+      void handleDroppedUploadDataTransfer(event.dataTransfer);
+    },
+    [
+      clearUploadDropState,
+      handleDroppedUploadDataTransfer,
+      hasFileDropPayload,
+      isInternalMoveDrag,
+      uploadDisabled,
+    ]
+  );
 
   const openCreateEntryModal = (kind: 'file' | 'folder') => {
     setCreateEntryError('');
@@ -2343,6 +2705,7 @@ export const BrowserPage = ({
   const isModalNavigationBlocked =
     isShortcutsModalOpen ||
     isFilterHelpModalOpen ||
+    pendingFileUploadFiles.length > 0 ||
     pendingFolderUploadFiles.length > 0 ||
     createEntryModal !== null;
 
@@ -2386,6 +2749,7 @@ export const BrowserPage = ({
     isFilterOpen,
     isFilterHelpModalOpen,
     isShortcutsModalOpen,
+    pendingFileUploadFiles.length,
     pendingFolderUploadFiles.length,
     createEntryModal,
     selectedPath,
@@ -3412,7 +3776,7 @@ export const BrowserPage = ({
                 return;
               }
 
-              void onUploadFiles(files);
+              setPendingFileUploadFiles(Array.from(files));
               event.target.value = '';
             }}
           />
@@ -3433,7 +3797,42 @@ export const BrowserPage = ({
               event.target.value = '';
             }}
           />
-          {pendingFolderUploadFiles.length > 0 ? (
+          {pendingFileUploadFiles.length > 0 ? (
+            <div
+              className={styles.modalOverlay}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="file-upload-modal-title"
+              aria-describedby="file-upload-modal-description"
+              aria-label="Upload selected files?"
+            >
+              <div className={styles.modalCard}>
+                <h3 id="file-upload-modal-title">Upload selected files?</h3>
+                <p id="file-upload-modal-description">
+                  Upload {pendingFileUploadFiles.length} selected file(s) to this location.
+                </p>
+                <div className={styles.modalActions}>
+                  <Button
+                    variant="muted"
+                    onClick={() => {
+                      setPendingFileUploadFiles([]);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      void onUploadFiles(pendingFileUploadFiles);
+                      setPendingFileUploadFiles([]);
+                    }}
+                  >
+                    Upload Files
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {pendingFileUploadFiles.length === 0 && pendingFolderUploadFiles.length > 0 ? (
             <div
               className={styles.modalOverlay}
               role="dialog"
@@ -3519,143 +3918,37 @@ export const BrowserPage = ({
               </div>
             </div>
           ) : null}
-          {renderedItems.length === 0 ? (
-            <div className={styles.emptyItemsState}>
-              <p>No items in this location.</p>
-              <span>Upload files to this path or navigate to another folder.</span>
-            </div>
-          ) : (
-            <div className={styles.itemsTableWrap}>
-              <table className={styles.itemsTable}>
-                <thead>
-                  <tr>
-                    <th className={styles.nameColumn}>
-                      <button
-                        className={styles.sortHeaderButton}
-                        type="button"
-                        onClick={(event) => setSortForColumn('name', event.shiftKey)}
-                        title={getSortTooltip('name')}
-                      >
-                        <span>Name</span>
-                        <span className={styles.sortIndicator} aria-hidden>
-                          {getSortIndicator('name')}
-                        </span>
-                      </button>
-                    </th>
-                    {visibleOverviewColumns.map((column) => {
-                      const columnClassName =
-                        column.key === 'showSize'
-                          ? styles.sizeColumn
-                          : column.key === 'showModified'
-                            ? styles.modifiedColumn
-                            : styles.propertyColumn;
-
-                      if (!isSortableColumn(column.key)) {
-                        return (
-                          <th key={column.key} className={columnClassName}>
-                            {column.label}
-                          </th>
-                        );
-                      }
-
-                      const sortKey = resolveSortKey(column.key);
-                      return (
-                        <th key={column.key} className={columnClassName}>
-                          <button
-                            className={styles.sortHeaderButton}
-                            type="button"
-                            onClick={(event) => setSortForColumn(sortKey, event.shiftKey)}
-                            title={getSortTooltip(sortKey)}
-                          >
-                            <span>{column.label}</span>
-                            <span className={styles.sortIndicator} aria-hidden>
-                              {getSortIndicator(sortKey)}
-                            </span>
-                          </button>
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {renderedItems.map(({ item, isParentNavigation }, index) => (
-                    <tr
-                      key={`${item.type}:${isParentNavigation ? '__parent__' : item.path}`}
-                      ref={(element) => {
-                        rowRefs.current[index] = element;
-                      }}
-                      tabIndex={focusedRowIndex === index ? 0 : -1}
-                      data-focused={focusedRowIndex === index ? 'true' : 'false'}
-                      onFocus={() => setFocusedRowIndex(index)}
-                      className={(() => {
-                        if (isParentNavigation) {
-                          return '';
-                        }
-
-                        const classNames: string[] = [];
-                        if (selectedItems.has(item.path)) {
-                          if (styles.isSelected) {
-                            classNames.push(styles.isSelected);
-                          }
-                        }
-
-                        if (clipboardPaths.has(item.path)) {
-                          const clipboardClass =
-                            clipboardMode === 'cut'
-                              ? styles.isClipboardCut
-                              : styles.isClipboardCopy;
-                          if (clipboardClass) {
-                            classNames.push(clipboardClass);
-                          }
-                        }
-
-                        return classNames.join(' ');
-                      })()}
-                      onClick={(event) => {
-                        if (isParentNavigation) {
-                          return;
-                        }
-
-                        onRowClick(item, index, event);
-                      }}
-                      onDoubleClick={() => {
-                        if (isParentNavigation) {
-                          setSelectedPath(parentPath);
-                          return;
-                        }
-
-                        if (item.type === 'file') {
-                          void onViewFile(item.path);
-                          return;
-                        }
-
-                        onRowDoubleClick(item);
-                      }}
-                      onContextMenu={(event) => {
-                        if (isParentNavigation) {
-                          event.preventDefault();
-                          return;
-                        }
-
-                        onOpenContextMenu(item, event);
-                      }}
-                      onKeyDown={(event) =>
-                        handleRowKeyDown(event, item, index, isParentNavigation)
-                      }
-                    >
-                      <td className={`${styles.nameCell} ${styles.nameColumn}`}>
-                        <div className={styles.itemMainButton}>
-                          <span className={styles.itemIcon} aria-hidden>
-                            {item.type === 'directory' ? <Folder size={16} /> : <File size={16} />}
+          <div
+            className={`${styles.itemsDropZone} ${isUploadDropActive ? styles.itemsDropZoneActive : ''}`}
+            data-testid="browser-drop-zone"
+            onDragEnter={handleUploadDropEnter}
+            onDragOver={handleUploadDropOver}
+            onDragLeave={handleUploadDropLeave}
+            onDrop={handleUploadDrop}
+          >
+            {renderedItems.length === 0 ? (
+              <div className={styles.emptyItemsState}>
+                <p>No items in this location.</p>
+                <span>Upload files to this path or navigate to another folder.</span>
+              </div>
+            ) : (
+              <div className={styles.itemsTableWrap}>
+                <table className={styles.itemsTable}>
+                  <thead>
+                    <tr>
+                      <th className={styles.nameColumn}>
+                        <button
+                          className={styles.sortHeaderButton}
+                          type="button"
+                          onClick={(event) => setSortForColumn('name', event.shiftKey)}
+                          title={getSortTooltip('name')}
+                        >
+                          <span>Name</span>
+                          <span className={styles.sortIndicator} aria-hidden>
+                            {getSortIndicator('name')}
                           </span>
-                          <strong>{item.name}</strong>
-                          {!isParentNavigation && clipboardPaths.has(item.path) ? (
-                            <span className={styles.clipboardTag}>
-                              {clipboardMode === 'cut' ? 'Cut' : 'Copy'}
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
+                        </button>
+                      </th>
                       {visibleOverviewColumns.map((column) => {
                         const columnClassName =
                           column.key === 'showSize'
@@ -3664,18 +3957,228 @@ export const BrowserPage = ({
                               ? styles.modifiedColumn
                               : styles.propertyColumn;
 
+                        if (!isSortableColumn(column.key)) {
+                          return (
+                            <th key={column.key} className={columnClassName}>
+                              {column.label}
+                            </th>
+                          );
+                        }
+
+                        const sortKey = resolveSortKey(column.key);
                         return (
-                          <td key={column.key} className={columnClassName}>
-                            {resolveOverviewFieldValue(item, column.key, isParentNavigation)}
-                          </td>
+                          <th key={column.key} className={columnClassName}>
+                            <button
+                              className={styles.sortHeaderButton}
+                              type="button"
+                              onClick={(event) => setSortForColumn(sortKey, event.shiftKey)}
+                              title={getSortTooltip(sortKey)}
+                            >
+                              <span>{column.label}</span>
+                              <span className={styles.sortIndicator} aria-hidden>
+                                {getSortIndicator(sortKey)}
+                              </span>
+                            </button>
+                          </th>
                         );
                       })}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody>
+                    {renderedItems.map(({ item, isParentNavigation }, index) => (
+                      <tr
+                        key={`${item.type}:${isParentNavigation ? '__parent__' : item.path}`}
+                        ref={(element) => {
+                          rowRefs.current[index] = element;
+                        }}
+                        draggable={canWrite && !isParentNavigation}
+                        tabIndex={focusedRowIndex === index ? 0 : -1}
+                        data-focused={focusedRowIndex === index ? 'true' : 'false'}
+                        onFocus={() => setFocusedRowIndex(index)}
+                        className={(() => {
+                          if (isParentNavigation) {
+                            return '';
+                          }
+
+                          const classNames: string[] = [];
+                          if (selectedItems.has(item.path)) {
+                            if (styles.isSelected) {
+                              classNames.push(styles.isSelected);
+                            }
+                          }
+
+                          if (clipboardPaths.has(item.path)) {
+                            const clipboardClass =
+                              clipboardMode === 'cut'
+                                ? styles.isClipboardCut
+                                : styles.isClipboardCopy;
+                            if (clipboardClass) {
+                              classNames.push(clipboardClass);
+                            }
+                          }
+
+                          if (moveDropTargetPath === item.path) {
+                            if (styles.isDragMoveTarget) {
+                              classNames.push(styles.isDragMoveTarget);
+                            }
+                          }
+
+                          return classNames.join(' ');
+                        })()}
+                        onDragStart={(event) => {
+                          if (isParentNavigation || !canWrite) {
+                            event.preventDefault();
+                            return;
+                          }
+
+                          event.dataTransfer.effectAllowed = 'move';
+                          event.dataTransfer.setData(INTERNAL_MOVE_DRAG_TYPE, item.path);
+                          setDraggedMovePath(item.path);
+                          setMoveDropTargetPath(null);
+                        }}
+                        onDragOver={(event) => {
+                          if (
+                            isParentNavigation ||
+                            item.type !== 'directory' ||
+                            !canWrite ||
+                            !isInternalMoveDrag(event.dataTransfer)
+                          ) {
+                            return;
+                          }
+
+                          const sourcePath = getDraggedMovePath(event.dataTransfer);
+                          if (!canMoveToDestination(sourcePath, item.path)) {
+                            if (moveDropTargetPath === item.path) {
+                              setMoveDropTargetPath(null);
+                            }
+                            return;
+                          }
+
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = 'move';
+                          if (moveDropTargetPath !== item.path) {
+                            setMoveDropTargetPath(item.path);
+                          }
+                        }}
+                        onDragLeave={(event) => {
+                          if (moveDropTargetPath !== item.path) {
+                            return;
+                          }
+
+                          const nextTarget = event.relatedTarget;
+                          if (
+                            nextTarget instanceof Node &&
+                            event.currentTarget.contains(nextTarget)
+                          ) {
+                            return;
+                          }
+
+                          setMoveDropTargetPath(null);
+                        }}
+                        onDrop={(event) => {
+                          if (
+                            isParentNavigation ||
+                            item.type !== 'directory' ||
+                            !canWrite ||
+                            !isInternalMoveDrag(event.dataTransfer)
+                          ) {
+                            return;
+                          }
+
+                          event.preventDefault();
+                          const sourcePath = getDraggedMovePath(event.dataTransfer);
+                          setMoveDropTargetPath(null);
+                          if (!canMoveToDestination(sourcePath, item.path)) {
+                            return;
+                          }
+
+                          onMove(sourcePath, item.path);
+                          setDraggedMovePath(null);
+                        }}
+                        onDragEnd={() => {
+                          setDraggedMovePath(null);
+                          setMoveDropTargetPath(null);
+                        }}
+                        onClick={(event) => {
+                          if (isParentNavigation) {
+                            return;
+                          }
+
+                          onRowClick(item, index, event);
+                        }}
+                        onDoubleClick={() => {
+                          if (isParentNavigation) {
+                            setSelectedPath(parentPath);
+                            return;
+                          }
+
+                          if (item.type === 'file') {
+                            void onViewFile(item.path);
+                            return;
+                          }
+
+                          onRowDoubleClick(item);
+                        }}
+                        onContextMenu={(event) => {
+                          if (isParentNavigation) {
+                            event.preventDefault();
+                            return;
+                          }
+
+                          onOpenContextMenu(item, event);
+                        }}
+                        onKeyDown={(event) =>
+                          handleRowKeyDown(event, item, index, isParentNavigation)
+                        }
+                      >
+                        <td className={`${styles.nameCell} ${styles.nameColumn}`}>
+                          <div className={styles.itemMainButton}>
+                            <span className={styles.itemIcon} aria-hidden>
+                              {item.type === 'directory' ? (
+                                <Folder size={16} />
+                              ) : (
+                                <File size={16} />
+                              )}
+                            </span>
+                            <strong>{item.name}</strong>
+                            {!isParentNavigation && clipboardPaths.has(item.path) ? (
+                              <span className={styles.clipboardTag}>
+                                {clipboardMode === 'cut' ? 'Cut' : 'Copy'}
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        {visibleOverviewColumns.map((column) => {
+                          const columnClassName =
+                            column.key === 'showSize'
+                              ? styles.sizeColumn
+                              : column.key === 'showModified'
+                                ? styles.modifiedColumn
+                                : styles.propertyColumn;
+
+                          return (
+                            <td key={column.key} className={columnClassName}>
+                              {resolveOverviewFieldValue(item, column.key, isParentNavigation)}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {isUploadDropActive ? (
+              <div className={styles.uploadDropOverlay} aria-live="polite">
+                <p className={styles.uploadDropOverlayTitle}>DROP TO START UPLOAD</p>
+                <p className={styles.uploadDropOverlayBody}>
+                  {isUploading
+                    ? 'Uploads are in progress. You can drop more files or folders to queue another upload.'
+                    : 'Review dropped files or folders, then confirm to start upload.'}
+                </p>
+              </div>
+            ) : null}
+          </div>
 
           {contextMenu ? (
             <div

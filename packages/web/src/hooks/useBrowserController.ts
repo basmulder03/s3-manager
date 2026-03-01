@@ -83,10 +83,8 @@ export const useBrowserController = ({
   const [modalError, setModalError] = useState('');
   const [folderSizesByPath, setFolderSizesByPath] = useState<Record<string, number>>({});
   const [folderSizeLoadingPaths, setFolderSizeLoadingPaths] = useState<Set<string>>(new Set());
-  const [isUploading, setIsUploading] = useState(false);
+  const [activeUploadCount, setActiveUploadCount] = useState(0);
   const activeModalRef = useRef<HTMLDivElement>(null);
-  const uploadAbortControllerRef = useRef<AbortController | null>(null);
-  const uploadCancellationRequestedRef = useRef(false);
   const { snackbars, enqueueSnackbar, updateSnackbar, dismissSnackbar } = useSnackbarQueue();
   const uploadProcedures = useMemo(() => createUploadProceduresFromTrpc(trpcProxyClient), []);
 
@@ -297,10 +295,6 @@ export const useBrowserController = ({
     files: FileList | File[],
     mode: 'files' | 'folder'
   ): Promise<void> => {
-    if (isUploading) {
-      return;
-    }
-
     if (!canWrite) {
       enqueueSnackbar({ message: 'You do not have write permission.', tone: 'error' });
       return;
@@ -332,7 +326,8 @@ export const useBrowserController = ({
     const totalCount = uploadFiles.length;
     const totalBytes = uploadFiles.reduce((sum, file) => sum + file.size, 0);
     let uploadedBytes = 0;
-    uploadCancellationRequestedRef.current = false;
+    let cancellationRequested = false;
+    let activeAbortController: AbortController | null = null;
     let progressSnackbarId = 0;
     progressSnackbarId = enqueueSnackbar({
       message: `Uploading 0/${totalCount} item(s) (${formatBytes(0)} / ${formatBytes(totalBytes)})...`,
@@ -341,8 +336,8 @@ export const useBrowserController = ({
       progress: 0,
       actionLabel: 'Cancel',
       onAction: () => {
-        uploadCancellationRequestedRef.current = true;
-        uploadAbortControllerRef.current?.abort();
+        cancellationRequested = true;
+        activeAbortController?.abort();
         updateSnackbar(progressSnackbarId, {
           message: 'Cancelling upload...',
           actionLabel: null,
@@ -373,11 +368,11 @@ export const useBrowserController = ({
       return error instanceof Error && error.name === 'AbortError';
     };
 
-    setIsUploading(true);
+    setActiveUploadCount((previous) => previous + 1);
 
     try {
       for (const file of uploadFiles) {
-        if (uploadCancellationRequestedRef.current) {
+        if (cancellationRequested) {
           cancelled = true;
           break;
         }
@@ -388,7 +383,7 @@ export const useBrowserController = ({
             : file.name;
         const objectKey = `${normalizedPrefix}${relativePath}`;
         const fileAbortController = new AbortController();
-        uploadAbortControllerRef.current = fileAbortController;
+        activeAbortController = fileAbortController;
 
         try {
           const uploadedBytesBeforeFile = uploadedBytes;
@@ -406,6 +401,25 @@ export const useBrowserController = ({
               uploadObjectViaProxy({
                 ...input,
                 signal: fileAbortController.signal,
+                onUploadProgress: (uploadedBytesForFile, totalBytesForFile) => {
+                  const totalUploadedBytes = Math.min(
+                    totalBytes,
+                    uploadedBytesBeforeFile + uploadedBytesForFile
+                  );
+                  const progress =
+                    totalBytes > 0 ? Math.round((totalUploadedBytes / totalBytes) * 100) : 0;
+                  updateSnackbar(progressSnackbarId, {
+                    message: `Uploading ${uploadedCount + failedCount}/${totalCount} item(s) (${formatBytes(totalUploadedBytes)} / ${formatBytes(totalBytes)})...`,
+                    progress,
+                  });
+
+                  if (totalBytesForFile > 0 && uploadedBytesForFile >= totalBytesForFile) {
+                    updateSnackbar(progressSnackbarId, {
+                      message: `Uploading ${uploadedCount + failedCount + 1}/${totalCount} item(s) (${formatBytes(totalUploadedBytes)} / ${formatBytes(totalBytes)})...`,
+                      progress,
+                    });
+                  }
+                },
               }),
             onProgress: (event) => {
               const totalUploadedBytes = Math.min(
@@ -423,7 +437,7 @@ export const useBrowserController = ({
           uploadedCount += 1;
           uploadedBytes += file.size;
         } catch (error) {
-          if (uploadCancellationRequestedRef.current && isAbortError(error)) {
+          if (cancellationRequested && isAbortError(error)) {
             cancelled = true;
             break;
           }
@@ -437,8 +451,8 @@ export const useBrowserController = ({
             failureExamples.set(reason, examples);
           }
         } finally {
-          if (uploadAbortControllerRef.current === fileAbortController) {
-            uploadAbortControllerRef.current = null;
+          if (activeAbortController === fileAbortController) {
+            activeAbortController = null;
           }
         }
 
@@ -490,12 +504,14 @@ export const useBrowserController = ({
         tone: 'info',
       });
     } finally {
-      uploadCancellationRequestedRef.current = false;
-      uploadAbortControllerRef.current = null;
+      cancellationRequested = false;
+      activeAbortController = null;
       dismissSnackbar(progressSnackbarId);
-      setIsUploading(false);
+      setActiveUploadCount((previous) => Math.max(0, previous - 1));
     }
   };
+
+  const isUploading = activeUploadCount > 0;
 
   const createFileInCurrentPath = async (fileName: string) => {
     if (!canWrite) {
@@ -713,13 +729,13 @@ export const useBrowserController = ({
     setModalError('');
   };
 
-  const movePathItem = (path: string) => {
+  const movePathItem = (path: string, destinationPath?: string) => {
     if (!canWrite) {
       enqueueSnackbar({ message: 'You do not have write permission.', tone: 'error' });
       return;
     }
 
-    setMoveModal({ sourcePath: path, destinationPath: selectedPath || '' });
+    setMoveModal({ sourcePath: path, destinationPath: (destinationPath ?? selectedPath) || '' });
     closeContextMenu();
     setModalError('');
   };

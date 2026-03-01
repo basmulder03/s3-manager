@@ -27,6 +27,8 @@ export const createApp = () => {
     cors({
       origin: [config.web.origin],
       credentials: true,
+      allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     })
   );
 

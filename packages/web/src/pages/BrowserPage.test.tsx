@@ -1097,11 +1097,129 @@ describe('BrowserPage sorting and filtering', () => {
       target: { files: [folderFile] },
     });
 
+    const filesDialog = screen.getByRole('dialog', { name: 'Upload selected files?' });
+    fireEvent.click(within(filesDialog).getByRole('button', { name: 'Upload Files' }));
+
     const dialog = screen.getByRole('dialog', { name: 'Upload selected folder?' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Upload Folder' }));
 
     expect(props.onUploadFiles).toHaveBeenCalledTimes(1);
     expect(props.onUploadFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it('uploads dropped files from drag and drop', () => {
+    const { props } = createProps();
+    render(<BrowserPage {...props} />);
+
+    const droppedFile = new File(['hello'], 'hello.txt', { type: 'text/plain' });
+
+    fireEvent.dragEnter(screen.getByTestId('browser-drop-zone'), {
+      dataTransfer: {
+        types: ['Files'],
+      },
+    });
+    fireEvent.drop(screen.getByTestId('browser-drop-zone'), {
+      dataTransfer: {
+        files: [droppedFile],
+        items: [{ kind: 'file' }],
+        types: ['Files'],
+      },
+    });
+
+    const dialog = screen.getByRole('dialog', { name: 'Upload selected files?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Upload Files' }));
+
+    expect(props.onUploadFiles).toHaveBeenCalledTimes(1);
+    expect(props.onUploadFolder).not.toHaveBeenCalled();
+  });
+
+  it('shows a clear upload CTA while dragging files over the explorer', () => {
+    const { props } = createProps();
+    render(<BrowserPage {...props} />);
+
+    fireEvent.dragEnter(screen.getByTestId('browser-drop-zone'), {
+      dataTransfer: {
+        types: ['Files'],
+      },
+    });
+
+    expect(screen.getByText('DROP TO START UPLOAD')).toBeInTheDocument();
+    expect(
+      screen.getByText('Review dropped files or folders, then confirm to start upload.')
+    ).toBeInTheDocument();
+  });
+
+  it('opens folder upload confirmation when dropping a directory payload', async () => {
+    const { props } = createProps();
+    render(<BrowserPage {...props} />);
+
+    const folderFile = new File(['hello'], 'nested.txt', { type: 'text/plain' });
+    Object.defineProperty(folderFile, 'webkitRelativePath', {
+      configurable: true,
+      value: 'folder/nested.txt',
+    });
+
+    fireEvent.drop(screen.getByTestId('browser-drop-zone'), {
+      dataTransfer: {
+        files: [folderFile],
+        items: [
+          {
+            kind: 'file',
+            webkitGetAsEntry: () => ({ isDirectory: true }),
+          },
+        ],
+        types: ['Files'],
+      },
+    });
+
+    const dialog = await screen.findByRole('dialog', { name: 'Upload selected folder?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Upload Folder' }));
+
+    expect(props.onUploadFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves a dragged item when dropped onto a folder row', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'notes.txt',
+        type: 'file',
+        path: 'my-bucket/folder/notes.txt',
+        size: 12,
+        lastModified: null,
+      },
+      {
+        name: 'archive',
+        type: 'directory',
+        path: 'my-bucket/archive',
+        size: null,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+        selectedPath="my-bucket"
+      />
+    );
+
+    const destinationRow = screen.getByText('archive').closest('tr');
+    expect(destinationRow).not.toBeNull();
+    if (!destinationRow) {
+      return;
+    }
+
+    fireEvent.drop(destinationRow, {
+      dataTransfer: {
+        types: ['application/x-s3-manager-move-path'],
+        getData: (type: string) =>
+          type === 'application/x-s3-manager-move-path' ? 'my-bucket/folder/notes.txt' : '',
+      },
+    });
+
+    expect(props.onMove).toHaveBeenCalledWith('my-bucket/folder/notes.txt', 'my-bucket/archive');
   });
 
   it('disables upload buttons when not inside a bucket', () => {

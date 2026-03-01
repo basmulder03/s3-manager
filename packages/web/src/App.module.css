@@ -1005,6 +1005,51 @@
     color-mix(in srgb, var(--surface-soft) 84%, var(--surface));
 }
 
+.itemsDropZone {
+  position: relative;
+  border-radius: 0 0 12px 12px;
+  transition:
+    box-shadow 140ms ease,
+    background-color 140ms ease;
+}
+
+.itemsDropZoneActive {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 46%, transparent) inset;
+  background: color-mix(in srgb, var(--brand-soft) 48%, transparent);
+}
+
+.uploadDropOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-radius: 0 0 12px 12px;
+  background: color-mix(in srgb, var(--brand-soft) 72%, var(--surface));
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--brand) 72%, var(--line));
+  pointer-events: none;
+}
+
+.uploadDropOverlayTitle {
+  margin: 0;
+  color: color-mix(in srgb, var(--brand) 76%, var(--text));
+  font-size: clamp(1rem, 1.2vw + 0.8rem, 1.45rem);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+.uploadDropOverlayBody {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-align: center;
+}
+
 .itemsTableWrap::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -1185,6 +1230,14 @@
 
 .itemsTable tbody tr.isClipboardCut .itemMainButton {
   opacity: 0.78;
+}
+
+.itemsTable tbody tr.isDragMoveTarget td {
+  background: color-mix(in srgb, var(--brand-soft) 74%, var(--surface));
+}
+
+.itemsTable tbody tr.isDragMoveTarget td:first-child {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--brand) 82%, var(--line));
 }
 
 .clipboardTag {
