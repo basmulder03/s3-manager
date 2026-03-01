@@ -288,6 +288,7 @@ describe('BrowserPage sorting and filtering', () => {
     expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
     expect(screen.getByText('Keyboard shortcuts')).toBeInTheDocument();
     expect(screen.getByText('Select all visible items')).toBeInTheDocument();
+    expect(screen.getByText('Refresh explorer contents')).toBeInTheDocument();
     expect(screen.getByText('Download selected files')).toBeInTheDocument();
     expect(screen.getByText('Rename selected item')).toBeInTheDocument();
     expect(screen.getByText('Move selected item')).toBeInTheDocument();
@@ -327,6 +328,30 @@ describe('BrowserPage sorting and filtering', () => {
 
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument();
+  });
+
+  it('refreshes explorer contents on F5', () => {
+    const { props } = createProps();
+    render(<BrowserPage {...props} />);
+
+    const dispatchResult = window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'F5', bubbles: true, cancelable: true })
+    );
+
+    expect(dispatchResult).toBe(false);
+    expect(props.browse.refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not intercept Ctrl+F5 browser refresh', () => {
+    const { props } = createProps();
+    render(<BrowserPage {...props} />);
+
+    const dispatchResult = window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'F5', ctrlKey: true, bubbles: true, cancelable: true })
+    );
+
+    expect(dispatchResult).toBe(true);
+    expect(props.browse.refetch).not.toHaveBeenCalled();
   });
 
   it('supports keyboard row selection and context menu trigger', () => {

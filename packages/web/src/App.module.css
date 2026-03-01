@@ -627,6 +627,10 @@
   margin-left: auto;
 }
 
+.refreshButtonBusy :global(svg) {
+  animation: refreshSpin 800ms linear infinite;
+}
+
 .hiddenInput {
   display: none;
 }
@@ -1517,6 +1521,16 @@
   to {
     opacity: 0;
     transform: translateY(8px);
+  }
+}
+
+@keyframes refreshSpin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
   }
 }
 

@@ -42,6 +42,7 @@ interface BrowserPageProps {
   browse: {
     data?: BrowseData;
     isLoading: boolean;
+    isFetching?: boolean;
     isError: boolean;
     refetch: () => void;
   };
@@ -137,6 +138,12 @@ const browserShortcuts: ShortcutDefinition[] = [
     action: 'Focus file filter',
     shortcuts: [['/']],
     Icon: Search,
+  },
+  {
+    id: 'refresh-explorer',
+    action: 'Refresh explorer contents',
+    shortcuts: [['F5']],
+    Icon: RefreshCw,
   },
   {
     id: 'shortcuts-modal',
@@ -366,6 +373,8 @@ export const BrowserPage = ({
   isShortcutsModalOpen: isShortcutsModalOpenProp,
   setIsShortcutsModalOpen: setIsShortcutsModalOpenProp,
 }: BrowserPageProps) => {
+  const isBrowseRefreshing = browse.isFetching ?? browse.isLoading;
+
   const [isBreadcrumbEditing, setIsBreadcrumbEditing] = useState(false);
   const [breadcrumbDraft, setBreadcrumbDraft] = useState(selectedPath ? `/${selectedPath}` : '/');
   const [cachedDirectoryHintPaths, setCachedDirectoryHintPaths] = useState<string[]>(
@@ -1309,6 +1318,15 @@ export const BrowserPage = ({
         return;
       }
 
+      const isExplorerRefreshShortcut =
+        event.key === 'F5' && !event.ctrlKey && !event.metaKey && !event.altKey;
+
+      if (isExplorerRefreshShortcut) {
+        event.preventDefault();
+        void browse.refetch();
+        return;
+      }
+
       if (event.key === '/') {
         event.preventDefault();
         openFilter();
@@ -1386,6 +1404,7 @@ export const BrowserPage = ({
     openFilter,
     contextMenu,
     parentPath,
+    browse,
     renderedItems.length,
     selectedPath,
     setSelectedPath,
@@ -1912,10 +1931,13 @@ export const BrowserPage = ({
 
             <Button
               variant="muted"
-              className={`${styles.iconButton} ${styles.refreshButton}`}
-              onClick={browse.refetch}
+              className={`${styles.iconButton} ${styles.refreshButton} ${isBrowseRefreshing ? styles.refreshButtonBusy : ''}`}
+              onClick={() => {
+                void browse.refetch();
+              }}
               aria-label="Refresh current location"
-              title="Refresh"
+              title={isBrowseRefreshing ? 'Refreshing...' : 'Refresh'}
+              aria-busy={isBrowseRefreshing}
             >
               <RefreshCw size={16} aria-hidden />
             </Button>
