@@ -507,6 +507,51 @@ const nameCollator = new Intl.Collator(undefined, {
 
 const OVERVIEW_COLUMNS_STORAGE_KEY = 'browser-overview-columns';
 const BREADCRUMB_HINTS_STORAGE_KEY = 'browser-breadcrumb-hints';
+const EXPLORER_ZOOM_STORAGE_KEY = 'browser-explorer-zoom';
+const EXPLORER_ZOOM_EVENT_NAME = 's3-manager:explorer-zoom-change';
+const EXPLORER_ZOOM_LEVELS = [70, 85, 100, 115, 130, 150, 175, 200] as const;
+const EXPLORER_ZOOM_DEFAULT_LEVEL = 100;
+const EXPLORER_GRID_VIEW_MIN_ZOOM = 130;
+const MIN_BROWSER_ZOOM_FACTOR = 0.5;
+const MAX_BROWSER_ZOOM_FACTOR = 3;
+
+const resolveNearestExplorerZoomLevel = (value: number): number => {
+  return EXPLORER_ZOOM_LEVELS.reduce((closest, candidate) => {
+    return Math.abs(candidate - value) < Math.abs(closest - value) ? candidate : closest;
+  }, EXPLORER_ZOOM_DEFAULT_LEVEL);
+};
+
+const resolveNextExplorerZoomLevel = (current: number, direction: 1 | -1): number => {
+  const nearest = resolveNearestExplorerZoomLevel(current);
+  const currentIndex = EXPLORER_ZOOM_LEVELS.findIndex((level) => level === nearest);
+  if (currentIndex < 0) {
+    return EXPLORER_ZOOM_DEFAULT_LEVEL;
+  }
+
+  const nextIndex = Math.max(
+    0,
+    Math.min(EXPLORER_ZOOM_LEVELS.length - 1, currentIndex + direction)
+  );
+  return EXPLORER_ZOOM_LEVELS[nextIndex] ?? EXPLORER_ZOOM_DEFAULT_LEVEL;
+};
+
+const resolveInitialExplorerZoomLevel = (): number => {
+  if (typeof window === 'undefined') {
+    return EXPLORER_ZOOM_DEFAULT_LEVEL;
+  }
+
+  const stored = window.localStorage.getItem(EXPLORER_ZOOM_STORAGE_KEY);
+  if (!stored) {
+    return EXPLORER_ZOOM_DEFAULT_LEVEL;
+  }
+
+  const parsed = Number.parseFloat(stored);
+  if (!Number.isFinite(parsed)) {
+    return EXPLORER_ZOOM_DEFAULT_LEVEL;
+  }
+
+  return resolveNearestExplorerZoomLevel(parsed);
+};
 
 const defaultOverviewColumnVisibility: OverviewColumnVisibility = {
   showName: true,
@@ -829,6 +874,10 @@ export const BrowserPage = ({
   const [overviewFieldsFilterQuery, setOverviewFieldsFilterQuery] = useState('');
   const [overviewColumnVisibility, setOverviewColumnVisibility] =
     useState<OverviewColumnVisibility>(resolveInitialOverviewColumnVisibility);
+  const [manualExplorerZoomLevel, setManualExplorerZoomLevel] = useState<number>(
+    resolveInitialExplorerZoomLevel
+  );
+  const [browserZoomFactor, setBrowserZoomFactor] = useState(1);
   const [propertiesByPath, setPropertiesByPath] = useState<
     Record<string, ObjectPropertiesResult | null>
   >({});
@@ -889,11 +938,32 @@ export const BrowserPage = ({
   const wasContextMenuOpenRef = useRef(false);
   const wasBreadcrumbEditingRef = useRef(false);
   const uploadDropEnterDepthRef = useRef(0);
+  const initialDevicePixelRatioRef = useRef<number | null>(null);
   const activeModalRef = useRef<HTMLDivElement>(null);
   const folderInputAttributes = {
     directory: '',
     webkitdirectory: '',
   } as Record<string, string>;
+  const explorerZoomLevel = useMemo(
+    () => resolveNearestExplorerZoomLevel(manualExplorerZoomLevel * browserZoomFactor),
+    [browserZoomFactor, manualExplorerZoomLevel]
+  );
+  const isExplorerGridView = explorerZoomLevel >= EXPLORER_GRID_VIEW_MIN_ZOOM;
+  const explorerViewportScale = useMemo(() => {
+    const normalizedBrowserZoom = Math.max(
+      MIN_BROWSER_ZOOM_FACTOR,
+      Math.min(MAX_BROWSER_ZOOM_FACTOR, browserZoomFactor)
+    );
+    const ratio = explorerZoomLevel / (EXPLORER_ZOOM_DEFAULT_LEVEL * normalizedBrowserZoom);
+    return Math.max(0.7, Math.min(2.4, ratio));
+  }, [browserZoomFactor, explorerZoomLevel]);
+  const explorerZoomStyle = useMemo(
+    () =>
+      ({
+        zoom: explorerViewportScale,
+      }) as CSSProperties,
+    [explorerViewportScale]
+  );
 
   const commitBreadcrumbPath = (rawPath: string) => {
     const normalized = rawPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
@@ -901,6 +971,27 @@ export const BrowserPage = ({
       setSelectedPath(normalized);
     }
   };
+
+  const resetExplorerZoom = useCallback(() => {
+    setManualExplorerZoomLevel(EXPLORER_ZOOM_DEFAULT_LEVEL);
+  }, []);
+
+  const nudgeExplorerZoom = useCallback(
+    (direction: 1 | -1) => {
+      setManualExplorerZoomLevel((previousManualZoomLevel) => {
+        const effectiveLevel = resolveNearestExplorerZoomLevel(
+          previousManualZoomLevel * browserZoomFactor
+        );
+        const nextEffectiveLevel = resolveNextExplorerZoomLevel(effectiveLevel, direction);
+        const nextManualLevel = nextEffectiveLevel / Math.max(browserZoomFactor, 0.01);
+        return Math.max(
+          EXPLORER_ZOOM_LEVELS[0],
+          Math.min(EXPLORER_ZOOM_LEVELS.at(-1) ?? 200, nextManualLevel)
+        );
+      });
+    },
+    [browserZoomFactor]
+  );
 
   const isBreadcrumbPathCommitAllowed = useCallback(
     (rawPath: string) => {
@@ -1013,6 +1104,50 @@ export const BrowserPage = ({
       JSON.stringify(overviewColumnVisibility)
     );
   }, [overviewColumnVisibility]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(EXPLORER_ZOOM_STORAGE_KEY, String(manualExplorerZoomLevel));
+    window.dispatchEvent(
+      new CustomEvent(EXPLORER_ZOOM_EVENT_NAME, {
+        detail: { manualExplorerZoomLevel },
+      })
+    );
+  }, [manualExplorerZoomLevel]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const baseDevicePixelRatio =
+      initialDevicePixelRatioRef.current ?? Math.max(window.devicePixelRatio || 1, 0.01);
+    initialDevicePixelRatioRef.current = baseDevicePixelRatio;
+
+    const syncBrowserZoomFactor = () => {
+      const currentRatio = Math.max(window.devicePixelRatio || 1, 0.01);
+      const nextFactor = Math.max(
+        MIN_BROWSER_ZOOM_FACTOR,
+        Math.min(MAX_BROWSER_ZOOM_FACTOR, currentRatio / baseDevicePixelRatio)
+      );
+
+      setBrowserZoomFactor((previous) =>
+        Math.abs(previous - nextFactor) < 0.01 ? previous : nextFactor
+      );
+    };
+
+    syncBrowserZoomFactor();
+
+    window.addEventListener('resize', syncBrowserZoomFactor);
+    window.visualViewport?.addEventListener('resize', syncBrowserZoomFactor);
+    return () => {
+      window.removeEventListener('resize', syncBrowserZoomFactor);
+      window.visualViewport?.removeEventListener('resize', syncBrowserZoomFactor);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -2719,6 +2854,92 @@ export const BrowserPage = ({
     [renderedItems.length]
   );
 
+  const getGridColumnCount = useCallback((): number => {
+    const rowElements = rowRefs.current
+      .slice(0, renderedItems.length)
+      .filter((row): row is HTMLTableRowElement => row !== null);
+    if (rowElements.length <= 1) {
+      return 1;
+    }
+
+    const firstRow = rowElements[0];
+    if (!firstRow) {
+      return 1;
+    }
+
+    const firstRect = firstRow.getBoundingClientRect();
+    if (firstRect.width === 0 && firstRect.height === 0) {
+      return 1;
+    }
+
+    const firstTop = firstRect.top;
+    let columns = 1;
+    for (let index = 1; index < rowElements.length; index += 1) {
+      const rowElement = rowElements[index];
+      if (!rowElement) {
+        break;
+      }
+
+      const rect = rowElement.getBoundingClientRect();
+      if (Math.abs(rect.top - firstTop) > 2) {
+        break;
+      }
+
+      columns += 1;
+    }
+
+    return Math.max(1, columns);
+  }, [renderedItems.length]);
+
+  const getGridNavigationIndex = useCallback(
+    (currentIndex: number, key: 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown'): number => {
+      const totalItems = renderedItems.length;
+      if (totalItems <= 1) {
+        return currentIndex;
+      }
+
+      const columns = getGridColumnCount();
+      const totalRows = Math.ceil(totalItems / columns);
+      const currentRow = Math.floor(currentIndex / columns);
+      const currentColumn = currentIndex % columns;
+      const getRowLength = (rowIndex: number) => {
+        const rowStart = rowIndex * columns;
+        return Math.max(0, Math.min(columns, totalItems - rowStart));
+      };
+
+      const currentRowLength = getRowLength(currentRow);
+      const currentRowStart = currentRow * columns;
+
+      if (key === 'ArrowLeft') {
+        if (currentColumn > 0) {
+          return currentIndex - 1;
+        }
+
+        return currentRowStart + Math.max(0, currentRowLength - 1);
+      }
+
+      if (key === 'ArrowRight') {
+        if (currentColumn + 1 < currentRowLength) {
+          return currentIndex + 1;
+        }
+
+        return currentRowStart;
+      }
+
+      const direction = key === 'ArrowUp' ? -1 : 1;
+      for (let step = 1; step <= totalRows; step += 1) {
+        const nextRow = (currentRow + direction * step + totalRows) % totalRows;
+        const nextRowLength = getRowLength(nextRow);
+        if (nextRowLength > currentColumn) {
+          return nextRow * columns + currentColumn;
+        }
+      }
+
+      return currentIndex;
+    },
+    [getGridColumnCount, renderedItems.length]
+  );
+
   const defaultRowIndex = useMemo(() => {
     if (renderedItems.length === 0) {
       return -1;
@@ -2786,6 +3007,26 @@ export const BrowserPage = ({
   ]);
 
   useEffect(() => {
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) {
+        return;
+      }
+
+      event.preventDefault();
+      if (event.deltaY === 0) {
+        return;
+      }
+
+      nudgeExplorerZoom(event.deltaY < 0 ? 1 : -1);
+    };
+
+    window.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      window.removeEventListener('wheel', onWheel);
+    };
+  }, [nudgeExplorerZoom]);
+
+  useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) {
         return;
@@ -2797,6 +3038,24 @@ export const BrowserPage = ({
         target instanceof HTMLTextAreaElement ||
         target instanceof HTMLSelectElement ||
         Boolean((target as HTMLElement | null)?.isContentEditable);
+
+      const hasZoomModifier = event.ctrlKey || event.metaKey;
+      const isZoomInKey = event.key === '=' || event.key === '+' || event.key === 'NumpadAdd';
+      const isZoomOutKey = event.key === '-' || event.key === '_' || event.key === 'NumpadSubtract';
+      const isZoomResetKey = event.key === '0';
+
+      if (hasZoomModifier && !event.altKey && (isZoomInKey || isZoomOutKey || isZoomResetKey)) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (isZoomResetKey) {
+          resetExplorerZoom();
+          return;
+        }
+
+        nudgeExplorerZoom(isZoomInKey ? 1 : -1);
+        return;
+      }
 
       if (isShortcutsModalOpen && event.key === 'Escape') {
         event.preventDefault();
@@ -2868,7 +3127,7 @@ export const BrowserPage = ({
         return;
       }
 
-      if (event.key === 'ArrowLeft' && selectedPath) {
+      if (!isExplorerGridView && event.key === 'ArrowLeft' && selectedPath) {
         event.preventDefault();
         setSelectedPath(parentPath);
         return;
@@ -2923,11 +3182,14 @@ export const BrowserPage = ({
     isShortcutsModalOpen,
     openFilter,
     contextMenu,
+    isExplorerGridView,
     parentPath,
     browse,
     renderedItems.length,
     selectedPath,
     setSelectedPath,
+    nudgeExplorerZoom,
+    resetExplorerZoom,
   ]);
 
   useEffect(() => {
@@ -3218,6 +3480,22 @@ export const BrowserPage = ({
       return;
     }
 
+    if (
+      isExplorerGridView &&
+      (event.key === 'ArrowDown' ||
+        event.key === 'ArrowUp' ||
+        event.key === 'ArrowLeft' ||
+        event.key === 'ArrowRight')
+    ) {
+      event.preventDefault();
+      const nextIndex = getGridNavigationIndex(
+        renderedIndex,
+        event.key as 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown'
+      );
+      focusRowAtIndex(nextIndex);
+      return;
+    }
+
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       focusRowAtIndex(renderedIndex + 1);
@@ -3290,7 +3568,11 @@ export const BrowserPage = ({
 
   return (
     <>
-      <div className={styles.browserToolbar}>
+      <div
+        className={`${styles.browserToolbar} ${isExplorerGridView ? styles.browserToolbarGridView : ''}`}
+        style={explorerZoomStyle}
+        data-explorer-zoom={explorerZoomLevel}
+      >
         <div className={styles.explorerChrome}>
           <div className={styles.browserControls}>
             <Button
@@ -3531,7 +3813,7 @@ export const BrowserPage = ({
                       className={styles.overviewFieldsMenu}
                       role="menu"
                       aria-label="Visible fields menu"
-                      style={overviewFieldsMenuStyle}
+                      style={{ ...overviewFieldsMenuStyle, ...explorerZoomStyle }}
                     >
                       <div className={styles.overviewFieldsHeader}>
                         <p className={styles.overviewFieldsTitle}>Visible fields</p>
@@ -3623,6 +3905,36 @@ export const BrowserPage = ({
                 </Button>
               </>
             ) : null}
+
+            <div className={styles.zoomControls} role="group" aria-label="Explorer zoom controls">
+              <Button
+                variant="muted"
+                className={styles.iconButton}
+                onClick={() => nudgeExplorerZoom(-1)}
+                aria-label="Zoom out explorer"
+                title="Zoom out (Ctrl/Cmd + -)"
+              >
+                -
+              </Button>
+              <Button
+                variant="muted"
+                onClick={resetExplorerZoom}
+                aria-label="Reset explorer zoom"
+                title="Reset zoom (Ctrl/Cmd + 0)"
+                className={styles.zoomResetButton}
+              >
+                {explorerZoomLevel}%
+              </Button>
+              <Button
+                variant="muted"
+                className={styles.iconButton}
+                onClick={() => nudgeExplorerZoom(1)}
+                aria-label="Zoom in explorer"
+                title="Zoom in (Ctrl/Cmd + +)"
+              >
+                +
+              </Button>
+            </div>
 
             <Button
               variant="muted"
@@ -3903,7 +4215,7 @@ export const BrowserPage = ({
               aria-describedby="file-upload-modal-description"
               aria-label="Upload selected files?"
             >
-              <div className={styles.modalCard} ref={activeModalRef}>
+              <div className={styles.modalCard} ref={activeModalRef} style={explorerZoomStyle}>
                 <h3 id="file-upload-modal-title">Upload selected files?</h3>
                 <p id="file-upload-modal-description">
                   Upload {pendingFileUploadFiles.length} selected file(s) to this location.
@@ -4018,6 +4330,7 @@ export const BrowserPage = ({
           <div
             className={`${styles.itemsDropZone} ${isUploadDropActive ? styles.itemsDropZoneActive : ''}`}
             data-testid="browser-drop-zone"
+            style={explorerZoomStyle}
             onDragEnter={handleUploadDropEnter}
             onDragOver={handleUploadDropOver}
             onDragLeave={handleUploadDropLeave}
@@ -4029,7 +4342,13 @@ export const BrowserPage = ({
                 <span>Upload files to this path or navigate to another folder.</span>
               </div>
             ) : (
-              <div className={styles.itemsTableWrap}>
+              <div
+                className={`${styles.itemsTableWrap} ${
+                  isExplorerGridView ? styles.itemsTableWrapGrid : ''
+                }`.trim()}
+                data-view-mode={isExplorerGridView ? 'grid' : 'row'}
+                data-testid="items-view-container"
+              >
                 <table className={styles.itemsTable}>
                   <thead>
                     <tr>
@@ -4238,6 +4557,15 @@ export const BrowserPage = ({
                               )}
                             </span>
                             <strong>{item.name}</strong>
+                            <span className={styles.itemGridMeta}>
+                              {isParentNavigation
+                                ? 'Open parent folder'
+                                : item.type === 'directory'
+                                  ? 'Folder'
+                                  : `${item.size === null ? '-' : formatBytes(item.size)}${
+                                      item.lastModified ? ` • ${formatDate(item.lastModified)}` : ''
+                                    }`}
+                            </span>
                             {!isParentNavigation && clipboardPaths.has(item.path) ? (
                               <span className={styles.clipboardTag}>
                                 {clipboardMode === 'cut' ? 'Cut' : 'Copy'}
@@ -4283,7 +4611,7 @@ export const BrowserPage = ({
               className={styles.contextMenu}
               role="menu"
               aria-label="Item actions"
-              style={{ left: contextMenu.x, top: contextMenu.y }}
+              style={{ left: contextMenu.x, top: contextMenu.y, ...explorerZoomStyle }}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
               onKeyDown={handleContextMenuKeyDown}

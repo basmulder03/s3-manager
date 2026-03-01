@@ -5,6 +5,8 @@ import type { BrowseItem, ObjectPropertiesResult } from '@server/services/s3/typ
 import { BrowserPage } from '@web/pages/BrowserPage';
 
 const OVERVIEW_COLUMNS_STORAGE_KEY = 'browser-overview-columns';
+const EXPLORER_ZOOM_STORAGE_KEY = 'browser-explorer-zoom';
+const ORIGINAL_DEVICE_PIXEL_RATIO = window.devicePixelRatio;
 
 const { getPropertiesQueryMock } = vi.hoisted(() => ({
   getPropertiesQueryMock: vi.fn(
@@ -104,6 +106,12 @@ const renderWithFilterState = (props: ReturnType<typeof createProps>['props']) =
 };
 
 beforeEach(() => {
+  Object.defineProperty(window, 'devicePixelRatio', {
+    configurable: true,
+    value: ORIGINAL_DEVICE_PIXEL_RATIO,
+  });
+  window.localStorage.clear();
+  window.sessionStorage.clear();
   getPropertiesQueryMock.mockClear();
   getPropertiesQueryMock.mockImplementation(
     async ({ path }: { path: string }): Promise<ObjectPropertiesResult> => ({
@@ -877,6 +885,181 @@ describe('BrowserPage sorting and filtering', () => {
     expect(setSelectedPath).toHaveBeenCalledWith('my-bucket');
   });
 
+  it('uses grid-style arrow navigation with wrapping when explorer is in grid mode', () => {
+    const { props } = createProps();
+    window.localStorage.setItem(EXPLORER_ZOOM_STORAGE_KEY, '130');
+    const items: BrowseItem[] = [
+      {
+        name: 'a.txt',
+        type: 'file',
+        path: 'my-bucket/a.txt',
+        size: 4,
+        lastModified: null,
+      },
+      {
+        name: 'b.txt',
+        type: 'file',
+        path: 'my-bucket/b.txt',
+        size: 5,
+        lastModified: null,
+      },
+      {
+        name: 'c.txt',
+        type: 'file',
+        path: 'my-bucket/c.txt',
+        size: 6,
+        lastModified: null,
+      },
+      {
+        name: 'd.txt',
+        type: 'file',
+        path: 'my-bucket/d.txt',
+        size: 7,
+        lastModified: null,
+      },
+      {
+        name: 'e.txt',
+        type: 'file',
+        path: 'my-bucket/e.txt',
+        size: 8,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    const aRow = screen.getByText('a.txt').closest('tr');
+    const bRow = screen.getByText('b.txt').closest('tr');
+    const cRow = screen.getByText('c.txt').closest('tr');
+    const dRow = screen.getByText('d.txt').closest('tr');
+    const eRow = screen.getByText('e.txt').closest('tr');
+    expect(aRow).not.toBeNull();
+    expect(bRow).not.toBeNull();
+    expect(cRow).not.toBeNull();
+    expect(dRow).not.toBeNull();
+    expect(eRow).not.toBeNull();
+    if (!aRow || !bRow || !cRow || !dRow || !eRow) {
+      return;
+    }
+
+    const rows = [aRow, bRow, cRow, dRow, eRow];
+    const createRect = (left: number, top: number): DOMRect =>
+      ({
+        x: left,
+        y: top,
+        width: 200,
+        height: 100,
+        top,
+        left,
+        right: left + 200,
+        bottom: top + 100,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    Object.defineProperty(rows[0], 'getBoundingClientRect', {
+      configurable: true,
+      value: () => createRect(0, 0),
+    });
+    Object.defineProperty(rows[1], 'getBoundingClientRect', {
+      configurable: true,
+      value: () => createRect(220, 0),
+    });
+    Object.defineProperty(rows[2], 'getBoundingClientRect', {
+      configurable: true,
+      value: () => createRect(440, 0),
+    });
+    Object.defineProperty(rows[3], 'getBoundingClientRect', {
+      configurable: true,
+      value: () => createRect(0, 120),
+    });
+    Object.defineProperty(rows[4], 'getBoundingClientRect', {
+      configurable: true,
+      value: () => createRect(220, 120),
+    });
+
+    aRow.focus();
+    fireEvent.keyDown(aRow, { key: 'ArrowLeft' });
+    expect(cRow).toHaveFocus();
+
+    fireEvent.keyDown(cRow, { key: 'ArrowRight' });
+    expect(aRow).toHaveFocus();
+    expect(props.onRowDoubleClick).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(aRow, { key: 'ArrowDown' });
+    expect(dRow).toHaveFocus();
+
+    fireEvent.keyDown(dRow, { key: 'ArrowUp' });
+    expect(aRow).toHaveFocus();
+  });
+
+  it('skips incomplete last-row cells when wrapping vertically in grid mode', () => {
+    const { props } = createProps();
+    window.localStorage.setItem(EXPLORER_ZOOM_STORAGE_KEY, '130');
+    const items: BrowseItem[] = Array.from({ length: 14 }, (_, index) => ({
+      name: `cell-${index}`,
+      type: 'file' as const,
+      path: `my-bucket/cell-${index}`,
+      size: index,
+      lastModified: null,
+    }));
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    const rowElements = items
+      .map((item) => screen.getByText(item.name).closest('tr'))
+      .filter((row): row is HTMLTableRowElement => row !== null);
+    expect(rowElements).toHaveLength(14);
+
+    const createRect = (left: number, top: number): DOMRect =>
+      ({
+        x: left,
+        y: top,
+        width: 200,
+        height: 100,
+        top,
+        left,
+        right: left + 200,
+        bottom: top + 100,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    rowElements.forEach((row, index) => {
+      const column = index % 4;
+      const rowIndex = Math.floor(index / 4);
+      Object.defineProperty(row, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => createRect(column * 220, rowIndex * 120),
+      });
+    });
+
+    const thirdRowThirdCol = rowElements[10];
+    const firstRowThirdCol = rowElements[2];
+    expect(thirdRowThirdCol).toBeDefined();
+    expect(firstRowThirdCol).toBeDefined();
+    if (!thirdRowThirdCol || !firstRowThirdCol) {
+      return;
+    }
+
+    thirdRowThirdCol.focus();
+    fireEvent.keyDown(thirdRowThirdCol, { key: 'ArrowDown' });
+    expect(firstRowThirdCol).toHaveFocus();
+
+    fireEvent.keyDown(firstRowThirdCol, { key: 'ArrowUp' });
+    expect(thirdRowThirdCol).toHaveFocus();
+  });
+
   it('uses numeric-aware string sorting for names', () => {
     const { props } = createProps();
     const items: BrowseItem[] = [
@@ -1415,5 +1598,111 @@ describe('BrowserPage sorting and filtering', () => {
     });
     expect(screen.getByRole('checkbox', { name: 'Content Type' })).toBeInTheDocument();
     expect(screen.queryByRole('checkbox', { name: 'Storage Class' })).not.toBeInTheDocument();
+  });
+
+  it('overrides browser zoom shortcuts and switches to grid mode at higher zoom', async () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'alpha.txt',
+        type: 'file',
+        path: 'my-bucket/folder/alpha.txt',
+        size: 1024,
+        lastModified: '2026-01-01T00:00:00.000Z',
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    const zoomInEvent = new KeyboardEvent('keydown', {
+      key: '=',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(zoomInEvent);
+
+    expect(zoomInEvent.defaultPrevented).toBe(true);
+    await waitFor(() => {
+      expect(window.localStorage.getItem(EXPLORER_ZOOM_STORAGE_KEY)).toBe('115');
+    });
+
+    fireEvent.keyDown(window, { key: '=', ctrlKey: true });
+
+    const viewContainer = screen.getByTestId('items-view-container');
+    expect(viewContainer).toHaveAttribute('data-view-mode', 'grid');
+  });
+
+  it('persists explorer zoom and restores it from local storage', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'alpha.txt',
+        type: 'file',
+        path: 'my-bucket/folder/alpha.txt',
+        size: 1024,
+        lastModified: '2026-01-01T00:00:00.000Z',
+      },
+    ];
+
+    const { unmount } = render(
+      <BrowserPage
+        {...props}
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    fireEvent.keyDown(window, { key: '=', ctrlKey: true });
+    fireEvent.keyDown(window, { key: '=', ctrlKey: true });
+
+    unmount();
+
+    render(
+      <BrowserPage
+        {...props}
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    expect(screen.getByTestId('items-view-container')).toHaveAttribute('data-view-mode', 'grid');
+    expect(screen.getByRole('button', { name: 'Reset explorer zoom' })).toHaveTextContent('130%');
+  });
+
+  it('keeps explorer zoom level synced with browser zoom changes', async () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'alpha.txt',
+        type: 'file',
+        path: 'my-bucket/folder/alpha.txt',
+        size: 1024,
+        lastModified: '2026-01-01T00:00:00.000Z',
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Reset explorer zoom' })).toHaveTextContent('100%');
+
+    Object.defineProperty(window, 'devicePixelRatio', {
+      configurable: true,
+      value: ORIGINAL_DEVICE_PIXEL_RATIO * 1.25,
+    });
+    fireEvent(window, new Event('resize'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Reset explorer zoom' })).toHaveTextContent('130%');
+      expect(screen.getByTestId('items-view-container')).toHaveAttribute('data-view-mode', 'grid');
+    });
   });
 });

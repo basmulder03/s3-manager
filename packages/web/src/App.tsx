@@ -23,6 +23,36 @@ const getBucketNameFromPath = (path: string): string => {
 };
 
 const SESSION_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const EXPLORER_ZOOM_STORAGE_KEY = 'browser-explorer-zoom';
+const EXPLORER_ZOOM_EVENT_NAME = 's3-manager:explorer-zoom-change';
+const EXPLORER_ZOOM_LEVELS = [70, 85, 100, 115, 130, 150, 175, 200] as const;
+const EXPLORER_ZOOM_DEFAULT_LEVEL = 100;
+const MIN_BROWSER_ZOOM_FACTOR = 0.5;
+const MAX_BROWSER_ZOOM_FACTOR = 3;
+
+const resolveNearestExplorerZoomLevel = (value: number): number => {
+  return EXPLORER_ZOOM_LEVELS.reduce((closest, candidate) => {
+    return Math.abs(candidate - value) < Math.abs(closest - value) ? candidate : closest;
+  }, EXPLORER_ZOOM_DEFAULT_LEVEL);
+};
+
+const resolveInitialManualExplorerZoomLevel = (): number => {
+  if (typeof window === 'undefined') {
+    return EXPLORER_ZOOM_DEFAULT_LEVEL;
+  }
+
+  const stored = window.localStorage.getItem(EXPLORER_ZOOM_STORAGE_KEY);
+  if (!stored) {
+    return EXPLORER_ZOOM_DEFAULT_LEVEL;
+  }
+
+  const parsed = Number.parseFloat(stored);
+  if (!Number.isFinite(parsed)) {
+    return EXPLORER_ZOOM_DEFAULT_LEVEL;
+  }
+
+  return resolveNearestExplorerZoomLevel(parsed);
+};
 
 export const App = () => {
   const theme = useUiStore((state) => state.theme);
@@ -33,6 +63,11 @@ export const App = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isFilterHelpModalOpen, setIsFilterHelpModalOpen] = useState(false);
+  const [manualExplorerZoomLevel, setManualExplorerZoomLevel] = useState<number>(
+    resolveInitialManualExplorerZoomLevel
+  );
+  const [browserZoomFactor, setBrowserZoomFactor] = useState(1);
+  const initialDevicePixelRatioRef = useRef<number | null>(null);
   const [pendingDiscardAction, setPendingDiscardAction] = useState<
     { type: 'close' } | { type: 'open'; path: string; mode: 'view' | 'edit' } | null
   >(null);
@@ -369,6 +404,72 @@ export const App = () => {
     browser.filePreviewModal.editable &&
     browser.filePreviewModal.content !== browser.filePreviewModal.originalContent;
 
+  const effectiveExplorerZoomLevel = useMemo(
+    () => resolveNearestExplorerZoomLevel(manualExplorerZoomLevel * browserZoomFactor),
+    [browserZoomFactor, manualExplorerZoomLevel]
+  );
+
+  const headerZoomStyle = useMemo(() => {
+    const normalizedBrowserZoom = Math.max(
+      MIN_BROWSER_ZOOM_FACTOR,
+      Math.min(MAX_BROWSER_ZOOM_FACTOR, browserZoomFactor)
+    );
+    const ratio =
+      effectiveExplorerZoomLevel / (EXPLORER_ZOOM_DEFAULT_LEVEL * normalizedBrowserZoom);
+    return {
+      zoom: Math.max(0.7, Math.min(2.4, ratio)),
+    };
+  }, [browserZoomFactor, effectiveExplorerZoomLevel]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const onExplorerZoomChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ manualExplorerZoomLevel?: number }>;
+      const nextManualZoom = customEvent.detail?.manualExplorerZoomLevel;
+      if (typeof nextManualZoom === 'number' && Number.isFinite(nextManualZoom)) {
+        setManualExplorerZoomLevel(resolveNearestExplorerZoomLevel(nextManualZoom));
+      }
+    };
+
+    window.addEventListener(EXPLORER_ZOOM_EVENT_NAME, onExplorerZoomChange as EventListener);
+    return () => {
+      window.removeEventListener(EXPLORER_ZOOM_EVENT_NAME, onExplorerZoomChange as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const baseDevicePixelRatio =
+      initialDevicePixelRatioRef.current ?? Math.max(window.devicePixelRatio || 1, 0.01);
+    initialDevicePixelRatioRef.current = baseDevicePixelRatio;
+
+    const syncBrowserZoomFactor = () => {
+      const currentRatio = Math.max(window.devicePixelRatio || 1, 0.01);
+      const nextFactor = Math.max(
+        MIN_BROWSER_ZOOM_FACTOR,
+        Math.min(MAX_BROWSER_ZOOM_FACTOR, currentRatio / baseDevicePixelRatio)
+      );
+
+      setBrowserZoomFactor((previous) =>
+        Math.abs(previous - nextFactor) < 0.01 ? previous : nextFactor
+      );
+    };
+
+    syncBrowserZoomFactor();
+    window.addEventListener('resize', syncBrowserZoomFactor);
+    window.visualViewport?.addEventListener('resize', syncBrowserZoomFactor);
+    return () => {
+      window.removeEventListener('resize', syncBrowserZoomFactor);
+      window.visualViewport?.removeEventListener('resize', syncBrowserZoomFactor);
+    };
+  }, []);
+
   const executePreviewAction = useCallback(
     async (action: { type: 'close' } | { type: 'open'; path: string; mode: 'view' | 'edit' }) => {
       if (action.type === 'close') {
@@ -469,15 +570,17 @@ export const App = () => {
 
   return (
     <main className={styles.appShell}>
-      <FinderHeader
-        theme={theme}
-        setTheme={setTheme}
-        authenticated={authenticated}
-        sidebarOpen={isSidebarOpen}
-        onToggleSidebar={() => setIsSidebarOpen((previous) => !previous)}
-        onOpenKeyboardShortcuts={() => setIsShortcutsModalOpen(true)}
-        onOpenFilterQueryHelp={() => setIsFilterHelpModalOpen(true)}
-      />
+      <div style={headerZoomStyle}>
+        <FinderHeader
+          theme={theme}
+          setTheme={setTheme}
+          authenticated={authenticated}
+          sidebarOpen={isSidebarOpen}
+          onToggleSidebar={() => setIsSidebarOpen((previous) => !previous)}
+          onOpenKeyboardShortcuts={() => setIsShortcutsModalOpen(true)}
+          onOpenFilterQueryHelp={() => setIsFilterHelpModalOpen(true)}
+        />
+      </div>
 
       <div
         className={`${styles.finderWindow} ${!isSidebarOpen ? styles.finderWindowCollapsed : ''}`}

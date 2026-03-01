@@ -399,6 +399,10 @@
   z-index: 12;
 }
 
+.browserToolbarGridView .overviewFieldsWrap {
+  opacity: 0.88;
+}
+
 .browserControls {
   display: flex;
   flex-wrap: wrap;
@@ -499,38 +503,8 @@
   box-shadow:
     0 16px 34px rgba(10, 22, 38, 0.22),
     0 2px 0 color-mix(in srgb, var(--line) 38%, transparent) inset;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--line-strong) 70%, var(--brand))
-    color-mix(in srgb, var(--surface-soft) 82%, var(--surface));
   transform-origin: top right;
   animation: menuDropIn 180ms ease-out both;
-}
-
-.overviewFieldsMenu::-webkit-scrollbar {
-  width: 10px;
-}
-
-.overviewFieldsMenu::-webkit-scrollbar-track {
-  background: color-mix(in srgb, var(--surface-soft) 82%, var(--surface));
-  border-radius: 999px;
-}
-
-.overviewFieldsMenu::-webkit-scrollbar-thumb {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--line-strong) 80%, var(--brand)),
-    color-mix(in srgb, var(--line-strong) 60%, var(--brand))
-  );
-  border-radius: 999px;
-  border: 2px solid color-mix(in srgb, var(--surface-soft) 82%, var(--surface));
-}
-
-.overviewFieldsMenu::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--line-strong) 64%, var(--brand)),
-    color-mix(in srgb, var(--line-strong) 48%, var(--brand))
-  );
 }
 
 .overviewFieldsTitle {
@@ -741,6 +715,16 @@
   margin-left: auto;
 }
 
+.zoomControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.zoomResetButton {
+  min-width: 4.3rem;
+}
+
 .refreshButtonBusy :global(svg) {
   animation: refreshSpin 800ms linear infinite;
 }
@@ -798,36 +782,6 @@
   max-height: min(60vh, 560px);
   overflow: auto;
   padding-right: 0.2rem;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--line-strong) 70%, var(--brand))
-    color-mix(in srgb, var(--surface-soft) 85%, var(--surface));
-}
-
-.filterHelpList::-webkit-scrollbar {
-  width: 10px;
-}
-
-.filterHelpList::-webkit-scrollbar-track {
-  background: color-mix(in srgb, var(--surface-soft) 85%, var(--surface));
-  border-radius: 999px;
-}
-
-.filterHelpList::-webkit-scrollbar-thumb {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--line-strong) 82%, var(--brand)),
-    color-mix(in srgb, var(--line-strong) 62%, var(--brand))
-  );
-  border-radius: 999px;
-  border: 2px solid color-mix(in srgb, var(--surface-soft) 85%, var(--surface));
-}
-
-.filterHelpList::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--line-strong) 64%, var(--brand)),
-    color-mix(in srgb, var(--line-strong) 46%, var(--brand))
-  );
 }
 
 .filterHelpCard {
@@ -1118,9 +1072,10 @@
   border: 1px solid color-mix(in srgb, var(--line-strong) 88%, var(--brand));
   border-radius: 0 0 12px 12px;
   overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--line-strong) 70%, var(--brand))
-    color-mix(in srgb, var(--surface-soft) 84%, var(--surface));
+}
+
+.itemsTableWrapGrid {
+  overflow-x: hidden;
 }
 
 .itemsDropZone {
@@ -1167,33 +1122,6 @@
   font-size: 0.86rem;
   font-weight: 600;
   text-align: center;
-}
-
-.itemsTableWrap::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.itemsTableWrap::-webkit-scrollbar-track {
-  background: color-mix(in srgb, var(--surface-soft) 84%, var(--surface));
-}
-
-.itemsTableWrap::-webkit-scrollbar-thumb {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--line-strong) 80%, var(--brand)),
-    color-mix(in srgb, var(--line-strong) 62%, var(--brand))
-  );
-  border-radius: 999px;
-  border: 2px solid color-mix(in srgb, var(--surface-soft) 84%, var(--surface));
-}
-
-.itemsTableWrap::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--line-strong) 66%, var(--brand)),
-    color-mix(in srgb, var(--line-strong) 48%, var(--brand))
-  );
 }
 
 .itemsTable {
@@ -1397,6 +1325,10 @@
   border-radius: 8px;
 }
 
+.itemGridMeta {
+  display: none;
+}
+
 .itemMainButton strong {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1414,6 +1346,119 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.itemsTableWrapGrid .itemsTable {
+  table-layout: fixed;
+}
+
+.itemsTableWrapGrid .itemsTable thead {
+  display: none;
+}
+
+.itemsTableWrapGrid .itemsTable tbody {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.56rem;
+  padding: 0.56rem;
+}
+
+.itemsTableWrapGrid .itemsTable tbody tr {
+  display: block;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 84%, var(--brand));
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--line) 52%, transparent) inset;
+}
+
+.itemsTableWrapGrid .itemsTable tbody td {
+  display: none;
+}
+
+.itemsTableWrapGrid .itemsTable tbody td:first-child {
+  display: block;
+  padding: 0;
+  height: 100%;
+}
+
+.itemsTableWrapGrid .itemMainButton {
+  min-height: 6.7rem;
+  height: 100%;
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 0.46rem;
+  padding: 0.66rem;
+  border-radius: inherit;
+  background: transparent;
+}
+
+.itemsTableWrapGrid .itemsTable tbody tr[data-focused='true']:not(:focus-visible) {
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--line) 52%, transparent) inset,
+    inset 0 0 0 1px color-mix(in srgb, var(--brand) 48%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 46%, var(--surface));
+}
+
+.itemsTableWrapGrid
+  .itemsTable
+  tbody
+  tr[data-focused='true']:not(:focus-visible)
+  td:first-child
+  .itemMainButton {
+  box-shadow: none;
+  background: transparent;
+}
+
+.itemsTableWrapGrid .itemsTable tbody tr.isSelected td,
+.itemsTableWrapGrid .itemsTable tbody tr.isClipboardCopy td,
+.itemsTableWrapGrid .itemsTable tbody tr.isClipboardCut td,
+.itemsTableWrapGrid .itemsTable tbody tr.isDragMoveTarget td {
+  background: transparent;
+  box-shadow: none;
+}
+
+.itemsTableWrapGrid .itemsTable tbody tr.isSelected {
+  background: color-mix(in srgb, var(--brand-soft) 80%, var(--surface));
+}
+
+.itemsTableWrapGrid .itemsTable tbody tr.isSelected:hover {
+  background: color-mix(in srgb, var(--brand-soft) 88%, var(--surface));
+}
+
+.itemsTableWrapGrid .itemsTable tbody tr.isClipboardCopy {
+  background: color-mix(in srgb, var(--brand-soft) 62%, var(--surface));
+}
+
+.itemsTableWrapGrid .itemsTable tbody tr.isClipboardCut {
+  background: color-mix(in srgb, #f6e7b1 58%, var(--surface));
+}
+
+.itemsTableWrapGrid .itemsTable tbody tr.isDragMoveTarget {
+  background: color-mix(in srgb, var(--brand-soft) 74%, var(--surface));
+}
+
+.itemsTableWrapGrid .itemMainButton strong {
+  width: 100%;
+  font-size: 0.84rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.itemsTableWrapGrid .itemIcon :global(svg) {
+  width: 18px;
+  height: 18px;
+}
+
+.itemsTableWrapGrid .clipboardTag {
+  margin-left: 0;
+}
+
+.itemsTableWrapGrid .itemGridMeta {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.35;
 }
 
 .contextMenu {
@@ -1557,36 +1602,6 @@
   max-height: 46vh;
   overflow: auto;
   padding-right: 0.2rem;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--line-strong) 70%, var(--brand))
-    color-mix(in srgb, var(--surface-soft) 85%, var(--surface));
-}
-
-.propertiesGrid::-webkit-scrollbar {
-  width: 10px;
-}
-
-.propertiesGrid::-webkit-scrollbar-track {
-  background: color-mix(in srgb, var(--surface-soft) 85%, var(--surface));
-  border-radius: 999px;
-}
-
-.propertiesGrid::-webkit-scrollbar-thumb {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--line-strong) 82%, var(--brand)),
-    color-mix(in srgb, var(--line-strong) 62%, var(--brand))
-  );
-  border-radius: 999px;
-  border: 2px solid color-mix(in srgb, var(--surface-soft) 85%, var(--surface));
-}
-
-.propertiesGrid::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--line-strong) 64%, var(--brand)),
-    color-mix(in srgb, var(--line-strong) 46%, var(--brand))
-  );
 }
 
 .filePreviewModalCard {
