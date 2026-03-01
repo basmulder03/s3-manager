@@ -427,6 +427,32 @@ describe('BrowserPage sorting and filtering', () => {
     expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument();
   });
 
+  it('blocks explorer navigation shortcuts while a modal is open', () => {
+    const { props, setSelectedPath } = createProps();
+    render(<BrowserPage {...props} />);
+
+    fireEvent.keyDown(window, { key: '?' });
+    expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Backspace' });
+    expect(setSelectedPath).not.toHaveBeenCalled();
+  });
+
+  it('blocks explorer navigation shortcuts while any modal dialog is present', () => {
+    const { props, setSelectedPath } = createProps();
+    render(<BrowserPage {...props} />);
+
+    const externalModal = document.createElement('div');
+    externalModal.setAttribute('role', 'dialog');
+    externalModal.setAttribute('aria-modal', 'true');
+    document.body.appendChild(externalModal);
+
+    fireEvent.keyDown(window, { key: 'Backspace' });
+    expect(setSelectedPath).not.toHaveBeenCalled();
+
+    externalModal.remove();
+  });
+
   it('refreshes explorer contents on F5', () => {
     const { props } = createProps();
     render(<BrowserPage {...props} />);
@@ -483,6 +509,55 @@ describe('BrowserPage sorting and filtering', () => {
 
     fireEvent.keyDown(firstDataRow, { key: 'F10', shiftKey: true });
     expect(props.onOpenItemContextMenu).toHaveBeenCalledWith(items[0]);
+  });
+
+  it('blocks row arrow navigation while any modal dialog is open', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'alpha.txt',
+        type: 'file',
+        path: 'my-bucket/alpha.txt',
+        size: 4,
+        lastModified: null,
+      },
+      {
+        name: 'beta.txt',
+        type: 'file',
+        path: 'my-bucket/beta.txt',
+        size: 8,
+        lastModified: null,
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    const firstRow = screen.getByText('alpha.txt').closest('tr');
+    const secondRow = screen.getByText('beta.txt').closest('tr');
+    expect(firstRow).not.toBeNull();
+    expect(secondRow).not.toBeNull();
+    if (!firstRow || !secondRow) {
+      return;
+    }
+
+    firstRow.focus();
+
+    const externalModal = document.createElement('div');
+    externalModal.setAttribute('role', 'dialog');
+    externalModal.setAttribute('aria-modal', 'true');
+    document.body.appendChild(externalModal);
+
+    fireEvent.keyDown(firstRow, { key: 'ArrowDown' });
+    expect(firstRow).toHaveFocus();
+    expect(secondRow).not.toHaveFocus();
+
+    externalModal.remove();
   });
 
   it('supports keyboard navigation inside the context menu', async () => {

@@ -2340,21 +2340,22 @@ export const BrowserPage = ({
     return 0;
   }, [renderedItems]);
 
+  const isModalNavigationBlocked =
+    isShortcutsModalOpen ||
+    isFilterHelpModalOpen ||
+    pendingFolderUploadFiles.length > 0 ||
+    createEntryModal !== null;
+
+  const hasOpenModalDialog = () =>
+    document.querySelector('[role="dialog"][aria-modal="true"]') !== null;
+
   useEffect(() => {
     if (renderedItems.length === 0 || defaultRowIndex < 0) {
       setFocusedRowIndex(null);
       return;
     }
 
-    if (
-      isShortcutsModalOpen ||
-      isFilterHelpModalOpen ||
-      contextMenu !== null ||
-      pendingFolderUploadFiles.length > 0 ||
-      createEntryModal !== null ||
-      isBreadcrumbEditing ||
-      isFilterOpen
-    ) {
+    if (isModalNavigationBlocked || contextMenu !== null || isBreadcrumbEditing || isFilterOpen) {
       return;
     }
 
@@ -2379,6 +2380,7 @@ export const BrowserPage = ({
   }, [
     defaultRowIndex,
     focusRowAtIndex,
+    isModalNavigationBlocked,
     isBreadcrumbEditing,
     contextMenu,
     isFilterOpen,
@@ -2414,6 +2416,10 @@ export const BrowserPage = ({
         event.preventDefault();
         event.stopPropagation();
         setIsFilterHelpModalOpen(false);
+        return;
+      }
+
+      if (hasOpenModalDialog()) {
         return;
       }
 
@@ -2508,6 +2514,7 @@ export const BrowserPage = ({
     defaultRowIndex,
     focusRowAtIndex,
     isFilterHelpModalOpen,
+    isModalNavigationBlocked,
     isShortcutsModalOpen,
     openFilter,
     contextMenu,
@@ -2800,6 +2807,12 @@ export const BrowserPage = ({
     renderedIndex: number,
     isParentNavigation: boolean
   ) => {
+    if (hasOpenModalDialog()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       focusRowAtIndex(renderedIndex + 1);
