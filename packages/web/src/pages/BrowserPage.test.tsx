@@ -700,6 +700,95 @@ describe('BrowserPage sorting and filtering', () => {
     expect(rows[2]).toHaveTextContent('file10.txt');
   });
 
+  it('sorts by enabled non-default columns such as ETag', () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'alpha.txt',
+        type: 'file',
+        path: 'my-bucket/alpha.txt',
+        size: 4,
+        lastModified: '2026-01-03T00:00:00.000Z',
+        etag: 'z-tag',
+      },
+      {
+        name: 'beta.txt',
+        type: 'file',
+        path: 'my-bucket/beta.txt',
+        size: 4,
+        lastModified: '2026-01-03T00:00:00.000Z',
+        etag: 'a-tag',
+      },
+    ];
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Customize visible fields' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'ETag' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ETag' }));
+
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent('beta.txt');
+    expect(rows[1]).toHaveTextContent('alpha.txt');
+  });
+
+  it('sorts by enabled property-backed columns such as Content Type', async () => {
+    const { props } = createProps();
+    const items: BrowseItem[] = [
+      {
+        name: 'alpha.txt',
+        type: 'file',
+        path: 'my-bucket/alpha.txt',
+        size: 4,
+        lastModified: '2026-01-03T00:00:00.000Z',
+      },
+      {
+        name: 'beta.txt',
+        type: 'file',
+        path: 'my-bucket/beta.txt',
+        size: 4,
+        lastModified: '2026-01-03T00:00:00.000Z',
+      },
+    ];
+
+    getPropertiesQueryMock.mockImplementation(
+      async ({ path }: { path: string }): Promise<ObjectPropertiesResult> => ({
+        name: path.split('/').pop() ?? path,
+        key: path.split('/').slice(1).join('/'),
+        size: 4,
+        contentType: path.includes('alpha') ? 'text/plain' : 'application/json',
+        lastModified: '2026-01-03T00:00:00.000Z',
+        etag: null,
+        storageClass: 'STANDARD',
+        metadata: {},
+      })
+    );
+
+    render(
+      <BrowserPage
+        {...props}
+        selectedPath=""
+        browse={{ ...props.browse, data: { ...props.browse.data!, items } }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Customize visible fields' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Content Type' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Content Type' }));
+
+    await waitFor(() => {
+      const rows = screen.getAllByRole('row').slice(1);
+      expect(rows[0]).toHaveTextContent('beta.txt');
+      expect(rows[1]).toHaveTextContent('alpha.txt');
+    });
+  });
+
   it('filters visible files and folders by query', async () => {
     const { props } = createProps();
     const items: BrowseItem[] = [

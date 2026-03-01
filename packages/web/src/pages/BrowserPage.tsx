@@ -89,7 +89,22 @@ interface BrowserPageProps {
   setIsFilterHelpModalOpen?: (isOpen: boolean) => void;
 }
 
-type SortKey = 'name' | 'size' | 'modified' | 'type';
+type SortKey =
+  | 'name'
+  | 'size'
+  | 'modified'
+  | 'type'
+  | 'key'
+  | 'etag'
+  | 'versionId'
+  | 'serverSideEncryption'
+  | 'contentType'
+  | 'storageClass'
+  | 'cacheControl'
+  | 'contentDisposition'
+  | 'contentEncoding'
+  | 'contentLanguage'
+  | 'expires';
 type SortDirection = 'asc' | 'desc';
 
 interface SortRule {
@@ -368,6 +383,22 @@ const overviewColumnDefinitions: OverviewColumnDefinition[] = [
   { key: 'showContentLanguage', label: 'Content Language', requiresProperties: true },
   { key: 'showExpires', label: 'Expires', requiresProperties: true },
 ];
+
+const overviewColumnSortKeyByColumn: Record<OverviewColumnKey, SortKey> = {
+  showKey: 'key',
+  showSize: 'size',
+  showModified: 'modified',
+  showEtag: 'etag',
+  showVersionId: 'versionId',
+  showServerSideEncryption: 'serverSideEncryption',
+  showContentType: 'contentType',
+  showStorageClass: 'storageClass',
+  showCacheControl: 'cacheControl',
+  showContentDisposition: 'contentDisposition',
+  showContentEncoding: 'contentEncoding',
+  showContentLanguage: 'contentLanguage',
+  showExpires: 'expires',
+};
 
 const resolveInitialOverviewColumnVisibility = (): OverviewColumnVisibility => {
   if (typeof window === 'undefined') {
@@ -1080,6 +1111,69 @@ export const BrowserPage = ({
 
   const compareItems = useCallback(
     (left: BrowseItem, right: BrowseItem): number => {
+      const compareNullableString = (
+        leftValue: string | null,
+        rightValue: string | null
+      ): number => {
+        const hasLeft = leftValue !== null;
+        const hasRight = rightValue !== null;
+
+        if (!hasLeft && hasRight) {
+          return 1;
+        }
+        if (hasLeft && !hasRight) {
+          return -1;
+        }
+        if (!hasLeft || !hasRight) {
+          return 0;
+        }
+
+        return nameCollator.compare(leftValue, rightValue);
+      };
+
+      const resolveStringSortValue = (item: BrowseItem, key: SortKey): string | null => {
+        if (item.type !== 'file') {
+          return null;
+        }
+
+        const details = propertiesByPath[item.path];
+        if (key === 'key') {
+          return (details?.key ?? item.path.split('/').slice(1).join('/')) || item.path;
+        }
+        if (key === 'etag') {
+          return item.etag ?? details?.etag ?? null;
+        }
+        if (key === 'versionId') {
+          return details?.versionId ?? null;
+        }
+        if (key === 'serverSideEncryption') {
+          return details?.serverSideEncryption ?? null;
+        }
+        if (key === 'contentType') {
+          return details?.contentType ?? null;
+        }
+        if (key === 'storageClass') {
+          return details?.storageClass ?? null;
+        }
+        if (key === 'cacheControl') {
+          return details?.cacheControl ?? null;
+        }
+        if (key === 'contentDisposition') {
+          return details?.contentDisposition ?? null;
+        }
+        if (key === 'contentEncoding') {
+          return details?.contentEncoding ?? null;
+        }
+        if (key === 'contentLanguage') {
+          return details?.contentLanguage ?? null;
+        }
+        if (key === 'expires') {
+          return details?.expires ?? null;
+        }
+
+        return null;
+      };
+
       for (const rule of sortRules) {
         let result = 0;
 
@@ -1121,6 +1215,41 @@ export const BrowserPage = ({
           }
         }
 
+        if (rule.key === 'expires') {
+          const leftExpires = resolveStringSortValue(left, rule.key);
+          const rightExpires = resolveStringSortValue(right, rule.key);
+          const leftTime = leftExpires ? Date.parse(leftExpires) : Number.NaN;
+          const rightTime = rightExpires ? Date.parse(rightExpires) : Number.NaN;
+          const hasLeft = Number.isFinite(leftTime);
+          const hasRight = Number.isFinite(rightTime);
+
+          if (!hasLeft && hasRight) {
+            result = 1;
+          } else if (hasLeft && !hasRight) {
+            result = -1;
+          } else if (hasLeft && hasRight) {
+            result = leftTime - rightTime;
+          }
+        }
+
+        if (
+          rule.key === 'key' ||
+          rule.key === 'etag' ||
+          rule.key === 'versionId' ||
+          rule.key === 'serverSideEncryption' ||
+          rule.key === 'contentType' ||
+          rule.key === 'storageClass' ||
+          rule.key === 'cacheControl' ||
+          rule.key === 'contentDisposition' ||
+          rule.key === 'contentEncoding' ||
+          rule.key === 'contentLanguage'
+        ) {
+          result = compareNullableString(
+            resolveStringSortValue(left, rule.key),
+            resolveStringSortValue(right, rule.key)
+          );
+        }
+
         if (result !== 0) {
           return rule.direction === 'asc' ? result : -result;
         }
@@ -1128,7 +1257,7 @@ export const BrowserPage = ({
 
       return nameCollator.compare(left.path, right.path);
     },
-    [folderSizesByPath, sortRules]
+    [folderSizesByPath, propertiesByPath, sortRules]
   );
 
   const normalizedFilter = filterQuery.trim().toLowerCase();
@@ -1438,6 +1567,39 @@ export const BrowserPage = ({
     if (key === 'modified') {
       return 'Modified';
     }
+    if (key === 'key') {
+      return 'Key';
+    }
+    if (key === 'etag') {
+      return 'ETag';
+    }
+    if (key === 'versionId') {
+      return 'Version Id';
+    }
+    if (key === 'serverSideEncryption') {
+      return 'Server-side encryption';
+    }
+    if (key === 'contentType') {
+      return 'Content Type';
+    }
+    if (key === 'storageClass') {
+      return 'Storage Class';
+    }
+    if (key === 'cacheControl') {
+      return 'Cache Control';
+    }
+    if (key === 'contentDisposition') {
+      return 'Content Disposition';
+    }
+    if (key === 'contentEncoding') {
+      return 'Content Encoding';
+    }
+    if (key === 'contentLanguage') {
+      return 'Content Language';
+    }
+    if (key === 'expires') {
+      return 'Expires';
+    }
     return 'Type';
   };
 
@@ -1578,14 +1740,11 @@ export const BrowserPage = ({
   };
 
   const isSortableColumn = (columnKey: OverviewColumnKey): boolean => {
-    return columnKey === 'showSize' || columnKey === 'showModified';
+    return Object.hasOwn(overviewColumnSortKeyByColumn, columnKey);
   };
 
   const resolveSortKey = (columnKey: OverviewColumnKey): SortKey => {
-    if (columnKey === 'showSize') {
-      return 'size';
-    }
-    return 'modified';
+    return overviewColumnSortKeyByColumn[columnKey];
   };
 
   const contextItemCapability = useMemo(() => {
