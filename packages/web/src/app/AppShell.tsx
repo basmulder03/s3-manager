@@ -1,123 +1,44 @@
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
+import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { API_ORIGIN, trpc } from '@web/trpc/client';
 import { useUiStore } from '@web/state/ui';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useI18n } from '@web/i18n';
 import { FileModals, SignInGate, SnackbarHost } from '@web/components';
 import { useBrowserController } from '@web/hooks';
 import { FinderHeader, FinderSidebar } from '@web/layout';
 import { BrowserPage } from '@web/pages';
+import { useExplorerZoom } from '@web/app/hooks/useExplorerZoom';
+import { useSessionRefresh } from '@web/app/hooks/useSessionRefresh';
+import { useAppRouting } from '@web/app/hooks/useAppRouting';
+import { useFilePreviewState } from '@web/app/hooks/useFilePreviewState';
+import { getBucketNameFromPath } from '@web/utils/path';
 import styles from '@web/App.module.css';
-
-const normalizeVirtualPath = (value: string): string =>
-  value.trim().replace(/^\/+/, '').replace(/\/+$/, '');
-
-const getBucketNameFromPath = (path: string): string => {
-  const normalized = normalizeVirtualPath(path);
-  if (!normalized) {
-    return '';
-  }
-
-  const [bucketName = ''] = normalized.split('/');
-  return bucketName;
-};
-
-const SESSION_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
-const EXPLORER_ZOOM_STORAGE_KEY = 'browser-explorer-zoom';
-const EXPLORER_ZOOM_EVENT_NAME = 's3-manager:explorer-zoom-change';
-const EXPLORER_ZOOM_LEVELS = [70, 85, 100, 115, 130, 150, 175, 200] as const;
-const EXPLORER_ZOOM_DEFAULT_LEVEL = 100;
-const MIN_BROWSER_ZOOM_FACTOR = 0.5;
-const MAX_BROWSER_ZOOM_FACTOR = 3;
-
-const resolveNearestExplorerZoomLevel = (value: number): number => {
-  return EXPLORER_ZOOM_LEVELS.reduce((closest, candidate) => {
-    return Math.abs(candidate - value) < Math.abs(closest - value) ? candidate : closest;
-  }, EXPLORER_ZOOM_DEFAULT_LEVEL);
-};
-
-const resolveInitialManualExplorerZoomLevel = (): number => {
-  if (typeof window === 'undefined') {
-    return EXPLORER_ZOOM_DEFAULT_LEVEL;
-  }
-
-  const stored = window.localStorage.getItem(EXPLORER_ZOOM_STORAGE_KEY);
-  if (!stored) {
-    return EXPLORER_ZOOM_DEFAULT_LEVEL;
-  }
-
-  const parsed = Number.parseFloat(stored);
-  if (!Number.isFinite(parsed)) {
-    return EXPLORER_ZOOM_DEFAULT_LEVEL;
-  }
-
-  return resolveNearestExplorerZoomLevel(parsed);
-};
 
 export const App = () => {
   const theme = useUiStore((state) => state.theme);
   const setTheme = useUiStore((state) => state.setTheme);
   const { locale, t } = useI18n();
   const location = useLocation();
-  const navigate = useNavigate();
+
+  // Explorer zoom management
+  const { headerZoomStyle } = useExplorerZoom();
+
+  // URL routing state
+  const {
+    selectedPath,
+    openedFilePath,
+    openedFileMode,
+    filterQuery,
+    setSelectedPath,
+    setOpenedFileInUrl,
+    clearOpenedFileInUrl,
+    setFilterQuery,
+  } = useAppRouting();
+
+  // UI state
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isFilterHelpModalOpen, setIsFilterHelpModalOpen] = useState(false);
-  const [manualExplorerZoomLevel, setManualExplorerZoomLevel] = useState<number>(
-    resolveInitialManualExplorerZoomLevel
-  );
-  const [browserZoomFactor, setBrowserZoomFactor] = useState(1);
-  const initialDevicePixelRatioRef = useRef<number | null>(null);
-  const [pendingDiscardAction, setPendingDiscardAction] = useState<
-    { type: 'close' } | { type: 'open'; path: string; mode: 'view' | 'edit' } | null
-  >(null);
-  const lastOpenedPreviewKeyRef = useRef('');
-  const hadElevationRef = useRef(false);
-  const suppressNextElevationDropNoticeRef = useRef(false);
-
-  const selectedPath = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return normalizeVirtualPath(params.get('path') ?? '');
-  }, [location.search]);
-
-  const openedFilePath = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return normalizeVirtualPath(params.get('file') ?? '');
-  }, [location.search]);
-
-  const openedFileMode = useMemo<'view' | 'edit'>(() => {
-    const params = new URLSearchParams(location.search);
-    return params.get('mode') === 'edit' ? 'edit' : 'view';
-  }, [location.search]);
-
-  const filterQuery = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return params.get('filter') ?? '';
-  }, [location.search]);
-
-  const setSelectedPath = useCallback(
-    (nextPath: string) => {
-      const normalized = normalizeVirtualPath(nextPath);
-      const params = new URLSearchParams(location.search);
-
-      if (normalized) {
-        params.set('path', normalized);
-      } else {
-        params.delete('path');
-      }
-
-      const nextSearch = params.toString();
-      const nextUrl = nextSearch.length > 0 ? `/?${nextSearch}` : '/';
-      const currentUrl = `${location.pathname}${location.search}`;
-
-      if (nextUrl === currentUrl) {
-        return;
-      }
-
-      navigate(nextUrl);
-    },
-    [location.pathname, location.search, navigate]
-  );
 
   const authStatus = trpc.auth.status.useQuery({});
   const authMe = trpc.auth.me.useQuery({}, { retry: false });
@@ -222,57 +143,6 @@ export const App = () => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
-  useEffect(() => {
-    if (!authenticated) {
-      return;
-    }
-
-    let inFlight = false;
-    const intervalId = window.setInterval(() => {
-      if (inFlight) {
-        return;
-      }
-
-      inFlight = true;
-      void refreshSession()
-        .then((refreshed) => {
-          if (!refreshed) {
-            window.clearInterval(intervalId);
-          }
-        })
-        .finally(() => {
-          inFlight = false;
-        });
-    }, SESSION_REFRESH_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [authenticated, refreshSession]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!authenticated) {
-        return;
-      }
-
-      const isManualRefreshShortcut =
-        event.shiftKey && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'r';
-
-      if (!isManualRefreshShortcut) {
-        return;
-      }
-
-      event.preventDefault();
-      void refreshSession();
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [authenticated, refreshSession]);
-
   const browser = useBrowserController({
     selectedPath,
     setSelectedPath,
@@ -297,272 +167,46 @@ export const App = () => {
     },
   });
 
-  useEffect(() => {
-    const hasElevation = authenticated && elevationSources.length > 0;
-    const previouslyElevated = hadElevationRef.current;
-
-    if (previouslyElevated && !hasElevation) {
-      if (suppressNextElevationDropNoticeRef.current) {
-        suppressNextElevationDropNoticeRef.current = false;
-      } else {
-        browser.enqueueSnackbar({
-          tone: 'info',
-          message: t('app.elevation.expired'),
-        });
-      }
-    }
-
-    hadElevationRef.current = hasElevation;
-  }, [authenticated, elevationSources, browser, t]);
-
-  useEffect(() => {
-    if (!authenticated || elevationSources.length === 0) {
-      return;
-    }
-
-    const now = Date.now();
-    const expiryTimes = elevationSources
-      .map((source) => source.expiresAt)
-      .filter((value): value is string => typeof value === 'string' && value.length > 0)
-      .map((value) => Date.parse(value))
-      .filter((value) => !Number.isNaN(value) && value > now);
-
-    if (expiryTimes.length === 0) {
-      return;
-    }
-
-    const nearestExpiry = Math.min(...expiryTimes);
-    const delayMs = Math.max(1_000, nearestExpiry - now + 1_000);
-    const timerId = window.setTimeout(() => {
-      refreshAuthState();
-    }, delayMs);
-
-    return () => {
-      window.clearTimeout(timerId);
-    };
-  }, [authenticated, elevationSources, refreshAuthState]);
-
-  const setOpenedFileInUrl = useCallback(
-    (path: string, mode: 'view' | 'edit') => {
-      const normalized = normalizeVirtualPath(path);
-      const params = new URLSearchParams(location.search);
-      if (normalized) {
-        params.set('file', normalized);
-        params.set('mode', mode);
-      } else {
-        params.delete('file');
-        params.delete('mode');
-      }
-
-      const nextSearch = params.toString();
-      const nextUrl = nextSearch.length > 0 ? `/?${nextSearch}` : '/';
-      const currentUrl = `${location.pathname}${location.search}`;
-      if (nextUrl !== currentUrl) {
-        navigate(nextUrl);
-      }
+  // Session refresh and elevation tracking
+  const { suppressNextElevationNotice } = useSessionRefresh({
+    authenticated,
+    refreshSession,
+    elevationSources,
+    refreshAuthState,
+    onElevationExpired: () => {
+      browser.enqueueSnackbar({
+        tone: 'info',
+        message: t('app.elevation.expired'),
+      });
     },
-    [location.pathname, location.search, navigate]
-  );
-
-  const clearOpenedFileInUrl = useCallback(() => {
-    const params = new URLSearchParams(location.search);
-    params.delete('file');
-    params.delete('mode');
-    const nextSearch = params.toString();
-    const nextUrl = nextSearch.length > 0 ? `/?${nextSearch}` : '/';
-    const currentUrl = `${location.pathname}${location.search}`;
-    if (nextUrl !== currentUrl) {
-      navigate(nextUrl);
-    }
-  }, [location.pathname, location.search, navigate]);
-
-  const setFilterQuery = useCallback(
-    (nextQuery: string) => {
-      const params = new URLSearchParams(location.search);
-
-      if (nextQuery.trim().length > 0) {
-        params.set('filter', nextQuery);
-      } else {
-        params.delete('filter');
-      }
-
-      const nextSearch = params.toString();
-      const nextUrl = nextSearch.length > 0 ? `/?${nextSearch}` : '/';
-      const currentUrl = `${location.pathname}${location.search}`;
-
-      if (nextUrl === currentUrl) {
-        return;
-      }
-
-      navigate(nextUrl, { replace: true });
-    },
-    [location.pathname, location.search, navigate]
-  );
+  });
 
   const hasUnsavedPreviewChanges =
     browser.filePreviewModal?.mode === 'text' &&
     browser.filePreviewModal.editable &&
     browser.filePreviewModal.content !== browser.filePreviewModal.originalContent;
 
-  const effectiveExplorerZoomLevel = useMemo(
-    () => resolveNearestExplorerZoomLevel(manualExplorerZoomLevel * browserZoomFactor),
-    [browserZoomFactor, manualExplorerZoomLevel]
-  );
-
-  const headerZoomStyle = useMemo(() => {
-    const normalizedBrowserZoom = Math.max(
-      MIN_BROWSER_ZOOM_FACTOR,
-      Math.min(MAX_BROWSER_ZOOM_FACTOR, browserZoomFactor)
-    );
-    const ratio =
-      effectiveExplorerZoomLevel / (EXPLORER_ZOOM_DEFAULT_LEVEL * normalizedBrowserZoom);
-    return {
-      zoom: Math.max(0.7, Math.min(2.4, ratio)),
-    };
-  }, [browserZoomFactor, effectiveExplorerZoomLevel]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const onExplorerZoomChange = (event: Event) => {
-      const customEvent = event as CustomEvent<{ manualExplorerZoomLevel?: number }>;
-      const nextManualZoom = customEvent.detail?.manualExplorerZoomLevel;
-      if (typeof nextManualZoom === 'number' && Number.isFinite(nextManualZoom)) {
-        setManualExplorerZoomLevel(resolveNearestExplorerZoomLevel(nextManualZoom));
-      }
-    };
-
-    window.addEventListener(EXPLORER_ZOOM_EVENT_NAME, onExplorerZoomChange as EventListener);
-    return () => {
-      window.removeEventListener(EXPLORER_ZOOM_EVENT_NAME, onExplorerZoomChange as EventListener);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const baseDevicePixelRatio =
-      initialDevicePixelRatioRef.current ?? Math.max(window.devicePixelRatio || 1, 0.01);
-    initialDevicePixelRatioRef.current = baseDevicePixelRatio;
-
-    const syncBrowserZoomFactor = () => {
-      const currentRatio = Math.max(window.devicePixelRatio || 1, 0.01);
-      const nextFactor = Math.max(
-        MIN_BROWSER_ZOOM_FACTOR,
-        Math.min(MAX_BROWSER_ZOOM_FACTOR, currentRatio / baseDevicePixelRatio)
-      );
-
-      setBrowserZoomFactor((previous) =>
-        Math.abs(previous - nextFactor) < 0.01 ? previous : nextFactor
-      );
-    };
-
-    syncBrowserZoomFactor();
-    window.addEventListener('resize', syncBrowserZoomFactor);
-    window.visualViewport?.addEventListener('resize', syncBrowserZoomFactor);
-    return () => {
-      window.removeEventListener('resize', syncBrowserZoomFactor);
-      window.visualViewport?.removeEventListener('resize', syncBrowserZoomFactor);
-    };
-  }, []);
-
-  const executePreviewAction = useCallback(
-    async (action: { type: 'close' } | { type: 'open'; path: string; mode: 'view' | 'edit' }) => {
-      if (action.type === 'close') {
-        clearOpenedFileInUrl();
-        return;
-      }
-
-      const opened = await browser.openFilePreview(action.path, action.mode);
-      if (!opened) {
-        return;
-      }
-
-      const previewKey = `${action.path}|${action.mode}`;
-      lastOpenedPreviewKeyRef.current = previewKey;
-      setOpenedFileInUrl(action.path, action.mode);
-    },
-    [browser, clearOpenedFileInUrl, setOpenedFileInUrl]
-  );
-
-  const runPreviewAction = useCallback(
-    async (action: { type: 'close' } | { type: 'open'; path: string; mode: 'view' | 'edit' }) => {
-      if (hasUnsavedPreviewChanges) {
-        setPendingDiscardAction(action);
-        return;
-      }
-
-      await executePreviewAction(action);
-    },
-    [executePreviewAction, hasUnsavedPreviewChanges]
-  );
-
-  const closeActiveModal = useCallback(() => {
-    if (browser.filePreviewModal) {
-      void runPreviewAction({ type: 'close' });
-      return;
-    }
-
-    browser.closeModals();
-  }, [browser, runPreviewAction]);
-
-  useEffect(() => {
-    if (!canView) {
-      return;
-    }
-
-    if (!openedFilePath) {
-      lastOpenedPreviewKeyRef.current = '';
-      if (browser.filePreviewModal) {
-        browser.closeFilePreview();
-      }
-      return;
-    }
-
-    if (openedFileMode === 'edit' && !canWrite) {
-      setOpenedFileInUrl(openedFilePath, 'view');
-      return;
-    }
-
-    const desiredMode: 'view' | 'edit' = openedFileMode === 'edit' && canWrite ? 'edit' : 'view';
-    const previewKey = `${openedFilePath}|${desiredMode}`;
-
-    if (browser.filePreviewModal?.path === openedFilePath) {
-      if (browser.filePreviewModal.mode === 'text') {
-        const shouldBeEditable = desiredMode === 'edit';
-        if (browser.filePreviewModal.editable !== shouldBeEditable) {
-          browser.setFilePreviewEditable(shouldBeEditable);
-        }
-      }
-      lastOpenedPreviewKeyRef.current = previewKey;
-      return;
-    }
-
-    if (lastOpenedPreviewKeyRef.current === previewKey) {
-      return;
-    }
-
-    lastOpenedPreviewKeyRef.current = previewKey;
-    void browser.openFilePreview(openedFilePath, desiredMode).then((opened) => {
-      if (opened) {
-        return;
-      }
-
-      clearOpenedFileInUrl();
-    });
-  }, [
-    browser,
+  // File preview management
+  const {
+    pendingDiscardAction,
+    runPreviewAction,
+    closeActiveModal,
+    confirmDiscardChanges,
+    cancelDiscardChanges,
+  } = useFilePreviewState({
+    openedFilePath,
+    openedFileMode,
     canView,
     canWrite,
-    clearOpenedFileInUrl,
-    openedFileMode,
-    openedFilePath,
+    filePreviewModal: browser.filePreviewModal,
+    hasUnsavedChanges: hasUnsavedPreviewChanges,
     setOpenedFileInUrl,
-  ]);
+    clearOpenedFileInUrl,
+    openFilePreview: browser.openFilePreview,
+    closeFilePreview: browser.closeFilePreview,
+    setFilePreviewEditable: browser.setFilePreviewEditable,
+    closeModals: browser.closeModals,
+  });
 
   if (showSignInOnly) {
     return <SignInGate />;
@@ -602,7 +246,7 @@ export const App = () => {
               });
             }}
             onElevationRevoked={(entitlementKey) => {
-              suppressNextElevationDropNoticeRef.current = true;
+              suppressNextElevationNotice();
               refreshAuthState();
               browser.enqueueSnackbar({
                 tone: 'success',
@@ -715,18 +359,8 @@ export const App = () => {
           setOpenedFileInUrl(openedFilePath, 'edit');
         }}
         onDownloadFilePreview={async (path) => browser.downloadFile(path, true)}
-        onConfirmDiscardChanges={() => {
-          if (!pendingDiscardAction) {
-            return;
-          }
-
-          const action = pendingDiscardAction;
-          setPendingDiscardAction(null);
-          void executePreviewAction(action);
-        }}
-        onCancelDiscardChanges={() => {
-          setPendingDiscardAction(null);
-        }}
+        onConfirmDiscardChanges={confirmDiscardChanges}
+        onCancelDiscardChanges={cancelDiscardChanges}
         formatDate={formatDate}
       />
 
