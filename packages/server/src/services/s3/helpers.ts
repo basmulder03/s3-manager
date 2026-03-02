@@ -118,6 +118,48 @@ export const ensureRenameTarget = (
     : `${parentPrefix}${normalizedName}`;
 };
 
+export const normalizeEtag = (etag: string | null | undefined): string | null => {
+  if (!etag) {
+    return null;
+  }
+
+  return etag.replace(/^"|"$/g, '').trim();
+};
+
+export const normalizeMetadataEntries = (
+  metadata: Record<string, string>
+): Record<string, string> => {
+  const normalized: Record<string, string> = {};
+
+  for (const [rawKey, rawValue] of Object.entries(metadata)) {
+    const key = rawKey.trim().toLowerCase();
+    const value = rawValue.trim();
+    if (key.length === 0 || value.length === 0) {
+      continue;
+    }
+
+    normalized[key] = value;
+  }
+
+  return normalized;
+};
+
+export const resolveOptionalHeaderValue = (
+  requested: string | null | undefined,
+  existing: string | undefined
+): string | undefined => {
+  if (requested === undefined) {
+    return existing;
+  }
+
+  if (requested === null) {
+    return undefined;
+  }
+
+  const trimmed = requested.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
 export const readBodyAsBytes = async (body: unknown): Promise<Uint8Array> => {
   if (body instanceof Uint8Array) {
     return body;
