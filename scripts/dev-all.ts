@@ -16,14 +16,17 @@ const devEnv = {
   S3_SOURCE_1_VERIFY_SSL: process.env.S3_SOURCE_1_VERIFY_SSL ?? 'false',
 };
 
+// Use Bun.which to find the bun executable, works cross-platform including Windows
+const bunExe = Bun.which('bun') ?? process.execPath;
+
 const children = [
-  Bun.spawn(['bun', 'run', '--filter', 'server', 'dev'], {
+  Bun.spawn([bunExe, 'run', '--filter', 'server', 'dev'], {
     stdout: 'inherit',
     stderr: 'inherit',
     stdin: 'inherit',
     env: devEnv,
   }),
-  Bun.spawn(['bun', 'run', '--filter', 'web', 'dev'], {
+  Bun.spawn([bunExe, 'run', '--filter', 'web', 'dev'], {
     stdout: 'inherit',
     stderr: 'inherit',
     stdin: 'inherit',
