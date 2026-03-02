@@ -1,0 +1,1283 @@
+import { useEffect, useMemo, useRef } from 'react';
+import type { MouseEvent } from 'react';
+import { useModalFocusTrapEffect } from '@web/hooks/useModalFocusTrapEffect';
+import { trpcProxyClient } from '@web/trpc/client';
+import type { BrowseItem } from '@server/services/s3/types';
+import { overviewColumnDefinitions } from '@web/pages/browser/constants';
+import { BrowserContextMenu } from '@web/pages/browser/components/BrowserContextMenu';
+import { BrowserInfoModals } from '@web/pages/browser/components/BrowserInfoModals';
+import { BrowserToolbar } from '@web/pages/browser/components/BrowserToolbar';
+import { BrowserModals } from '@web/pages/browser/components/BrowserModals';
+import { BrowserItemsTable } from '@web/pages/browser/components/BrowserItemsTable';
+import { useRenderedItems } from '@web/pages/browser/hooks/useRenderedItems';
+import { useUploadDropHandlers } from '@web/pages/browser/hooks/useUploadDropHandlers';
+import { useBreadcrumbNavigation } from '@web/pages/browser/hooks/useBreadcrumbNavigation';
+import { useBrowserZoom } from '@web/pages/browser/hooks/useBrowserZoom';
+import { useBrowserSorting } from '@web/pages/browser/hooks/useBrowserSorting';
+import { useFilterManagement } from '@web/pages/browser/hooks/useFilterManagement';
+import { useOverviewFieldsMenu } from '@web/pages/browser/hooks/useOverviewFieldsMenu';
+import { usePropertiesLoading } from '@web/pages/browser/hooks/usePropertiesLoading';
+import { useKeyboardNavigation } from '@web/pages/browser/hooks/useKeyboardNavigation';
+import { useContextMenu } from '@web/pages/browser/hooks/useContextMenu';
+import { useModalManagement } from '@web/pages/browser/hooks/useModalManagement';
+import { useUploadHandling } from '@web/pages/browser/hooks/useUploadHandling';
+import { useDragAndDropState } from '@web/pages/browser/hooks/useDragAndDropState';
+import {
+  resolveOverviewFieldValue,
+  isSortableColumn,
+  resolveSortKey,
+} from '@web/pages/browser/utils/fieldResolvers';
+import styles from '@web/App.module.css';
+
+interface BrowseData {
+  breadcrumbs: Array<{ name: string; path: string }>;
+  items: BrowseItem[];
+}
+
+interface BrowserPageProps {
+  selectedPath: string;
+  setSelectedPath: (path: string) => void;
+  filterQuery: string;
+  setFilterQuery: (query: string) => void;
+  knownBucketNames: string[];
+  breadcrumbValidationMessage?: string;
+  canWrite: boolean;
+  canDelete: boolean;
+  isUploading: boolean;
+  browse: {
+    data?: BrowseData;
+    isLoading: boolean;
+    isFetching?: boolean;
+    isError: boolean;
+    refetch: () => void;
+  };
+  selectedItems: Set<string>;
+  selectedFiles: BrowseItem[];
+  folderSizesByPath: Record<string, number>;
+  folderSizeLoadingPaths: Set<string>;
+  contextMenu: { x: number; y: number; item: BrowseItem } | null;
+  onBulkDownload: () => Promise<void>;
+  onBulkDelete: () => Promise<void>;
+  onCreateFile: (fileName: string) => Promise<void>;
+  onCreateFolder: (folderName: string) => Promise<void>;
+  onUploadFiles: (files: FileList | File[]) => Promise<void>;
+  onUploadFolder: (files: FileList | File[]) => Promise<void>;
+  onClearSelection: () => void;
+  onSelectItemOnly: (path: string, index: number) => void;
+  onToggleItemSelection: (path: string, index: number) => void;
+  onRowClick: (item: BrowseItem, index: number, event: MouseEvent<HTMLElement>) => void;
+  onRowDoubleClick: (item: BrowseItem) => void;
+  onOpenContextMenu: (item: BrowseItem, event: MouseEvent) => void;
+  onOpenItemContextMenu: (item: BrowseItem) => void;
+  onCloseContextMenu: () => void;
+  onRename: (path: string, currentName: string) => void;
+  onMove: (path: string, destinationPath?: string) => void;
+  onCopyItems: (items: BrowseItem[]) => void;
+  onCopyTextToClipboard: (value: string, label: string) => Promise<void>;
+  onCutItems: (items: BrowseItem[]) => void;
+  onPasteIntoPath: (destinationPath: string) => Promise<void>;
+  hasClipboardItems: boolean;
+  clipboardMode?: 'copy' | 'cut' | null;
+  clipboardPaths?: Set<string>;
+  onDownload: (path: string) => Promise<void>;
+  onCalculateFolderSize: (path: string) => Promise<void>;
+  onOpenProperties: (path: string) => Promise<void>;
+  onDeletePathItems: (items: BrowseItem[]) => void;
+  onViewFile: (path: string) => Promise<void>;
+  onEditFile: (path: string) => Promise<void>;
+  isShortcutsModalOpen?: boolean;
+  setIsShortcutsModalOpen?: (isOpen: boolean) => void;
+  isFilterHelpModalOpen?: boolean;
+  setIsFilterHelpModalOpen?: (isOpen: boolean) => void;
+}
+
+export const BrowserPage = ({
+  selectedPath,
+  setSelectedPath,
+  filterQuery,
+  setFilterQuery,
+  knownBucketNames,
+  breadcrumbValidationMessage,
+  canWrite,
+  canDelete,
+  isUploading,
+  browse,
+  selectedItems,
+  selectedFiles,
+  folderSizesByPath,
+  folderSizeLoadingPaths,
+  contextMenu,
+  onBulkDownload,
+  onBulkDelete,
+  onCreateFile,
+  onCreateFolder,
+  onUploadFiles,
+  onUploadFolder,
+  onClearSelection,
+  onSelectItemOnly,
+  onToggleItemSelection,
+  onRowClick,
+  onRowDoubleClick,
+  onOpenContextMenu,
+  onOpenItemContextMenu,
+  onCloseContextMenu,
+  onRename,
+  onMove,
+  onCopyItems,
+  onCopyTextToClipboard,
+  onCutItems,
+  onPasteIntoPath,
+  hasClipboardItems,
+  clipboardMode = null,
+  clipboardPaths = new Set<string>(),
+  onDownload,
+  onCalculateFolderSize,
+  onOpenProperties,
+  onDeletePathItems,
+  onViewFile,
+  onEditFile,
+  isShortcutsModalOpen: isShortcutsModalOpenProp,
+  setIsShortcutsModalOpen: setIsShortcutsModalOpenProp,
+  isFilterHelpModalOpen: isFilterHelpModalOpenProp,
+  setIsFilterHelpModalOpen: setIsFilterHelpModalOpenProp,
+}: BrowserPageProps) => {
+  const isBrowseRefreshing = browse.isFetching ?? browse.isLoading;
+
+  // Local state
+  const [isShortcutsModalOpenInternal, setIsShortcutsModalOpenInternal] = useState(false);
+  const [isFilterHelpModalOpenInternal, setIsFilterHelpModalOpenInternal] = useState(false);
+  const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+  const [pendingFileUploadFiles, setPendingFileUploadFiles] = useState<File[]>([]);
+  const [pendingFolderUploadFiles, setPendingFolderUploadFiles] = useState<File[]>([]);
+  const [isUploadDropActive, setIsUploadDropActive] = useState(false);
+  const [draggedMovePath, setDraggedMovePath] = useState<string | null>(null);
+  const [moveDropTargetPath, setMoveDropTargetPath] = useState<string | null>(null);
+  const [createEntryModal, setCreateEntryModal] = useState<{
+    kind: 'file' | 'folder';
+    value: string;
+  } | null>(null);
+  const [createEntryError, setCreateEntryError] = useState('');
+  const [openSubmenuActionId, setOpenSubmenuActionId] = useState<string | null>(null);
+  const [contextSubmenuSide, setContextSubmenuSide] = useState<'left' | 'right'>('right');
+
+  // Modal state management
+  const isShortcutsModalOpen = isShortcutsModalOpenProp ?? isShortcutsModalOpenInternal;
+  const setIsShortcutsModalOpen = useCallback(
+    (isOpen: boolean) => {
+      if (isShortcutsModalOpenProp === undefined) {
+        setIsShortcutsModalOpenInternal(isOpen);
+      }
+
+      setIsShortcutsModalOpenProp?.(isOpen);
+    },
+    [isShortcutsModalOpenProp, setIsShortcutsModalOpenProp]
+  );
+  const isFilterHelpModalOpen = isFilterHelpModalOpenProp ?? isFilterHelpModalOpenInternal;
+  const setIsFilterHelpModalOpen = useCallback(
+    (isOpen: boolean) => {
+      if (isFilterHelpModalOpenProp === undefined) {
+        setIsFilterHelpModalOpenInternal(isOpen);
+      }
+
+      setIsFilterHelpModalOpenProp?.(isOpen);
+    },
+    [isFilterHelpModalOpenProp, setIsFilterHelpModalOpenProp]
+  );
+
+  // Refs
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
+  const uploadFilesInputRef = useRef<HTMLInputElement>(null);
+  const uploadFolderInputRef = useRef<HTMLInputElement>(null);
+  const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const contextMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const contextSubmenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const contextSubmenuRef = useRef<HTMLDivElement>(null);
+  const contextMenuFocusRestoreRef = useRef<HTMLElement | null>(null);
+  const wasContextMenuOpenRef = useRef(false);
+  const uploadDropEnterDepthRef = useRef(0);
+  const activeModalRef = useRef<HTMLDivElement>(null);
+
+  const folderInputAttributes = {
+    directory: '',
+    webkitdirectory: '',
+  } as Record<string, string>;
+
+  // Initialize hooks
+  const breadcrumb = useBreadcrumbNavigation({
+    selectedPath,
+    setSelectedPath,
+    knownBucketNames,
+    browseData: browse.data,
+  });
+
+  const zoom = useBrowserZoom();
+
+  const sorting = useBrowserSorting();
+
+  const filter = useFilterManagement({ filterQuery, setFilterQuery });
+
+  const overviewFields = useOverviewFieldsMenu();
+
+  const isAnyPropertyBackedColumnVisible = useMemo(
+    () =>
+      overviewColumnDefinitions.some(
+        (column) => column.requiresProperties && overviewFields.overviewColumnVisibility[column.key]
+      ),
+    [overviewFields.overviewColumnVisibility]
+  );
+
+  const properties = usePropertiesLoading({
+    browseItems: browse.data?.items ?? [],
+    isAnyPropertyBackedColumnVisible,
+    filterQuery,
+  });
+
+  const { parentPath, renderedItems } = useRenderedItems({
+    browseItems: browse.data?.items ?? [],
+    selectedPath,
+    filterQuery,
+    parsedFilterClauses: properties.parsedFilterClauses,
+    propertiesByPath: properties.propertiesByPath,
+    folderSizesByPath,
+    sortRules: sorting.sortRules,
+  });
+
+  const keyboard = useKeyboardNavigation({
+    renderedItems,
+    isExplorerGridView: zoom.isExplorerGridView,
+    selectedPath,
+    setSelectedPath,
+    parentPath,
+    onViewFile,
+    onRowDoubleClick,
+    onSelectItemOnly,
+    onToggleItemSelection,
+    onOpenItemContextMenu,
+    openFilter: filter.openFilter,
+    setIsShortcutsModalOpen,
+    onRefetch: browse.refetch,
+    nudgeExplorerZoom: zoom.nudgeExplorerZoom,
+    resetExplorerZoom: zoom.resetExplorerZoom,
+    contextMenu,
+    isActionsMenuOpen,
+    setIsActionsMenuOpen,
+    isShortcutsModalOpen,
+    isFilterHelpModalOpen,
+    rowRefs,
+  });
+
+  const hasBucketContext = selectedPath.trim().replace(/^\/+/, '').length > 0;
+  const uploadDisabled = !hasBucketContext;
+
+  const {
+    canMoveToDestination,
+    getDraggedMovePath,
+    handleUploadDrop,
+    handleUploadDropEnter,
+    handleUploadDropLeave,
+    handleUploadDropOver,
+    isInternalMoveDrag,
+  } = useUploadDropHandlers({
+    uploadDisabled,
+    draggedMovePath,
+    uploadDropEnterDepthRef,
+    setIsUploadDropActive,
+    setPendingFileUploadFiles,
+    setPendingFolderUploadFiles,
+  });
+
+  const openCreateEntryModal = (kind: 'file' | 'folder') => {
+    setCreateEntryError('');
+    setCreateEntryModal({ kind, value: '' });
+  };
+
+  const closeCreateEntryModal = () => {
+    setCreateEntryError('');
+    setCreateEntryModal(null);
+  };
+
+  const submitCreateEntryModal = async () => {
+    if (!createEntryModal) {
+      return;
+    }
+
+    const value = createEntryModal.value.trim();
+    if (!value) {
+      setCreateEntryError(
+        createEntryModal.kind === 'file' ? 'File name is required.' : 'Folder name is required.'
+      );
+      return;
+    }
+
+    if (createEntryModal.kind === 'file') {
+      await onCreateFile(value);
+    } else {
+      await onCreateFolder(value);
+    }
+
+    closeCreateEntryModal();
+  };
+
+  const selectedBrowseItems = (browse.data?.items ?? []).filter((item) =>
+    selectedItems.has(item.path)
+  );
+  const hasDeletableSelection = selectedBrowseItems.some(
+    (item) => !(item.type === 'directory' && !item.path.includes('/'))
+  );
+
+  const resolveOverviewFieldValue = (
+    item: BrowseItem,
+    columnKey: OverviewColumnKey,
+    isParentNavigation: boolean
+  ): string => {
+    if (isParentNavigation) {
+      return '';
+    }
+
+    if (columnKey === 'showSize') {
+      if (item.type === 'directory') {
+        if (folderSizeLoadingPaths.has(item.path)) {
+          return 'Calculating...';
+        }
+
+        const folderSize = folderSizesByPath[item.path];
+        return typeof folderSize === 'number' ? formatBytes(folderSize) : '-';
+      }
+
+      if (item.size === null) {
+        return '-';
+      }
+
+      return formatBytes(item.size);
+    }
+
+    if (columnKey === 'showModified') {
+      return formatDate(item.lastModified);
+    }
+
+    if (item.type !== 'file') {
+      return '-';
+    }
+
+    const details = properties.getPropertiesForItem(item);
+    const isLoading = properties.propertiesLoadingPaths.has(item.path);
+
+    if (columnKey === 'showKey') {
+      return details?.key ?? getObjectKeyFromPath(item.path);
+    }
+
+    if (columnKey === 'showEtag') {
+      return item.etag ?? details?.etag ?? (isLoading ? 'Loading...' : '-');
+    }
+
+    if (details === undefined) {
+      return isLoading ? 'Loading...' : '-';
+    }
+
+    if (details === null) {
+      return '-';
+    }
+
+    if (columnKey === 'showVersionId') {
+      return details.versionId ?? '-';
+    }
+    if (columnKey === 'showServerSideEncryption') {
+      return details.serverSideEncryption ?? '-';
+    }
+    if (columnKey === 'showContentType') {
+      return details.contentType;
+    }
+    if (columnKey === 'showStorageClass') {
+      return details.storageClass;
+    }
+    if (columnKey === 'showCacheControl') {
+      return details.cacheControl ?? '-';
+    }
+    if (columnKey === 'showContentDisposition') {
+      return details.contentDisposition ?? '-';
+    }
+    if (columnKey === 'showContentEncoding') {
+      return details.contentEncoding ?? '-';
+    }
+    if (columnKey === 'showContentLanguage') {
+      return details.contentLanguage ?? '-';
+    }
+    if (columnKey === 'showExpires') {
+      return details.expires ? formatDate(details.expires) : '-';
+    }
+    return '-';
+  };
+
+  const isSortableColumn = (columnKey: OverviewColumnKey): boolean => {
+    return Object.prototype.hasOwnProperty.call(overviewColumnSortKeyByColumn, columnKey);
+  };
+
+  const resolveSortKey = (columnKey: OverviewColumnKey): SortKey => {
+    return overviewColumnSortKeyByColumn[columnKey];
+  };
+
+  const contextItemCapability = useMemo(() => {
+    if (!contextMenu || contextMenu.item.type !== 'file') {
+      return null;
+    }
+
+    return resolveFileCapability(contextMenu.item.path);
+  }, [contextMenu]);
+
+  const canDeleteContextItem =
+    canDelete && !(contextMenu?.item.type === 'directory' && !contextMenu.item.path.includes('/'));
+
+  useEffect(() => {
+    if (!contextMenu || contextMenu.item.type !== 'file') {
+      return;
+    }
+
+    const targetPath = contextMenu.item.path;
+    if (
+      properties.propertiesByPath[targetPath] !== undefined ||
+      properties.propertiesLoadingPaths.has(targetPath)
+    ) {
+      return;
+    }
+
+    properties.setPropertiesLoadingPaths((previous) => {
+      if (previous.has(targetPath)) {
+        return previous;
+      }
+
+      const next = new Set(previous);
+      next.add(targetPath);
+      return next;
+    });
+
+    let cancelled = false;
+    const loadProperties = async () => {
+      try {
+        const details = await trpcProxyClient.s3.getProperties.query({ path: targetPath });
+        if (cancelled) {
+          return;
+        }
+
+        properties.setPropertiesByPath((previous) => {
+          if (previous[targetPath] !== undefined) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            [targetPath]: details,
+          };
+        });
+      } catch {
+        if (cancelled) {
+          return;
+        }
+
+        properties.setPropertiesByPath((previous) => {
+          if (previous[targetPath] !== undefined) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            [targetPath]: null,
+          };
+        });
+      } finally {
+        properties.setPropertiesLoadingPaths((previous) => {
+          if (!previous.has(targetPath)) {
+            return previous;
+          }
+
+          const next = new Set(previous);
+          next.delete(targetPath);
+          return next;
+        });
+      }
+    };
+
+    void loadProperties();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contextMenu, properties]);
+
+  const contextMenuActions = useMemo<ContextMenuAction[]>(() => {
+    if (!contextMenu) {
+      return [];
+    }
+
+    const actions: ContextMenuAction[] = [];
+    if (contextMenu.item.type === 'directory') {
+      actions.push({
+        id: 'open',
+        label: 'Open',
+        hint: 'Enter',
+        onSelect: () => {
+          onCloseContextMenu();
+          setSelectedPath(contextMenu.item.path);
+        },
+      });
+      actions.push({
+        id: 'calculate-size',
+        label: 'Calculate Size',
+        hint: formatShortcutHint(['Ctrl/Cmd', 'Shift', 'S']),
+        onSelect: () => {
+          void onCalculateFolderSize(contextMenu.item.path);
+        },
+      });
+
+      if (hasBucketContext && hasClipboardItems && canWrite) {
+        actions.push({
+          id: 'paste',
+          label: 'Paste into Folder',
+          hint: formatShortcutHint(['Ctrl/Cmd', 'V']),
+          onSelect: () => {
+            onCloseContextMenu();
+            void onPasteIntoPath(contextMenu.item.path);
+          },
+        });
+      }
+    } else {
+      if (contextItemCapability?.canView) {
+        actions.push({
+          id: 'view',
+          label: 'View',
+          onSelect: () => {
+            onCloseContextMenu();
+            void onViewFile(contextMenu.item.path);
+          },
+        });
+      }
+
+      if (canWrite && contextItemCapability?.canEditText) {
+        actions.push({
+          id: 'edit',
+          label: 'Edit',
+          onSelect: () => {
+            onCloseContextMenu();
+            void onEditFile(contextMenu.item.path);
+          },
+        });
+      }
+
+      actions.push({
+        id: 'download',
+        label: 'Download',
+        hint: formatShortcutHint(['Ctrl/Cmd', 'D']),
+        onSelect: () => {
+          onCloseContextMenu();
+          void onDownload(contextMenu.item.path);
+        },
+      });
+      actions.push({
+        id: 'properties',
+        label: 'Properties',
+        hint: formatShortcutHint(['Alt', 'Enter']),
+        onSelect: () => {
+          void onOpenProperties(contextMenu.item.path);
+        },
+      });
+
+      const details = properties.propertiesByPath[contextMenu.item.path];
+      const isLoadingDetails = properties.propertiesLoadingPaths.has(contextMenu.item.path);
+      const copyDetailActions: ContextMenuAction[] = [];
+      const pushCopyDetailAction = (
+        id: string,
+        label: string,
+        value: string | null | undefined
+      ) => {
+        if (value === null || value === undefined) {
+          return;
+        }
+
+        const normalizedValue = String(value).trim();
+        if (!normalizedValue) {
+          return;
+        }
+
+        copyDetailActions.push({
+          id,
+          label,
+          onSelect: () => {
+            onCloseContextMenu();
+            void onCopyTextToClipboard(normalizedValue, label);
+          },
+        });
+      };
+
+      pushCopyDetailAction('copy-detail-name', 'Name', contextMenu.item.name);
+      pushCopyDetailAction('copy-detail-path', 'Path', contextMenu.item.path);
+      pushCopyDetailAction(
+        'copy-detail-key',
+        'Object key',
+        details?.key ?? contextMenu.item.path.split('/').slice(1).join('/')
+      );
+      pushCopyDetailAction('copy-detail-size', 'Size', contextMenu.item.size?.toString());
+      pushCopyDetailAction(
+        'copy-detail-last-modified',
+        'Last modified',
+        contextMenu.item.lastModified ?? details?.lastModified
+      );
+      pushCopyDetailAction('copy-detail-etag', 'ETag', contextMenu.item.etag ?? details?.etag);
+      pushCopyDetailAction('copy-detail-content-type', 'Content type', details?.contentType);
+      pushCopyDetailAction('copy-detail-storage-class', 'Storage class', details?.storageClass);
+      pushCopyDetailAction('copy-detail-version-id', 'Version ID', details?.versionId);
+
+      const metadataEntries = details ? Object.entries(details.metadata) : [];
+      for (const [metadataKey, metadataValue] of metadataEntries) {
+        const metadataActionId = `copy-detail-metadata-${metadataKey.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+        pushCopyDetailAction(metadataActionId, `Metadata: ${metadataKey}`, metadataValue as string);
+      }
+
+      if (isLoadingDetails) {
+        copyDetailActions.push({
+          id: 'copy-detail-loading',
+          label: 'Loading properties...',
+          isDisabled: true,
+          onSelect: () => {},
+        });
+      } else if (copyDetailActions.length === 0) {
+        copyDetailActions.push({
+          id: 'copy-detail-empty',
+          label: 'No copyable details',
+          isDisabled: true,
+          onSelect: () => {},
+        });
+      }
+
+      actions.push({
+        id: 'copy-details',
+        label: 'Copy details',
+        hint: 'ArrowRight',
+        submenuActions: copyDetailActions,
+        onSelect: () => {},
+      });
+    }
+
+    const hasWritableItemContext = hasBucketContext || contextMenu.item.type === 'file';
+
+    if (hasWritableItemContext) {
+      actions.push({
+        id: 'copy',
+        label: 'Copy',
+        hint: formatShortcutHint(['Ctrl/Cmd', 'C']),
+        onSelect: () => {
+          onCloseContextMenu();
+          onCopyItems([contextMenu.item]);
+        },
+      });
+    }
+
+    if (hasWritableItemContext && canWrite) {
+      actions.push({
+        id: 'cut',
+        label: 'Cut',
+        hint: formatShortcutHint(['Ctrl/Cmd', 'X']),
+        onSelect: () => {
+          onCloseContextMenu();
+          onCutItems([contextMenu.item]);
+        },
+      });
+    }
+
+    if (hasWritableItemContext && canWrite) {
+      actions.push({
+        id: 'rename',
+        label: 'Rename',
+        hint: 'F2',
+        onSelect: () => {
+          onCloseContextMenu();
+          onRename(contextMenu.item.path, contextMenu.item.name);
+        },
+      });
+      actions.push({
+        id: 'move',
+        label: 'Move',
+        hint: formatShortcutHint(['Ctrl/Cmd', 'Shift', 'M']),
+        onSelect: () => {
+          onCloseContextMenu();
+          onMove(contextMenu.item.path);
+        },
+      });
+    }
+
+    if (canDeleteContextItem) {
+      actions.push({
+        id: 'delete',
+        label: 'Delete',
+        hint: 'Delete',
+        isDanger: true,
+        onSelect: () => {
+          onCloseContextMenu();
+          onDeletePathItems([contextMenu.item]);
+        },
+      });
+    }
+
+    return actions;
+  }, [
+    canDeleteContextItem,
+    hasBucketContext,
+    hasClipboardItems,
+    canWrite,
+    contextItemCapability,
+    contextMenu,
+    onCalculateFolderSize,
+    onCloseContextMenu,
+    onCopyItems,
+    onCopyTextToClipboard,
+    onCutItems,
+    onDeletePathItems,
+    onDownload,
+    onEditFile,
+    onMove,
+    onOpenProperties,
+    onPasteIntoPath,
+    onRename,
+    onViewFile,
+    properties.propertiesByPath,
+    properties.propertiesLoadingPaths,
+    setSelectedPath,
+  ]);
+
+  const onSelectFolderForUpload = async () => {
+    const directoryPicker = (
+      window as Window & {
+        showDirectoryPicker?: () => Promise<{ values: () => AsyncIterable<unknown> }>;
+      }
+    ).showDirectoryPicker;
+
+    if (!directoryPicker) {
+      uploadFolderInputRef.current?.click();
+      return;
+    }
+
+    try {
+      const directoryHandle = await directoryPicker();
+      const files = await collectFilesFromDirectoryHandle(directoryHandle);
+      if (files.length === 0) {
+        return;
+      }
+
+      setPendingFolderUploadFiles(files);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+
+      uploadFolderInputRef.current?.click();
+    }
+  };
+
+  const selectedRecordsCount = selectedItems.size;
+
+  useEffect(() => {
+    if (!isActionsMenuOpen) {
+      return;
+    }
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (actionsMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      setIsActionsMenuOpen(false);
+    };
+
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [isActionsMenuOpen]);
+
+  const isModalNavigationBlocked =
+    isShortcutsModalOpen ||
+    isFilterHelpModalOpen ||
+    pendingFileUploadFiles.length > 0 ||
+    pendingFolderUploadFiles.length > 0 ||
+    createEntryModal !== null;
+
+  useModalFocusTrapEffect(isModalNavigationBlocked, activeModalRef);
+
+  useEffect(() => {
+    if (!contextMenu || contextMenuActions.length === 0) {
+      return;
+    }
+
+    contextMenuFocusRestoreRef.current = document.activeElement as HTMLElement | null;
+    wasContextMenuOpenRef.current = true;
+    setOpenSubmenuActionId(null);
+    contextMenuItemRefs.current[0]?.focus();
+  }, [contextMenu, contextMenuActions]);
+
+  useEffect(() => {
+    if (contextMenu || !wasContextMenuOpenRef.current) {
+      return;
+    }
+
+    wasContextMenuOpenRef.current = false;
+    const restoreTarget = contextMenuFocusRestoreRef.current;
+    contextMenuFocusRestoreRef.current = null;
+    if (!restoreTarget || !document.contains(restoreTarget)) {
+      return;
+    }
+
+    restoreTarget.focus();
+  }, [contextMenu]);
+
+  useEffect(() => {
+    contextSubmenuItemRefs.current = [];
+  }, [openSubmenuActionId]);
+
+  const positionContextSubmenu = useCallback(() => {
+    if (!openSubmenuActionId) {
+      return;
+    }
+
+    const submenu = contextSubmenuRef.current;
+    const actionIndex = contextMenuActions.findIndex((action) => action.id === openSubmenuActionId);
+    const actionButton = actionIndex >= 0 ? contextMenuItemRefs.current[actionIndex] : null;
+    if (!submenu || !actionButton) {
+      return;
+    }
+
+    const viewportPadding = 8;
+    const gap = 6;
+    const triggerRect = actionButton.getBoundingClientRect();
+    const submenuRect = submenu.getBoundingClientRect();
+    const hasRoomOnRight =
+      triggerRect.right + gap + submenuRect.width <= window.innerWidth - viewportPadding;
+    setContextSubmenuSide(hasRoomOnRight ? 'right' : 'left');
+  }, [contextMenuActions, openSubmenuActionId]);
+
+  useEffect(() => {
+    if (!contextMenu) {
+      setOpenSubmenuActionId(null);
+      return;
+    }
+
+    if (
+      openSubmenuActionId &&
+      !contextMenuActions.some(
+        (action) => action.id === openSubmenuActionId && action.submenuActions
+      )
+    ) {
+      setOpenSubmenuActionId(null);
+    }
+  }, [contextMenu, contextMenuActions, openSubmenuActionId]);
+
+  useEffect(() => {
+    if (!openSubmenuActionId) {
+      setContextSubmenuSide('right');
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(positionContextSubmenu);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [openSubmenuActionId, positionContextSubmenu]);
+
+  useEffect(() => {
+    if (!openSubmenuActionId) {
+      return;
+    }
+
+    const reposition = () => {
+      positionContextSubmenu();
+    };
+
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [openSubmenuActionId, positionContextSubmenu]);
+
+  useEffect(() => {
+    if (!openSubmenuActionId) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const focusableSubmenuItems = contextSubmenuItemRefs.current.filter(
+        (item): item is HTMLButtonElement => item !== null && !item.disabled
+      );
+      focusableSubmenuItems[0]?.focus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [openSubmenuActionId]);
+
+  const focusRootContextMenuItemAtIndex = useCallback((index: number) => {
+    const focusableItems = contextMenuItemRefs.current.filter(
+      (item): item is HTMLButtonElement => item !== null
+    );
+    if (focusableItems.length === 0) {
+      return;
+    }
+
+    const wrappedIndex =
+      ((index % focusableItems.length) + focusableItems.length) % focusableItems.length;
+    focusableItems[wrappedIndex]?.focus();
+  }, []);
+
+  const focusContextSubmenuItemAtIndex = useCallback((index: number) => {
+    const focusableItems = contextSubmenuItemRefs.current.filter(
+      (item): item is HTMLButtonElement => item !== null
+    );
+    if (focusableItems.length === 0) {
+      return;
+    }
+
+    const wrappedIndex =
+      ((index % focusableItems.length) + focusableItems.length) % focusableItems.length;
+    focusableItems[wrappedIndex]?.focus();
+  }, []);
+
+  const handleContextMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      onCloseContextMenu();
+      return;
+    }
+
+    const rootItems = contextMenuItemRefs.current.filter(
+      (item): item is HTMLButtonElement => item !== null
+    );
+    if (rootItems.length === 0) {
+      return;
+    }
+
+    const submenuItems = contextSubmenuItemRefs.current.filter(
+      (item): item is HTMLButtonElement => item !== null
+    );
+    const focusedItem = document.activeElement;
+    const isFocusedInSubmenu = submenuItems.includes(focusedItem as HTMLButtonElement);
+    const activeItems = isFocusedInSubmenu ? submenuItems : rootItems;
+    if (activeItems.length === 0) {
+      return;
+    }
+
+    const focusedIndex = activeItems.findIndex((item) => item === focusedItem);
+    const currentIndex = focusedIndex >= 0 ? focusedIndex : 0;
+
+    const focusedRootIndex = rootItems.findIndex((item) => item === focusedItem);
+    const rootIndex = focusedRootIndex >= 0 ? focusedRootIndex : 0;
+    const focusedRootAction = contextMenuActions[rootIndex];
+    const canOpenFocusedSubmenu = Boolean(
+      focusedRootAction?.submenuActions?.some((action) => !action.isDisabled)
+    );
+
+    if (event.key === 'ArrowRight' && !isFocusedInSubmenu && canOpenFocusedSubmenu) {
+      event.preventDefault();
+      if (!focusedRootAction) {
+        return;
+      }
+
+      setOpenSubmenuActionId(focusedRootAction.id);
+      window.requestAnimationFrame(() => {
+        focusContextSubmenuItemAtIndex(0);
+      });
+      return;
+    }
+
+    if (event.key === 'ArrowLeft' && isFocusedInSubmenu) {
+      event.preventDefault();
+      const activeSubmenuActionId = openSubmenuActionId;
+      setOpenSubmenuActionId(null);
+
+      if (!activeSubmenuActionId) {
+        return;
+      }
+
+      const submenuParentIndex = contextMenuActions.findIndex(
+        (action) => action.id === activeSubmenuActionId
+      );
+      if (submenuParentIndex < 0) {
+        return;
+      }
+
+      window.requestAnimationFrame(() => {
+        contextMenuItemRefs.current[submenuParentIndex]?.focus();
+      });
+      return;
+    }
+
+    if (
+      (event.key === 'Enter' || event.key === ' ') &&
+      !isFocusedInSubmenu &&
+      canOpenFocusedSubmenu
+    ) {
+      event.preventDefault();
+      if (!focusedRootAction) {
+        return;
+      }
+
+      setOpenSubmenuActionId(focusedRootAction.id);
+      window.requestAnimationFrame(() => {
+        focusContextSubmenuItemAtIndex(0);
+      });
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (isFocusedInSubmenu) {
+        focusContextSubmenuItemAtIndex(currentIndex + 1);
+      } else {
+        focusRootContextMenuItemAtIndex(currentIndex + 1);
+      }
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (isFocusedInSubmenu) {
+        focusContextSubmenuItemAtIndex(currentIndex - 1);
+      } else {
+        focusRootContextMenuItemAtIndex(currentIndex - 1);
+      }
+      return;
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault();
+      if (isFocusedInSubmenu) {
+        focusContextSubmenuItemAtIndex(0);
+      } else {
+        focusRootContextMenuItemAtIndex(0);
+      }
+      return;
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault();
+      if (isFocusedInSubmenu) {
+        focusContextSubmenuItemAtIndex(activeItems.length - 1);
+      } else {
+        focusRootContextMenuItemAtIndex(activeItems.length - 1);
+      }
+      return;
+    }
+
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      if (isFocusedInSubmenu) {
+        focusContextSubmenuItemAtIndex(currentIndex + (event.shiftKey ? -1 : 1));
+      } else {
+        focusRootContextMenuItemAtIndex(currentIndex + (event.shiftKey ? -1 : 1));
+      }
+    }
+  };
+
+  return (
+    <>
+      <BrowserToolbar
+        selectedPath={selectedPath}
+        setSelectedPath={setSelectedPath}
+        parentPath={parentPath}
+        breadcrumbSegments={breadcrumb.breadcrumbSegments}
+        breadcrumbValidationMessage={breadcrumbValidationMessage}
+        isBrowseRefreshing={isBrowseRefreshing}
+        isBreadcrumbEditing={breadcrumb.isBreadcrumbEditing}
+        setIsBreadcrumbEditing={breadcrumb.setIsBreadcrumbEditing}
+        breadcrumbDraft={breadcrumb.breadcrumbDraft}
+        setBreadcrumbDraft={breadcrumb.setBreadcrumbDraft}
+        breadcrumbInputRef={breadcrumb.breadcrumbInputRef}
+        breadcrumbHintOptions={breadcrumb.breadcrumbHintOptions}
+        activeBreadcrumbHintIndex={breadcrumb.activeBreadcrumbHintIndex}
+        setActiveBreadcrumbHintIndex={breadcrumb.setActiveBreadcrumbHintIndex}
+        isBreadcrumbPathCommitAllowed={breadcrumb.isBreadcrumbPathCommitAllowed}
+        commitBreadcrumbPath={breadcrumb.commitBreadcrumbPath}
+        isFilterOpen={filter.isFilterOpen}
+        setIsFilterOpen={filter.setIsFilterOpen}
+        filterInputRef={filter.filterInputRef}
+        filterDraftQuery={filter.filterDraftQuery}
+        setFilterDraftQuery={filter.setFilterDraftQuery}
+        closeFilter={filter.closeFilter}
+        openFilter={filter.openFilter}
+        isOverviewFieldsMenuOpen={overviewFields.isOverviewFieldsMenuOpen}
+        setIsOverviewFieldsMenuOpen={overviewFields.setIsOverviewFieldsMenuOpen}
+        overviewFieldsMenuRef={overviewFields.overviewFieldsMenuRef}
+        overviewFieldsPanelRef={overviewFields.overviewFieldsPanelRef}
+        overviewFieldsMenuStyle={overviewFields.overviewFieldsMenuStyle}
+        overviewFieldsFilterQuery={overviewFields.overviewFieldsFilterQuery}
+        setOverviewFieldsFilterQuery={overviewFields.setOverviewFieldsFilterQuery}
+        overviewColumnVisibility={overviewFields.overviewColumnVisibility}
+        setOverviewColumnVisibility={overviewFields.setOverviewColumnVisibility}
+        allOverviewColumnsSelected={overviewFields.allOverviewColumnsSelected}
+        filteredOverviewColumns={overviewFields.filteredOverviewColumns}
+        selectedRecordsCount={selectedRecordsCount}
+        selectedFiles={selectedFiles}
+        onBulkDownload={onBulkDownload}
+        onBulkDelete={onBulkDelete}
+        onClearSelection={onClearSelection}
+        canDelete={canDelete}
+        hasDeletableSelection={hasDeletableSelection}
+        explorerZoomLevel={zoom.explorerZoomLevel}
+        explorerZoomStyle={zoom.explorerZoomStyle}
+        nudgeExplorerZoom={zoom.nudgeExplorerZoom}
+        resetExplorerZoom={zoom.resetExplorerZoom}
+        onRefetch={browse.refetch}
+        canWrite={canWrite}
+        hasBucketContext={hasBucketContext}
+        isActionsMenuOpen={isActionsMenuOpen}
+        setIsActionsMenuOpen={setIsActionsMenuOpen}
+        actionsMenuRef={actionsMenuRef}
+        uploadFilesInputRef={uploadFilesInputRef}
+        onSelectFolderForUpload={onSelectFolderForUpload}
+        openCreateEntryModal={openCreateEntryModal}
+        isExplorerGridView={zoom.isExplorerGridView}
+        uploadDisabled={uploadDisabled}
+      />
+
+      {browse.isLoading ? (
+        <p className={`${styles.state} ${styles.loadingState}`}>Loading objects...</p>
+      ) : null}
+      {browse.isError ? (
+        <p className={`${styles.state} ${styles.stateError}`}>Failed to load S3 path data.</p>
+      ) : null}
+
+      {browse.data ? (
+        <>
+          <BrowserInfoModals
+            isShortcutsModalOpen={isShortcutsModalOpen}
+            setIsShortcutsModalOpen={setIsShortcutsModalOpen}
+            isFilterHelpModalOpen={isFilterHelpModalOpen}
+            setIsFilterHelpModalOpen={setIsFilterHelpModalOpen}
+            activeModalRef={activeModalRef}
+          />
+
+          <input
+            ref={uploadFilesInputRef}
+            className={styles.hiddenInput}
+            type="file"
+            multiple
+            data-testid="upload-files-input"
+            onChange={(event) => {
+              const files = event.target.files;
+              if (!files || files.length === 0) {
+                return;
+              }
+
+              setPendingFileUploadFiles(Array.from(files));
+              event.target.value = '';
+            }}
+          />
+          <input
+            ref={uploadFolderInputRef}
+            className={styles.hiddenInput}
+            type="file"
+            multiple
+            data-testid="upload-folder-input"
+            {...folderInputAttributes}
+            onChange={(event) => {
+              const files = event.target.files;
+              if (!files || files.length === 0) {
+                return;
+              }
+
+              setPendingFolderUploadFiles(Array.from(files));
+              event.target.value = '';
+            }}
+          />
+
+          <BrowserModals
+            pendingFileUploadFiles={pendingFileUploadFiles}
+            setPendingFileUploadFiles={setPendingFileUploadFiles}
+            pendingFolderUploadFiles={pendingFolderUploadFiles}
+            setPendingFolderUploadFiles={setPendingFolderUploadFiles}
+            onUploadFiles={onUploadFiles}
+            onUploadFolder={onUploadFolder}
+            createEntryModal={createEntryModal}
+            setCreateEntryModal={setCreateEntryModal}
+            createEntryError={createEntryError}
+            setCreateEntryError={setCreateEntryError}
+            closeCreateEntryModal={closeCreateEntryModal}
+            submitCreateEntryModal={submitCreateEntryModal}
+            activeModalRef={activeModalRef}
+            explorerZoomStyle={zoom.explorerZoomStyle}
+          />
+
+          <div
+            className={`${styles.itemsDropZone} ${isUploadDropActive ? styles.itemsDropZoneActive : ''}`}
+            data-testid="browser-drop-zone"
+            style={zoom.explorerZoomStyle}
+            onDragEnter={handleUploadDropEnter}
+            onDragOver={handleUploadDropOver}
+            onDragLeave={handleUploadDropLeave}
+            onDrop={handleUploadDrop}
+          >
+            <BrowserItemsTable
+              renderedItems={renderedItems}
+              visibleOverviewColumns={overviewFields.visibleOverviewColumns}
+              rowRefs={rowRefs}
+              focusedRowIndex={keyboard.focusedRowIndex}
+              setFocusedRowIndex={keyboard.setFocusedRowIndex}
+              selectedItems={selectedItems}
+              clipboardPaths={clipboardPaths}
+              clipboardMode={clipboardMode}
+              moveDropTargetPath={moveDropTargetPath}
+              canWrite={canWrite}
+              draggedMovePath={draggedMovePath}
+              setDraggedMovePath={setDraggedMovePath}
+              setMoveDropTargetPath={setMoveDropTargetPath}
+              isInternalMoveDrag={isInternalMoveDrag}
+              getDraggedMovePath={getDraggedMovePath}
+              canMoveToDestination={canMoveToDestination}
+              onRowClick={onRowClick}
+              onRowDoubleClick={onRowDoubleClick}
+              onOpenContextMenu={onOpenContextMenu}
+              handleRowKeyDown={keyboard.handleRowKeyDown}
+              onMove={onMove}
+              onViewFile={onViewFile}
+              setSelectedPath={setSelectedPath}
+              parentPath={parentPath}
+              folderSizesByPath={folderSizesByPath}
+              folderSizeLoadingPaths={folderSizeLoadingPaths}
+              resolveOverviewFieldValue={resolveOverviewFieldValue}
+              sortRules={sorting.sortRules}
+              setSortForColumn={sorting.setSortForColumn}
+              getSortIndicator={sorting.getSortIndicator}
+              getSortTooltip={sorting.getSortTooltip}
+              isSortableColumn={isSortableColumn}
+              resolveSortKey={resolveSortKey}
+              isExplorerGridView={zoom.isExplorerGridView}
+            />
+            {isUploadDropActive ? (
+              <div className={styles.uploadDropOverlay} aria-live="polite">
+                <p className={styles.uploadDropOverlayTitle}>DROP TO START UPLOAD</p>
+                <p className={styles.uploadDropOverlayBody}>
+                  {isUploading
+                    ? 'Uploads are in progress. You can drop more files or folders to queue another upload.'
+                    : 'Review dropped files or folders, then confirm to start upload.'}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <BrowserContextMenu
+            contextMenu={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null}
+            contextMenuRef={contextMenuRef}
+            contextSubmenuRef={contextSubmenuRef}
+            contextMenuItemRefs={contextMenuItemRefs}
+            contextSubmenuItemRefs={contextSubmenuItemRefs}
+            contextSubmenuSide={contextSubmenuSide}
+            contextMenuActions={contextMenuActions}
+            openSubmenuActionId={openSubmenuActionId}
+            setOpenSubmenuActionId={setOpenSubmenuActionId}
+            handleContextMenuKeyDown={handleContextMenuKeyDown}
+          />
+        </>
+      ) : null}
+    </>
+  );
+};

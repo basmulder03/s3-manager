@@ -1,15 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { MouseEvent } from 'react';
 import { useModalFocusTrapEffect } from '@web/hooks/useModalFocusTrapEffect';
 import { trpcProxyClient } from '@web/trpc/client';
 import type { BrowseItem } from '@server/services/s3/types';
-import { resolveFileCapability } from '@web/utils/fileCapabilities';
-import { formatBytes } from '@web/utils/formatBytes';
-import {
-  formatShortcutHint,
-  overviewColumnDefinitions,
-  overviewColumnSortKeyByColumn,
-} from '@web/pages/browser/constants';
+import { overviewColumnDefinitions } from '@web/pages/browser/constants';
 import { BrowserContextMenu } from '@web/pages/browser/components/BrowserContextMenu';
 import { BrowserInfoModals } from '@web/pages/browser/components/BrowserInfoModals';
 import { BrowserToolbar } from '@web/pages/browser/components/BrowserToolbar';
@@ -24,12 +18,15 @@ import { useFilterManagement } from '@web/pages/browser/hooks/useFilterManagemen
 import { useOverviewFieldsMenu } from '@web/pages/browser/hooks/useOverviewFieldsMenu';
 import { usePropertiesLoading } from '@web/pages/browser/hooks/usePropertiesLoading';
 import { useKeyboardNavigation } from '@web/pages/browser/hooks/useKeyboardNavigation';
+import { useContextMenu } from '@web/pages/browser/hooks/useContextMenu';
+import { useModalManagement } from '@web/pages/browser/hooks/useModalManagement';
+import { useUploadHandling } from '@web/pages/browser/hooks/useUploadHandling';
+import { useDragAndDropState } from '@web/pages/browser/hooks/useDragAndDropState';
 import {
-  formatDate,
-  getObjectKeyFromPath,
-  collectFilesFromDirectoryHandle,
-} from '@web/pages/browser/utils';
-import type { ContextMenuAction, OverviewColumnKey, SortKey } from '@web/pages/browser/types';
+  resolveOverviewFieldValue,
+  isSortableColumn,
+  resolveSortKey,
+} from '@web/pages/browser/utils/fieldResolvers';
 import styles from '@web/App.module.css';
 
 interface BrowseData {
@@ -146,67 +143,23 @@ export const BrowserPage = ({
 }: BrowserPageProps) => {
   const isBrowseRefreshing = browse.isFetching ?? browse.isLoading;
 
-  // Local state
-  const [isShortcutsModalOpenInternal, setIsShortcutsModalOpenInternal] = useState(false);
-  const [isFilterHelpModalOpenInternal, setIsFilterHelpModalOpenInternal] = useState(false);
-  const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
-  const [pendingFileUploadFiles, setPendingFileUploadFiles] = useState<File[]>([]);
-  const [pendingFolderUploadFiles, setPendingFolderUploadFiles] = useState<File[]>([]);
-  const [isUploadDropActive, setIsUploadDropActive] = useState(false);
-  const [draggedMovePath, setDraggedMovePath] = useState<string | null>(null);
-  const [moveDropTargetPath, setMoveDropTargetPath] = useState<string | null>(null);
-  const [createEntryModal, setCreateEntryModal] = useState<{
-    kind: 'file' | 'folder';
-    value: string;
-  } | null>(null);
-  const [createEntryError, setCreateEntryError] = useState('');
-  const [openSubmenuActionId, setOpenSubmenuActionId] = useState<string | null>(null);
-  const [contextSubmenuSide, setContextSubmenuSide] = useState<'left' | 'right'>('right');
-
-  // Modal state management
-  const isShortcutsModalOpen = isShortcutsModalOpenProp ?? isShortcutsModalOpenInternal;
-  const setIsShortcutsModalOpen = useCallback(
-    (isOpen: boolean) => {
-      if (isShortcutsModalOpenProp === undefined) {
-        setIsShortcutsModalOpenInternal(isOpen);
-      }
-
-      setIsShortcutsModalOpenProp?.(isOpen);
-    },
-    [isShortcutsModalOpenProp, setIsShortcutsModalOpenProp]
-  );
-  const isFilterHelpModalOpen = isFilterHelpModalOpenProp ?? isFilterHelpModalOpenInternal;
-  const setIsFilterHelpModalOpen = useCallback(
-    (isOpen: boolean) => {
-      if (isFilterHelpModalOpenProp === undefined) {
-        setIsFilterHelpModalOpenInternal(isOpen);
-      }
-
-      setIsFilterHelpModalOpenProp?.(isOpen);
-    },
-    [isFilterHelpModalOpenProp, setIsFilterHelpModalOpenProp]
-  );
-
   // Refs
-  const actionsMenuRef = useRef<HTMLDivElement>(null);
-  const uploadFilesInputRef = useRef<HTMLInputElement>(null);
-  const uploadFolderInputRef = useRef<HTMLInputElement>(null);
   const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
-  const contextMenuRef = useRef<HTMLDivElement>(null);
-  const contextMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const contextSubmenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const contextSubmenuRef = useRef<HTMLDivElement>(null);
-  const contextMenuFocusRestoreRef = useRef<HTMLElement | null>(null);
-  const wasContextMenuOpenRef = useRef(false);
-  const uploadDropEnterDepthRef = useRef(0);
   const activeModalRef = useRef<HTMLDivElement>(null);
-
-  const folderInputAttributes = {
-    directory: '',
-    webkitdirectory: '',
-  } as Record<string, string>;
+  const uploadDropEnterDepthRef = useRef(0);
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
 
   // Initialize hooks
+  const modals = useModalManagement(
+    isShortcutsModalOpenProp,
+    setIsShortcutsModalOpenProp,
+    isFilterHelpModalOpenProp,
+    setIsFilterHelpModalOpenProp
+  );
+
+  const upload = useUploadHandling();
+  const dragDrop = useDragAndDropState();
+
   const breadcrumb = useBreadcrumbNavigation({
     selectedPath,
     setSelectedPath,
@@ -215,11 +168,8 @@ export const BrowserPage = ({
   });
 
   const zoom = useBrowserZoom();
-
   const sorting = useBrowserSorting();
-
   const filter = useFilterManagement({ filterQuery, setFilterQuery });
-
   const overviewFields = useOverviewFieldsMenu();
 
   const isAnyPropertyBackedColumnVisible = useMemo(
@@ -258,179 +208,85 @@ export const BrowserPage = ({
     onToggleItemSelection,
     onOpenItemContextMenu,
     openFilter: filter.openFilter,
-    setIsShortcutsModalOpen,
+    setIsShortcutsModalOpen: modals.setIsShortcutsModalOpen,
     onRefetch: browse.refetch,
     nudgeExplorerZoom: zoom.nudgeExplorerZoom,
     resetExplorerZoom: zoom.resetExplorerZoom,
     contextMenu,
-    isActionsMenuOpen,
-    setIsActionsMenuOpen,
-    isShortcutsModalOpen,
-    isFilterHelpModalOpen,
+    isActionsMenuOpen: modals.isActionsMenuOpen,
+    setIsActionsMenuOpen: modals.setIsActionsMenuOpen,
+    isShortcutsModalOpen: modals.isShortcutsModalOpen,
+    isFilterHelpModalOpen: modals.isFilterHelpModalOpen,
     rowRefs,
   });
 
   const hasBucketContext = selectedPath.trim().replace(/^\/+/, '').length > 0;
   const uploadDisabled = !hasBucketContext;
 
-  const {
-    canMoveToDestination,
-    getDraggedMovePath,
-    handleUploadDrop,
-    handleUploadDropEnter,
-    handleUploadDropLeave,
-    handleUploadDropOver,
-    isInternalMoveDrag,
-  } = useUploadDropHandlers({
+  const uploadDropHandlers = useUploadDropHandlers({
     uploadDisabled,
-    draggedMovePath,
+    draggedMovePath: dragDrop.draggedMovePath,
     uploadDropEnterDepthRef,
-    setIsUploadDropActive,
-    setPendingFileUploadFiles,
-    setPendingFolderUploadFiles,
+    setIsUploadDropActive: dragDrop.setIsUploadDropActive,
+    setPendingFileUploadFiles: upload.setPendingFileUploadFiles,
+    setPendingFolderUploadFiles: upload.setPendingFolderUploadFiles,
   });
 
-  const openCreateEntryModal = (kind: 'file' | 'folder') => {
-    setCreateEntryError('');
-    setCreateEntryModal({ kind, value: '' });
-  };
+  const contextMenuHook = useContextMenu({
+    contextMenu,
+    hasBucketContext,
+    hasClipboardItems,
+    canWrite,
+    canDelete,
+    propertiesByPath: properties.propertiesByPath,
+    propertiesLoadingPaths: properties.propertiesLoadingPaths,
+    onCloseContextMenu,
+    setSelectedPath,
+    onCalculateFolderSize,
+    onPasteIntoPath,
+    onViewFile,
+    onEditFile,
+    onDownload,
+    onOpenProperties,
+    onCopyTextToClipboard,
+    onCopyItems,
+    onCutItems,
+    onRename,
+    onMove,
+    onDeletePathItems,
+  });
 
-  const closeCreateEntryModal = () => {
-    setCreateEntryError('');
-    setCreateEntryModal(null);
-  };
-
-  const submitCreateEntryModal = async () => {
-    if (!createEntryModal) {
-      return;
-    }
-
-    const value = createEntryModal.value.trim();
-    if (!value) {
-      setCreateEntryError(
-        createEntryModal.kind === 'file' ? 'File name is required.' : 'Folder name is required.'
-      );
-      return;
-    }
-
-    if (createEntryModal.kind === 'file') {
-      await onCreateFile(value);
-    } else {
-      await onCreateFolder(value);
-    }
-
-    closeCreateEntryModal();
-  };
-
-  const selectedBrowseItems = (browse.data?.items ?? []).filter((item) =>
-    selectedItems.has(item.path)
-  );
-  const hasDeletableSelection = selectedBrowseItems.some(
-    (item) => !(item.type === 'directory' && !item.path.includes('/'))
+  // Derived values
+  const selectedBrowseItems = useMemo(
+    () => (browse.data?.items ?? []).filter((item) => selectedItems.has(item.path)),
+    [browse.data?.items, selectedItems]
   );
 
-  const resolveOverviewFieldValue = (
-    item: BrowseItem,
-    columnKey: OverviewColumnKey,
-    isParentNavigation: boolean
-  ): string => {
-    if (isParentNavigation) {
-      return '';
-    }
+  const hasDeletableSelection = useMemo(
+    () =>
+      selectedBrowseItems.some((item) => !(item.type === 'directory' && !item.path.includes('/'))),
+    [selectedBrowseItems]
+  );
 
-    if (columnKey === 'showSize') {
-      if (item.type === 'directory') {
-        if (folderSizeLoadingPaths.has(item.path)) {
-          return 'Calculating...';
-        }
+  const selectedRecordsCount = selectedItems.size;
 
-        const folderSize = folderSizesByPath[item.path];
-        return typeof folderSize === 'number' ? formatBytes(folderSize) : '-';
-      }
+  // Field resolver wrapper with injected dependencies
+  const resolveFieldValue = useCallback(
+    (item: BrowseItem, columnKey: any, isParentNavigation: boolean): string => {
+      return resolveOverviewFieldValue({
+        item,
+        columnKey,
+        isParentNavigation,
+        folderSizesByPath,
+        folderSizeLoadingPaths,
+        propertiesByPath: properties.propertiesByPath,
+        propertiesLoadingPaths: properties.propertiesLoadingPaths,
+      });
+    },
+    [folderSizesByPath, folderSizeLoadingPaths, properties]
+  );
 
-      if (item.size === null) {
-        return '-';
-      }
-
-      return formatBytes(item.size);
-    }
-
-    if (columnKey === 'showModified') {
-      return formatDate(item.lastModified);
-    }
-
-    if (item.type !== 'file') {
-      return '-';
-    }
-
-    const details = properties.getPropertiesForItem(item);
-    const isLoading = properties.propertiesLoadingPaths.has(item.path);
-
-    if (columnKey === 'showKey') {
-      return details?.key ?? getObjectKeyFromPath(item.path);
-    }
-
-    if (columnKey === 'showEtag') {
-      return item.etag ?? details?.etag ?? (isLoading ? 'Loading...' : '-');
-    }
-
-    if (details === undefined) {
-      return isLoading ? 'Loading...' : '-';
-    }
-
-    if (details === null) {
-      return '-';
-    }
-
-    if (columnKey === 'showVersionId') {
-      return details.versionId ?? '-';
-    }
-    if (columnKey === 'showServerSideEncryption') {
-      return details.serverSideEncryption ?? '-';
-    }
-    if (columnKey === 'showContentType') {
-      return details.contentType;
-    }
-    if (columnKey === 'showStorageClass') {
-      return details.storageClass;
-    }
-    if (columnKey === 'showCacheControl') {
-      return details.cacheControl ?? '-';
-    }
-    if (columnKey === 'showContentDisposition') {
-      return details.contentDisposition ?? '-';
-    }
-    if (columnKey === 'showContentEncoding') {
-      return details.contentEncoding ?? '-';
-    }
-    if (columnKey === 'showContentLanguage') {
-      return details.contentLanguage ?? '-';
-    }
-    if (columnKey === 'showExpires') {
-      return details.expires ? formatDate(details.expires) : '-';
-    }
-    return '-';
-  };
-
-  const isSortableColumn = (columnKey: OverviewColumnKey): boolean => {
-    return Object.prototype.hasOwnProperty.call(overviewColumnSortKeyByColumn, columnKey);
-  };
-
-  const resolveSortKey = (columnKey: OverviewColumnKey): SortKey => {
-    return overviewColumnSortKeyByColumn[columnKey];
-  };
-
-  const contextItemCapability = useMemo(() => {
-    if (!contextMenu || contextMenu.item.type !== 'file') {
-      return null;
-    }
-
-    return resolveFileCapability(contextMenu.item.path);
-  }, [contextMenu]);
-
-  const canDeleteContextItem =
-    canDelete && !(contextMenu?.item.type === 'directory' && !contextMenu.item.path.includes('/'));
-
+  // Load properties for context menu item
   useEffect(() => {
     if (!contextMenu || contextMenu.item.type !== 'file') {
       return;
@@ -507,278 +363,9 @@ export const BrowserPage = ({
     };
   }, [contextMenu, properties]);
 
-  const contextMenuActions = useMemo<ContextMenuAction[]>(() => {
-    if (!contextMenu) {
-      return [];
-    }
-
-    const actions: ContextMenuAction[] = [];
-    if (contextMenu.item.type === 'directory') {
-      actions.push({
-        id: 'open',
-        label: 'Open',
-        hint: 'Enter',
-        onSelect: () => {
-          onCloseContextMenu();
-          setSelectedPath(contextMenu.item.path);
-        },
-      });
-      actions.push({
-        id: 'calculate-size',
-        label: 'Calculate Size',
-        hint: formatShortcutHint(['Ctrl/Cmd', 'Shift', 'S']),
-        onSelect: () => {
-          void onCalculateFolderSize(contextMenu.item.path);
-        },
-      });
-
-      if (hasBucketContext && hasClipboardItems && canWrite) {
-        actions.push({
-          id: 'paste',
-          label: 'Paste into Folder',
-          hint: formatShortcutHint(['Ctrl/Cmd', 'V']),
-          onSelect: () => {
-            onCloseContextMenu();
-            void onPasteIntoPath(contextMenu.item.path);
-          },
-        });
-      }
-    } else {
-      if (contextItemCapability?.canView) {
-        actions.push({
-          id: 'view',
-          label: 'View',
-          onSelect: () => {
-            onCloseContextMenu();
-            void onViewFile(contextMenu.item.path);
-          },
-        });
-      }
-
-      if (canWrite && contextItemCapability?.canEditText) {
-        actions.push({
-          id: 'edit',
-          label: 'Edit',
-          onSelect: () => {
-            onCloseContextMenu();
-            void onEditFile(contextMenu.item.path);
-          },
-        });
-      }
-
-      actions.push({
-        id: 'download',
-        label: 'Download',
-        hint: formatShortcutHint(['Ctrl/Cmd', 'D']),
-        onSelect: () => {
-          onCloseContextMenu();
-          void onDownload(contextMenu.item.path);
-        },
-      });
-      actions.push({
-        id: 'properties',
-        label: 'Properties',
-        hint: formatShortcutHint(['Alt', 'Enter']),
-        onSelect: () => {
-          void onOpenProperties(contextMenu.item.path);
-        },
-      });
-
-      const details = properties.propertiesByPath[contextMenu.item.path];
-      const isLoadingDetails = properties.propertiesLoadingPaths.has(contextMenu.item.path);
-      const copyDetailActions: ContextMenuAction[] = [];
-      const pushCopyDetailAction = (
-        id: string,
-        label: string,
-        value: string | null | undefined
-      ) => {
-        if (value === null || value === undefined) {
-          return;
-        }
-
-        const normalizedValue = String(value).trim();
-        if (!normalizedValue) {
-          return;
-        }
-
-        copyDetailActions.push({
-          id,
-          label,
-          onSelect: () => {
-            onCloseContextMenu();
-            void onCopyTextToClipboard(normalizedValue, label);
-          },
-        });
-      };
-
-      pushCopyDetailAction('copy-detail-name', 'Name', contextMenu.item.name);
-      pushCopyDetailAction('copy-detail-path', 'Path', contextMenu.item.path);
-      pushCopyDetailAction(
-        'copy-detail-key',
-        'Object key',
-        details?.key ?? contextMenu.item.path.split('/').slice(1).join('/')
-      );
-      pushCopyDetailAction('copy-detail-size', 'Size', contextMenu.item.size?.toString());
-      pushCopyDetailAction(
-        'copy-detail-last-modified',
-        'Last modified',
-        contextMenu.item.lastModified ?? details?.lastModified
-      );
-      pushCopyDetailAction('copy-detail-etag', 'ETag', contextMenu.item.etag ?? details?.etag);
-      pushCopyDetailAction('copy-detail-content-type', 'Content type', details?.contentType);
-      pushCopyDetailAction('copy-detail-storage-class', 'Storage class', details?.storageClass);
-      pushCopyDetailAction('copy-detail-version-id', 'Version ID', details?.versionId);
-
-      const metadataEntries = details ? Object.entries(details.metadata) : [];
-      for (const [metadataKey, metadataValue] of metadataEntries) {
-        const metadataActionId = `copy-detail-metadata-${metadataKey.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-        pushCopyDetailAction(metadataActionId, `Metadata: ${metadataKey}`, metadataValue as string);
-      }
-
-      if (isLoadingDetails) {
-        copyDetailActions.push({
-          id: 'copy-detail-loading',
-          label: 'Loading properties...',
-          isDisabled: true,
-          onSelect: () => {},
-        });
-      } else if (copyDetailActions.length === 0) {
-        copyDetailActions.push({
-          id: 'copy-detail-empty',
-          label: 'No copyable details',
-          isDisabled: true,
-          onSelect: () => {},
-        });
-      }
-
-      actions.push({
-        id: 'copy-details',
-        label: 'Copy details',
-        hint: 'ArrowRight',
-        submenuActions: copyDetailActions,
-        onSelect: () => {},
-      });
-    }
-
-    const hasWritableItemContext = hasBucketContext || contextMenu.item.type === 'file';
-
-    if (hasWritableItemContext) {
-      actions.push({
-        id: 'copy',
-        label: 'Copy',
-        hint: formatShortcutHint(['Ctrl/Cmd', 'C']),
-        onSelect: () => {
-          onCloseContextMenu();
-          onCopyItems([contextMenu.item]);
-        },
-      });
-    }
-
-    if (hasWritableItemContext && canWrite) {
-      actions.push({
-        id: 'cut',
-        label: 'Cut',
-        hint: formatShortcutHint(['Ctrl/Cmd', 'X']),
-        onSelect: () => {
-          onCloseContextMenu();
-          onCutItems([contextMenu.item]);
-        },
-      });
-    }
-
-    if (hasWritableItemContext && canWrite) {
-      actions.push({
-        id: 'rename',
-        label: 'Rename',
-        hint: 'F2',
-        onSelect: () => {
-          onCloseContextMenu();
-          onRename(contextMenu.item.path, contextMenu.item.name);
-        },
-      });
-      actions.push({
-        id: 'move',
-        label: 'Move',
-        hint: formatShortcutHint(['Ctrl/Cmd', 'Shift', 'M']),
-        onSelect: () => {
-          onCloseContextMenu();
-          onMove(contextMenu.item.path);
-        },
-      });
-    }
-
-    if (canDeleteContextItem) {
-      actions.push({
-        id: 'delete',
-        label: 'Delete',
-        hint: 'Delete',
-        isDanger: true,
-        onSelect: () => {
-          onCloseContextMenu();
-          onDeletePathItems([contextMenu.item]);
-        },
-      });
-    }
-
-    return actions;
-  }, [
-    canDeleteContextItem,
-    hasBucketContext,
-    hasClipboardItems,
-    canWrite,
-    contextItemCapability,
-    contextMenu,
-    onCalculateFolderSize,
-    onCloseContextMenu,
-    onCopyItems,
-    onCopyTextToClipboard,
-    onCutItems,
-    onDeletePathItems,
-    onDownload,
-    onEditFile,
-    onMove,
-    onOpenProperties,
-    onPasteIntoPath,
-    onRename,
-    onViewFile,
-    properties.propertiesByPath,
-    properties.propertiesLoadingPaths,
-    setSelectedPath,
-  ]);
-
-  const onSelectFolderForUpload = async () => {
-    const directoryPicker = (
-      window as Window & {
-        showDirectoryPicker?: () => Promise<{ values: () => AsyncIterable<unknown> }>;
-      }
-    ).showDirectoryPicker;
-
-    if (!directoryPicker) {
-      uploadFolderInputRef.current?.click();
-      return;
-    }
-
-    try {
-      const directoryHandle = await directoryPicker();
-      const files = await collectFilesFromDirectoryHandle(directoryHandle);
-      if (files.length === 0) {
-        return;
-      }
-
-      setPendingFolderUploadFiles(files);
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        return;
-      }
-
-      uploadFolderInputRef.current?.click();
-    }
-  };
-
-  const selectedRecordsCount = selectedItems.size;
-
+  // Close actions menu on outside click
   useEffect(() => {
-    if (!isActionsMenuOpen) {
+    if (!modals.isActionsMenuOpen) {
       return;
     }
 
@@ -787,299 +374,24 @@ export const BrowserPage = ({
         return;
       }
 
-      setIsActionsMenuOpen(false);
+      modals.setIsActionsMenuOpen(false);
     };
 
     window.addEventListener('pointerdown', onPointerDown);
     return () => {
       window.removeEventListener('pointerdown', onPointerDown);
     };
-  }, [isActionsMenuOpen]);
+  }, [modals.isActionsMenuOpen, modals.setIsActionsMenuOpen]);
 
+  // Modal navigation blocking
   const isModalNavigationBlocked =
-    isShortcutsModalOpen ||
-    isFilterHelpModalOpen ||
-    pendingFileUploadFiles.length > 0 ||
-    pendingFolderUploadFiles.length > 0 ||
-    createEntryModal !== null;
+    modals.isShortcutsModalOpen ||
+    modals.isFilterHelpModalOpen ||
+    upload.pendingFileUploadFiles.length > 0 ||
+    upload.pendingFolderUploadFiles.length > 0 ||
+    modals.createEntryModal !== null;
 
   useModalFocusTrapEffect(isModalNavigationBlocked, activeModalRef);
-
-  useEffect(() => {
-    if (!contextMenu || contextMenuActions.length === 0) {
-      return;
-    }
-
-    contextMenuFocusRestoreRef.current = document.activeElement as HTMLElement | null;
-    wasContextMenuOpenRef.current = true;
-    setOpenSubmenuActionId(null);
-    contextMenuItemRefs.current[0]?.focus();
-  }, [contextMenu, contextMenuActions]);
-
-  useEffect(() => {
-    if (contextMenu || !wasContextMenuOpenRef.current) {
-      return;
-    }
-
-    wasContextMenuOpenRef.current = false;
-    const restoreTarget = contextMenuFocusRestoreRef.current;
-    contextMenuFocusRestoreRef.current = null;
-    if (!restoreTarget || !document.contains(restoreTarget)) {
-      return;
-    }
-
-    restoreTarget.focus();
-  }, [contextMenu]);
-
-  useEffect(() => {
-    contextSubmenuItemRefs.current = [];
-  }, [openSubmenuActionId]);
-
-  const positionContextSubmenu = useCallback(() => {
-    if (!openSubmenuActionId) {
-      return;
-    }
-
-    const submenu = contextSubmenuRef.current;
-    const actionIndex = contextMenuActions.findIndex((action) => action.id === openSubmenuActionId);
-    const actionButton = actionIndex >= 0 ? contextMenuItemRefs.current[actionIndex] : null;
-    if (!submenu || !actionButton) {
-      return;
-    }
-
-    const viewportPadding = 8;
-    const gap = 6;
-    const triggerRect = actionButton.getBoundingClientRect();
-    const submenuRect = submenu.getBoundingClientRect();
-    const hasRoomOnRight =
-      triggerRect.right + gap + submenuRect.width <= window.innerWidth - viewportPadding;
-    setContextSubmenuSide(hasRoomOnRight ? 'right' : 'left');
-  }, [contextMenuActions, openSubmenuActionId]);
-
-  useEffect(() => {
-    if (!contextMenu) {
-      setOpenSubmenuActionId(null);
-      return;
-    }
-
-    if (
-      openSubmenuActionId &&
-      !contextMenuActions.some(
-        (action) => action.id === openSubmenuActionId && action.submenuActions
-      )
-    ) {
-      setOpenSubmenuActionId(null);
-    }
-  }, [contextMenu, contextMenuActions, openSubmenuActionId]);
-
-  useEffect(() => {
-    if (!openSubmenuActionId) {
-      setContextSubmenuSide('right');
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(positionContextSubmenu);
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [openSubmenuActionId, positionContextSubmenu]);
-
-  useEffect(() => {
-    if (!openSubmenuActionId) {
-      return;
-    }
-
-    const reposition = () => {
-      positionContextSubmenu();
-    };
-
-    window.addEventListener('resize', reposition);
-    window.addEventListener('scroll', reposition, true);
-    return () => {
-      window.removeEventListener('resize', reposition);
-      window.removeEventListener('scroll', reposition, true);
-    };
-  }, [openSubmenuActionId, positionContextSubmenu]);
-
-  useEffect(() => {
-    if (!openSubmenuActionId) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      const focusableSubmenuItems = contextSubmenuItemRefs.current.filter(
-        (item): item is HTMLButtonElement => item !== null && !item.disabled
-      );
-      focusableSubmenuItems[0]?.focus();
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [openSubmenuActionId]);
-
-  const focusRootContextMenuItemAtIndex = useCallback((index: number) => {
-    const focusableItems = contextMenuItemRefs.current.filter(
-      (item): item is HTMLButtonElement => item !== null
-    );
-    if (focusableItems.length === 0) {
-      return;
-    }
-
-    const wrappedIndex =
-      ((index % focusableItems.length) + focusableItems.length) % focusableItems.length;
-    focusableItems[wrappedIndex]?.focus();
-  }, []);
-
-  const focusContextSubmenuItemAtIndex = useCallback((index: number) => {
-    const focusableItems = contextSubmenuItemRefs.current.filter(
-      (item): item is HTMLButtonElement => item !== null
-    );
-    if (focusableItems.length === 0) {
-      return;
-    }
-
-    const wrappedIndex =
-      ((index % focusableItems.length) + focusableItems.length) % focusableItems.length;
-    focusableItems[wrappedIndex]?.focus();
-  }, []);
-
-  const handleContextMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      onCloseContextMenu();
-      return;
-    }
-
-    const rootItems = contextMenuItemRefs.current.filter(
-      (item): item is HTMLButtonElement => item !== null
-    );
-    if (rootItems.length === 0) {
-      return;
-    }
-
-    const submenuItems = contextSubmenuItemRefs.current.filter(
-      (item): item is HTMLButtonElement => item !== null
-    );
-    const focusedItem = document.activeElement;
-    const isFocusedInSubmenu = submenuItems.includes(focusedItem as HTMLButtonElement);
-    const activeItems = isFocusedInSubmenu ? submenuItems : rootItems;
-    if (activeItems.length === 0) {
-      return;
-    }
-
-    const focusedIndex = activeItems.findIndex((item) => item === focusedItem);
-    const currentIndex = focusedIndex >= 0 ? focusedIndex : 0;
-
-    const focusedRootIndex = rootItems.findIndex((item) => item === focusedItem);
-    const rootIndex = focusedRootIndex >= 0 ? focusedRootIndex : 0;
-    const focusedRootAction = contextMenuActions[rootIndex];
-    const canOpenFocusedSubmenu = Boolean(
-      focusedRootAction?.submenuActions?.some((action) => !action.isDisabled)
-    );
-
-    if (event.key === 'ArrowRight' && !isFocusedInSubmenu && canOpenFocusedSubmenu) {
-      event.preventDefault();
-      if (!focusedRootAction) {
-        return;
-      }
-
-      setOpenSubmenuActionId(focusedRootAction.id);
-      window.requestAnimationFrame(() => {
-        focusContextSubmenuItemAtIndex(0);
-      });
-      return;
-    }
-
-    if (event.key === 'ArrowLeft' && isFocusedInSubmenu) {
-      event.preventDefault();
-      const activeSubmenuActionId = openSubmenuActionId;
-      setOpenSubmenuActionId(null);
-
-      if (!activeSubmenuActionId) {
-        return;
-      }
-
-      const submenuParentIndex = contextMenuActions.findIndex(
-        (action) => action.id === activeSubmenuActionId
-      );
-      if (submenuParentIndex < 0) {
-        return;
-      }
-
-      window.requestAnimationFrame(() => {
-        contextMenuItemRefs.current[submenuParentIndex]?.focus();
-      });
-      return;
-    }
-
-    if (
-      (event.key === 'Enter' || event.key === ' ') &&
-      !isFocusedInSubmenu &&
-      canOpenFocusedSubmenu
-    ) {
-      event.preventDefault();
-      if (!focusedRootAction) {
-        return;
-      }
-
-      setOpenSubmenuActionId(focusedRootAction.id);
-      window.requestAnimationFrame(() => {
-        focusContextSubmenuItemAtIndex(0);
-      });
-      return;
-    }
-
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      if (isFocusedInSubmenu) {
-        focusContextSubmenuItemAtIndex(currentIndex + 1);
-      } else {
-        focusRootContextMenuItemAtIndex(currentIndex + 1);
-      }
-      return;
-    }
-
-    if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      if (isFocusedInSubmenu) {
-        focusContextSubmenuItemAtIndex(currentIndex - 1);
-      } else {
-        focusRootContextMenuItemAtIndex(currentIndex - 1);
-      }
-      return;
-    }
-
-    if (event.key === 'Home') {
-      event.preventDefault();
-      if (isFocusedInSubmenu) {
-        focusContextSubmenuItemAtIndex(0);
-      } else {
-        focusRootContextMenuItemAtIndex(0);
-      }
-      return;
-    }
-
-    if (event.key === 'End') {
-      event.preventDefault();
-      if (isFocusedInSubmenu) {
-        focusContextSubmenuItemAtIndex(activeItems.length - 1);
-      } else {
-        focusRootContextMenuItemAtIndex(activeItems.length - 1);
-      }
-      return;
-    }
-
-    if (event.key === 'Tab') {
-      event.preventDefault();
-      if (isFocusedInSubmenu) {
-        focusContextSubmenuItemAtIndex(currentIndex + (event.shiftKey ? -1 : 1));
-      } else {
-        focusRootContextMenuItemAtIndex(currentIndex + (event.shiftKey ? -1 : 1));
-      }
-    }
-  };
 
   return (
     <>
@@ -1132,12 +444,12 @@ export const BrowserPage = ({
         onRefetch={browse.refetch}
         canWrite={canWrite}
         hasBucketContext={hasBucketContext}
-        isActionsMenuOpen={isActionsMenuOpen}
-        setIsActionsMenuOpen={setIsActionsMenuOpen}
+        isActionsMenuOpen={modals.isActionsMenuOpen}
+        setIsActionsMenuOpen={modals.setIsActionsMenuOpen}
         actionsMenuRef={actionsMenuRef}
-        uploadFilesInputRef={uploadFilesInputRef}
-        onSelectFolderForUpload={onSelectFolderForUpload}
-        openCreateEntryModal={openCreateEntryModal}
+        uploadFilesInputRef={upload.uploadFilesInputRef}
+        onSelectFolderForUpload={upload.onSelectFolderForUpload}
+        openCreateEntryModal={modals.openCreateEntryModal}
         isExplorerGridView={zoom.isExplorerGridView}
         uploadDisabled={uploadDisabled}
       />
@@ -1152,15 +464,15 @@ export const BrowserPage = ({
       {browse.data ? (
         <>
           <BrowserInfoModals
-            isShortcutsModalOpen={isShortcutsModalOpen}
-            setIsShortcutsModalOpen={setIsShortcutsModalOpen}
-            isFilterHelpModalOpen={isFilterHelpModalOpen}
-            setIsFilterHelpModalOpen={setIsFilterHelpModalOpen}
+            isShortcutsModalOpen={modals.isShortcutsModalOpen}
+            setIsShortcutsModalOpen={modals.setIsShortcutsModalOpen}
+            isFilterHelpModalOpen={modals.isFilterHelpModalOpen}
+            setIsFilterHelpModalOpen={modals.setIsFilterHelpModalOpen}
             activeModalRef={activeModalRef}
           />
 
           <input
-            ref={uploadFilesInputRef}
+            ref={upload.uploadFilesInputRef}
             className={styles.hiddenInput}
             type="file"
             multiple
@@ -1171,53 +483,55 @@ export const BrowserPage = ({
                 return;
               }
 
-              setPendingFileUploadFiles(Array.from(files));
+              upload.setPendingFileUploadFiles(Array.from(files));
               event.target.value = '';
             }}
           />
           <input
-            ref={uploadFolderInputRef}
+            ref={upload.uploadFolderInputRef}
             className={styles.hiddenInput}
             type="file"
             multiple
             data-testid="upload-folder-input"
-            {...folderInputAttributes}
+            {...upload.folderInputAttributes}
             onChange={(event) => {
               const files = event.target.files;
               if (!files || files.length === 0) {
                 return;
               }
 
-              setPendingFolderUploadFiles(Array.from(files));
+              upload.setPendingFolderUploadFiles(Array.from(files));
               event.target.value = '';
             }}
           />
 
           <BrowserModals
-            pendingFileUploadFiles={pendingFileUploadFiles}
-            setPendingFileUploadFiles={setPendingFileUploadFiles}
-            pendingFolderUploadFiles={pendingFolderUploadFiles}
-            setPendingFolderUploadFiles={setPendingFolderUploadFiles}
+            pendingFileUploadFiles={upload.pendingFileUploadFiles}
+            setPendingFileUploadFiles={upload.setPendingFileUploadFiles}
+            pendingFolderUploadFiles={upload.pendingFolderUploadFiles}
+            setPendingFolderUploadFiles={upload.setPendingFolderUploadFiles}
             onUploadFiles={onUploadFiles}
             onUploadFolder={onUploadFolder}
-            createEntryModal={createEntryModal}
-            setCreateEntryModal={setCreateEntryModal}
-            createEntryError={createEntryError}
-            setCreateEntryError={setCreateEntryError}
-            closeCreateEntryModal={closeCreateEntryModal}
-            submitCreateEntryModal={submitCreateEntryModal}
+            createEntryModal={modals.createEntryModal}
+            setCreateEntryModal={modals.setCreateEntryModal}
+            createEntryError={modals.createEntryError}
+            setCreateEntryError={modals.setCreateEntryError}
+            closeCreateEntryModal={modals.closeCreateEntryModal}
+            submitCreateEntryModal={() =>
+              modals.submitCreateEntryModal(onCreateFile, onCreateFolder)
+            }
             activeModalRef={activeModalRef}
             explorerZoomStyle={zoom.explorerZoomStyle}
           />
 
           <div
-            className={`${styles.itemsDropZone} ${isUploadDropActive ? styles.itemsDropZoneActive : ''}`}
+            className={`${styles.itemsDropZone} ${dragDrop.isUploadDropActive ? styles.itemsDropZoneActive : ''}`}
             data-testid="browser-drop-zone"
             style={zoom.explorerZoomStyle}
-            onDragEnter={handleUploadDropEnter}
-            onDragOver={handleUploadDropOver}
-            onDragLeave={handleUploadDropLeave}
-            onDrop={handleUploadDrop}
+            onDragEnter={uploadDropHandlers.handleUploadDropEnter}
+            onDragOver={uploadDropHandlers.handleUploadDropOver}
+            onDragLeave={uploadDropHandlers.handleUploadDropLeave}
+            onDrop={uploadDropHandlers.handleUploadDrop}
           >
             <BrowserItemsTable
               renderedItems={renderedItems}
@@ -1228,14 +542,14 @@ export const BrowserPage = ({
               selectedItems={selectedItems}
               clipboardPaths={clipboardPaths}
               clipboardMode={clipboardMode}
-              moveDropTargetPath={moveDropTargetPath}
+              moveDropTargetPath={dragDrop.moveDropTargetPath}
               canWrite={canWrite}
-              draggedMovePath={draggedMovePath}
-              setDraggedMovePath={setDraggedMovePath}
-              setMoveDropTargetPath={setMoveDropTargetPath}
-              isInternalMoveDrag={isInternalMoveDrag}
-              getDraggedMovePath={getDraggedMovePath}
-              canMoveToDestination={canMoveToDestination}
+              draggedMovePath={dragDrop.draggedMovePath}
+              setDraggedMovePath={dragDrop.setDraggedMovePath}
+              setMoveDropTargetPath={dragDrop.setMoveDropTargetPath}
+              isInternalMoveDrag={uploadDropHandlers.isInternalMoveDrag}
+              getDraggedMovePath={uploadDropHandlers.getDraggedMovePath}
+              canMoveToDestination={uploadDropHandlers.canMoveToDestination}
               onRowClick={onRowClick}
               onRowDoubleClick={onRowDoubleClick}
               onOpenContextMenu={onOpenContextMenu}
@@ -1246,7 +560,7 @@ export const BrowserPage = ({
               parentPath={parentPath}
               folderSizesByPath={folderSizesByPath}
               folderSizeLoadingPaths={folderSizeLoadingPaths}
-              resolveOverviewFieldValue={resolveOverviewFieldValue}
+              resolveOverviewFieldValue={resolveFieldValue}
               sortRules={sorting.sortRules}
               setSortForColumn={sorting.setSortForColumn}
               getSortIndicator={sorting.getSortIndicator}
@@ -1255,7 +569,7 @@ export const BrowserPage = ({
               resolveSortKey={resolveSortKey}
               isExplorerGridView={zoom.isExplorerGridView}
             />
-            {isUploadDropActive ? (
+            {dragDrop.isUploadDropActive ? (
               <div className={styles.uploadDropOverlay} aria-live="polite">
                 <p className={styles.uploadDropOverlayTitle}>DROP TO START UPLOAD</p>
                 <p className={styles.uploadDropOverlayBody}>
@@ -1269,15 +583,15 @@ export const BrowserPage = ({
 
           <BrowserContextMenu
             contextMenu={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null}
-            contextMenuRef={contextMenuRef}
-            contextSubmenuRef={contextSubmenuRef}
-            contextMenuItemRefs={contextMenuItemRefs}
-            contextSubmenuItemRefs={contextSubmenuItemRefs}
-            contextSubmenuSide={contextSubmenuSide}
-            contextMenuActions={contextMenuActions}
-            openSubmenuActionId={openSubmenuActionId}
-            setOpenSubmenuActionId={setOpenSubmenuActionId}
-            handleContextMenuKeyDown={handleContextMenuKeyDown}
+            contextMenuRef={contextMenuHook.contextMenuRef}
+            contextSubmenuRef={contextMenuHook.contextSubmenuRef}
+            contextMenuItemRefs={contextMenuHook.contextMenuItemRefs}
+            contextSubmenuItemRefs={contextMenuHook.contextSubmenuItemRefs}
+            contextSubmenuSide={contextMenuHook.contextSubmenuSide}
+            contextMenuActions={contextMenuHook.contextMenuActions}
+            openSubmenuActionId={contextMenuHook.openSubmenuActionId}
+            setOpenSubmenuActionId={contextMenuHook.setOpenSubmenuActionId}
+            handleContextMenuKeyDown={contextMenuHook.handleContextMenuKeyDown}
           />
         </>
       ) : null}
