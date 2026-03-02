@@ -11,7 +11,14 @@ interface BrowserModalsProps {
   onUploadFiles: (files: FileList | File[]) => Promise<void>;
   onUploadFolder: (files: FileList | File[]) => Promise<void>;
   createEntryModal: { kind: 'file' | 'folder'; value: string } | null;
-  setCreateEntryModal: (modal: { kind: 'file' | 'folder'; value: string } | null) => void;
+  setCreateEntryModal: (
+    modal:
+      | { kind: 'file' | 'folder'; value: string }
+      | null
+      | ((
+          prev: { kind: 'file' | 'folder'; value: string } | null
+        ) => { kind: 'file' | 'folder'; value: string } | null)
+  ) => void;
   createEntryError: string;
   setCreateEntryError: (error: string) => void;
   closeCreateEntryModal: () => void;

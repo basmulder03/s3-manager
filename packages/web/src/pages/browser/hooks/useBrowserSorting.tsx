@@ -1,10 +1,17 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { SortDirection, SortKey, SortRule } from '@web/pages/browser/types';
 import styles from '@web/App.module.css';
 
-export const useBrowserSorting = () => {
+export const useBrowserSorting = (): {
+  sortRules: SortRule[];
+  setSortRules: (rules: SortRule[]) => void;
+  setSortForColumn: (key: SortKey, additive: boolean) => void;
+  getSortIndicator: (key: SortKey) => ReactNode;
+  getSortLabel: (key: SortKey) => string;
+  getSortTooltip: (key: SortKey) => string;
+} => {
   const [sortRules, setSortRules] = useState<SortRule[]>([
     { key: 'type', direction: 'asc' },
     { key: 'name', direction: 'asc' },

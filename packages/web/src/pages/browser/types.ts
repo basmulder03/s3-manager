@@ -1,4 +1,10 @@
 import type { LucideIcon } from 'lucide-react';
+import type { BrowseItem } from '@server/services/s3/types';
+
+export interface BrowseData {
+  breadcrumbs: Array<{ name: string; path: string }>;
+  items: BrowseItem[];
+}
 
 export type SortKey =
   | 'name'

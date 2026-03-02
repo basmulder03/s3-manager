@@ -1,6 +1,5 @@
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent } from 'react';
 import type { BrowseItem } from '@server/services/s3/types';
-import { ChevronDown, ChevronUp } from 'lucide-react';
 import { formatBytes } from '@web/utils/formatBytes';
 import { renderBrowseItemIcon } from '@web/pages/browser/fileIcons';
 import { formatDate } from '@web/pages/browser/utils';
@@ -52,7 +51,6 @@ interface BrowserItemsTableProps {
   isSortableColumn: (columnKey: OverviewColumnKey) => boolean;
   resolveSortKey: (columnKey: OverviewColumnKey) => SortKey;
   isExplorerGridView: boolean;
-  explorerZoomStyle: CSSProperties;
 }
 
 export const BrowserItemsTable = ({
@@ -88,7 +86,6 @@ export const BrowserItemsTable = ({
   isSortableColumn,
   resolveSortKey,
   isExplorerGridView,
-  explorerZoomStyle,
 }: BrowserItemsTableProps) => {
   const formatItemSize = (item: BrowseItem): string => {
     if (item.type === 'directory') {
@@ -326,7 +323,7 @@ export const BrowserItemsTable = ({
                       ? 'Open parent folder'
                       : item.type === 'directory'
                         ? 'Folder'
-                        : `${item.size === null ? '-' : formatBytes(item.size)}${
+                        : `${formatItemSize(item)}${
                             item.lastModified ? ` • ${formatDate(item.lastModified)}` : ''
                           }`}
                   </span>

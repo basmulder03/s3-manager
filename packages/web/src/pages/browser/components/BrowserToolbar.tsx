@@ -20,7 +20,7 @@ interface BrowserToolbarProps {
   breadcrumbInputRef: React.RefObject<HTMLInputElement>;
   breadcrumbHintOptions: string[];
   activeBreadcrumbHintIndex: number;
-  setActiveBreadcrumbHintIndex: (index: number) => void;
+  setActiveBreadcrumbHintIndex: (index: number | ((prev: number) => number)) => void;
   isBreadcrumbPathCommitAllowed: (path: string) => boolean;
   commitBreadcrumbPath: (path: string) => void;
   isFilterOpen: boolean;
@@ -31,7 +31,7 @@ interface BrowserToolbarProps {
   closeFilter: () => void;
   openFilter: () => void;
   isOverviewFieldsMenuOpen: boolean;
-  setIsOverviewFieldsMenuOpen: (open: boolean) => void;
+  setIsOverviewFieldsMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   overviewFieldsMenuRef: React.RefObject<HTMLDivElement>;
   overviewFieldsPanelRef: React.RefObject<HTMLDivElement>;
   overviewFieldsMenuStyle: CSSProperties;
@@ -60,7 +60,7 @@ interface BrowserToolbarProps {
   canWrite: boolean;
   hasBucketContext: boolean;
   isActionsMenuOpen: boolean;
-  setIsActionsMenuOpen: (open: boolean) => void;
+  setIsActionsMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   actionsMenuRef: React.RefObject<HTMLDivElement>;
   uploadFilesInputRef: React.RefObject<HTMLInputElement>;
   onSelectFolderForUpload: () => Promise<void>;

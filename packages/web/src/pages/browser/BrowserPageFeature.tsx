@@ -1,61 +1,35 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import type {
-  CSSProperties,
-  KeyboardEvent as ReactKeyboardEvent,
-  MouseEvent,
-  ReactNode,
-} from 'react';
-import {
-  ChevronDown,
-  ChevronUp,
-  House,
-  MoreVertical,
-  RefreshCw,
-  Search,
-  SlidersHorizontal,
-  Undo2,
-  X,
-} from 'lucide-react';
-import { Button, Input } from '@web/components/ui';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MouseEvent } from 'react';
 import { useModalFocusTrapEffect } from '@web/hooks/useModalFocusTrapEffect';
 import { trpcProxyClient } from '@web/trpc/client';
-import type { BrowseItem, ObjectPropertiesResult } from '@server/services/s3/types';
+import type { BrowseItem } from '@server/services/s3/types';
 import { resolveFileCapability } from '@web/utils/fileCapabilities';
 import { formatBytes } from '@web/utils/formatBytes';
 import {
-  BREADCRUMB_HINTS_STORAGE_KEY,
-  EXPLORER_GRID_VIEW_MIN_ZOOM,
-  EXPLORER_ZOOM_DEFAULT_LEVEL,
-  EXPLORER_ZOOM_EVENT_NAME,
-  EXPLORER_ZOOM_LEVELS,
-  EXPLORER_ZOOM_STORAGE_KEY,
   formatShortcutHint,
   overviewColumnDefinitions,
   overviewColumnSortKeyByColumn,
-  OVERVIEW_COLUMNS_STORAGE_KEY,
-  resolveInitialBreadcrumbHintPaths,
-  resolveInitialExplorerZoomLevel,
-  resolveInitialOverviewColumnVisibility,
-  resolveNearestExplorerZoomLevel,
-  resolveNextExplorerZoomLevel,
 } from '@web/pages/browser/constants';
-import { INTERNAL_MOVE_DRAG_TYPE } from '@web/pages/browser/dragDrop';
-import { ModalPortal } from '@web/components/modals/ModalPortal';
-import { parseFilterClauses } from '@web/pages/browser/filterQuery';
-import { renderBrowseItemIcon } from '@web/pages/browser/fileIcons';
 import { BrowserContextMenu } from '@web/pages/browser/components/BrowserContextMenu';
 import { BrowserInfoModals } from '@web/pages/browser/components/BrowserInfoModals';
+import { BrowserToolbar } from '@web/pages/browser/components/BrowserToolbar';
+import { BrowserModals } from '@web/pages/browser/components/BrowserModals';
+import { BrowserItemsTable } from '@web/pages/browser/components/BrowserItemsTable';
 import { useRenderedItems } from '@web/pages/browser/hooks/useRenderedItems';
 import { useUploadDropHandlers } from '@web/pages/browser/hooks/useUploadDropHandlers';
-import type {
-  ContextMenuAction,
-  OverviewColumnKey,
-  OverviewColumnVisibility,
-  SortDirection,
-  SortKey,
-  SortRule,
-} from '@web/pages/browser/types';
+import { useBreadcrumbNavigation } from '@web/pages/browser/hooks/useBreadcrumbNavigation';
+import { useBrowserZoom } from '@web/pages/browser/hooks/useBrowserZoom';
+import { useBrowserSorting } from '@web/pages/browser/hooks/useBrowserSorting';
+import { useFilterManagement } from '@web/pages/browser/hooks/useFilterManagement';
+import { useOverviewFieldsMenu } from '@web/pages/browser/hooks/useOverviewFieldsMenu';
+import { usePropertiesLoading } from '@web/pages/browser/hooks/usePropertiesLoading';
+import { useKeyboardNavigation } from '@web/pages/browser/hooks/useKeyboardNavigation';
+import {
+  formatDate,
+  getObjectKeyFromPath,
+  collectFilesFromDirectoryHandle,
+} from '@web/pages/browser/utils';
+import type { ContextMenuAction, OverviewColumnKey, SortKey } from '@web/pages/browser/types';
 import styles from '@web/App.module.css';
 
 interface BrowseData {
@@ -120,22 +94,6 @@ interface BrowserPageProps {
   setIsFilterHelpModalOpen?: (isOpen: boolean) => void;
 }
 
-const MIN_BROWSER_ZOOM_FACTOR = 0.5;
-const MAX_BROWSER_ZOOM_FACTOR = 3;
-
-const formatDate = (value: string | null): string => {
-  if (!value) {
-    return '-';
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString();
-};
-
 export const BrowserPage = ({
   selectedPath,
   setSelectedPath,
@@ -188,29 +146,10 @@ export const BrowserPage = ({
 }: BrowserPageProps) => {
   const isBrowseRefreshing = browse.isFetching ?? browse.isLoading;
 
-  const [isBreadcrumbEditing, setIsBreadcrumbEditing] = useState(false);
-  const [breadcrumbDraft, setBreadcrumbDraft] = useState(selectedPath ? `/${selectedPath}` : '/');
-  const [cachedDirectoryHintPaths, setCachedDirectoryHintPaths] = useState<string[]>(
-    resolveInitialBreadcrumbHintPaths
-  );
-  const [isFilterOpen, setIsFilterOpen] = useState(() => filterQuery.trim().length > 0);
-  const [isFilterHelpModalOpenInternal, setIsFilterHelpModalOpenInternal] = useState(false);
-  const [filterDraftQuery, setFilterDraftQuery] = useState(filterQuery);
-  const [activeBreadcrumbHintIndex, setActiveBreadcrumbHintIndex] = useState(-1);
+  // Local state
   const [isShortcutsModalOpenInternal, setIsShortcutsModalOpenInternal] = useState(false);
-  const [isOverviewFieldsMenuOpen, setIsOverviewFieldsMenuOpen] = useState(false);
+  const [isFilterHelpModalOpenInternal, setIsFilterHelpModalOpenInternal] = useState(false);
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
-  const [overviewFieldsFilterQuery, setOverviewFieldsFilterQuery] = useState('');
-  const [overviewColumnVisibility, setOverviewColumnVisibility] =
-    useState<OverviewColumnVisibility>(resolveInitialOverviewColumnVisibility);
-  const [manualExplorerZoomLevel, setManualExplorerZoomLevel] = useState<number>(
-    resolveInitialExplorerZoomLevel
-  );
-  const [browserZoomFactor, setBrowserZoomFactor] = useState(1);
-  const [propertiesByPath, setPropertiesByPath] = useState<
-    Record<string, ObjectPropertiesResult | null>
-  >({});
-  const [propertiesLoadingPaths, setPropertiesLoadingPaths] = useState<Set<string>>(new Set());
   const [pendingFileUploadFiles, setPendingFileUploadFiles] = useState<File[]>([]);
   const [pendingFolderUploadFiles, setPendingFolderUploadFiles] = useState<File[]>([]);
   const [isUploadDropActive, setIsUploadDropActive] = useState(false);
@@ -221,14 +160,10 @@ export const BrowserPage = ({
     value: string;
   } | null>(null);
   const [createEntryError, setCreateEntryError] = useState('');
-  const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
-  const [sortRules, setSortRules] = useState<SortRule[]>([
-    { key: 'type', direction: 'asc' },
-    { key: 'name', direction: 'asc' },
-  ]);
   const [openSubmenuActionId, setOpenSubmenuActionId] = useState<string | null>(null);
-  const [overviewFieldsMenuStyle, setOverviewFieldsMenuStyle] = useState<CSSProperties>({});
   const [contextSubmenuSide, setContextSubmenuSide] = useState<'left' | 'right'>('right');
+
+  // Modal state management
   const isShortcutsModalOpen = isShortcutsModalOpenProp ?? isShortcutsModalOpenInternal;
   const setIsShortcutsModalOpen = useCallback(
     (isOpen: boolean) => {
@@ -251,10 +186,9 @@ export const BrowserPage = ({
     },
     [isFilterHelpModalOpenProp, setIsFilterHelpModalOpenProp]
   );
-  const breadcrumbInputRef = useRef<HTMLInputElement>(null);
-  const filterInputRef = useRef<HTMLInputElement>(null);
+
+  // Refs
   const actionsMenuRef = useRef<HTMLDivElement>(null);
-  const overviewFieldsMenuRef = useRef<HTMLDivElement>(null);
   const uploadFilesInputRef = useRef<HTMLInputElement>(null);
   const uploadFolderInputRef = useRef<HTMLInputElement>(null);
   const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
@@ -262,719 +196,80 @@ export const BrowserPage = ({
   const contextMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const contextSubmenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const contextSubmenuRef = useRef<HTMLDivElement>(null);
-  const overviewFieldsPanelRef = useRef<HTMLDivElement>(null);
   const contextMenuFocusRestoreRef = useRef<HTMLElement | null>(null);
   const wasContextMenuOpenRef = useRef(false);
-  const wasBreadcrumbEditingRef = useRef(false);
   const uploadDropEnterDepthRef = useRef(0);
-  const initialDevicePixelRatioRef = useRef<number | null>(null);
   const activeModalRef = useRef<HTMLDivElement>(null);
+
   const folderInputAttributes = {
     directory: '',
     webkitdirectory: '',
   } as Record<string, string>;
-  const explorerZoomLevel = useMemo(
-    () => resolveNearestExplorerZoomLevel(manualExplorerZoomLevel * browserZoomFactor),
-    [browserZoomFactor, manualExplorerZoomLevel]
-  );
-  const isExplorerGridView = explorerZoomLevel >= EXPLORER_GRID_VIEW_MIN_ZOOM;
-  const explorerViewportScale = useMemo(() => {
-    const normalizedBrowserZoom = Math.max(
-      MIN_BROWSER_ZOOM_FACTOR,
-      Math.min(MAX_BROWSER_ZOOM_FACTOR, browserZoomFactor)
-    );
-    const ratio = explorerZoomLevel / (EXPLORER_ZOOM_DEFAULT_LEVEL * normalizedBrowserZoom);
-    return Math.max(0.7, Math.min(2.4, ratio));
-  }, [browserZoomFactor, explorerZoomLevel]);
-  const explorerZoomStyle = useMemo(
-    () =>
-      ({
-        zoom: explorerViewportScale,
-      }) as CSSProperties,
-    [explorerViewportScale]
-  );
 
-  const commitBreadcrumbPath = (rawPath: string) => {
-    const normalized = rawPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
-    if (normalized !== selectedPath) {
-      setSelectedPath(normalized);
-    }
-  };
-
-  const resetExplorerZoom = useCallback(() => {
-    setManualExplorerZoomLevel(EXPLORER_ZOOM_DEFAULT_LEVEL);
-  }, []);
-
-  const nudgeExplorerZoom = useCallback(
-    (direction: 1 | -1) => {
-      setManualExplorerZoomLevel((previousManualZoomLevel) => {
-        const effectiveLevel = resolveNearestExplorerZoomLevel(
-          previousManualZoomLevel * browserZoomFactor
-        );
-        const nextEffectiveLevel = resolveNextExplorerZoomLevel(effectiveLevel, direction);
-        const nextManualLevel = nextEffectiveLevel / Math.max(browserZoomFactor, 0.01);
-        return Math.max(
-          EXPLORER_ZOOM_LEVELS[0],
-          Math.min(EXPLORER_ZOOM_LEVELS.at(-1) ?? 200, nextManualLevel)
-        );
-      });
-    },
-    [browserZoomFactor]
-  );
-
-  const isBreadcrumbPathCommitAllowed = useCallback(
-    (rawPath: string) => {
-      const normalized = rawPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
-      if (!normalized) {
-        return true;
-      }
-
-      if (knownBucketNames.length === 0) {
-        return true;
-      }
-
-      const [bucketName = ''] = normalized.split('/');
-      return knownBucketNames.includes(bucketName);
-    },
-    [knownBucketNames]
-  );
-
-  useEffect(() => {
-    if (isBreadcrumbEditing) {
-      return;
-    }
-
-    setBreadcrumbDraft(selectedPath ? `/${selectedPath}` : '/');
-  }, [isBreadcrumbEditing, selectedPath]);
-
-  useEffect(() => {
-    if (!isBreadcrumbEditing) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      if (isBreadcrumbPathCommitAllowed(breadcrumbDraft)) {
-        commitBreadcrumbPath(breadcrumbDraft);
-      }
-    }, 320);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [
-    breadcrumbDraft,
-    commitBreadcrumbPath,
-    isBreadcrumbEditing,
-    isBreadcrumbPathCommitAllowed,
+  // Initialize hooks
+  const breadcrumb = useBreadcrumbNavigation({
     selectedPath,
-  ]);
-
-  useEffect(() => {
-    if (!isBreadcrumbEditing) {
-      return;
-    }
-
-    breadcrumbInputRef.current?.focus();
-    breadcrumbInputRef.current?.select();
-  }, [isBreadcrumbEditing]);
-
-  useEffect(() => {
-    const wasEditing = wasBreadcrumbEditingRef.current;
-    if (isBreadcrumbEditing && !wasEditing) {
-      setBreadcrumbDraft(selectedPath ? `/${selectedPath}` : '/');
-      setActiveBreadcrumbHintIndex(-1);
-    }
-
-    wasBreadcrumbEditingRef.current = isBreadcrumbEditing;
-  }, [isBreadcrumbEditing, selectedPath]);
-
-  useEffect(() => {
-    setCachedDirectoryHintPaths((previous) => {
-      const next = new Set(previous);
-
-      const rememberPath = (value: string) => {
-        const normalized = value.trim().replace(/^\/+/, '').replace(/\/+$/, '');
-        if (!normalized) {
-          return;
-        }
-
-        next.add(normalized);
-      };
-
-      rememberPath(selectedPath);
-
-      for (const crumb of browse.data?.breadcrumbs ?? []) {
-        rememberPath(crumb.path);
-      }
-
-      for (const item of browse.data?.items ?? []) {
-        if (item.type !== 'directory') {
-          continue;
-        }
-
-        rememberPath(item.path);
-      }
-
-      if (next.size === previous.length) {
-        return previous;
-      }
-
-      return Array.from(next).slice(-600);
-    });
-  }, [browse.data?.breadcrumbs, browse.data?.items, selectedPath]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    window.localStorage.setItem(
-      OVERVIEW_COLUMNS_STORAGE_KEY,
-      JSON.stringify(overviewColumnVisibility)
-    );
-  }, [overviewColumnVisibility]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    window.localStorage.setItem(EXPLORER_ZOOM_STORAGE_KEY, String(manualExplorerZoomLevel));
-    window.dispatchEvent(
-      new CustomEvent(EXPLORER_ZOOM_EVENT_NAME, {
-        detail: { manualExplorerZoomLevel },
-      })
-    );
-  }, [manualExplorerZoomLevel]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const baseDevicePixelRatio =
-      initialDevicePixelRatioRef.current ?? Math.max(window.devicePixelRatio || 1, 0.01);
-    initialDevicePixelRatioRef.current = baseDevicePixelRatio;
-
-    const syncBrowserZoomFactor = () => {
-      const currentRatio = Math.max(window.devicePixelRatio || 1, 0.01);
-      const nextFactor = Math.max(
-        MIN_BROWSER_ZOOM_FACTOR,
-        Math.min(MAX_BROWSER_ZOOM_FACTOR, currentRatio / baseDevicePixelRatio)
-      );
-
-      setBrowserZoomFactor((previous) =>
-        Math.abs(previous - nextFactor) < 0.01 ? previous : nextFactor
-      );
-    };
-
-    syncBrowserZoomFactor();
-
-    window.addEventListener('resize', syncBrowserZoomFactor);
-    window.visualViewport?.addEventListener('resize', syncBrowserZoomFactor);
-    return () => {
-      window.removeEventListener('resize', syncBrowserZoomFactor);
-      window.visualViewport?.removeEventListener('resize', syncBrowserZoomFactor);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    window.sessionStorage.setItem(
-      BREADCRUMB_HINTS_STORAGE_KEY,
-      JSON.stringify(cachedDirectoryHintPaths)
-    );
-  }, [cachedDirectoryHintPaths]);
-
-  useEffect(() => {
-    if (!isActionsMenuOpen) {
-      return;
-    }
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (actionsMenuRef.current?.contains(event.target as Node)) {
-        return;
-      }
-
-      setIsActionsMenuOpen(false);
-    };
-
-    window.addEventListener('pointerdown', onPointerDown);
-    return () => {
-      window.removeEventListener('pointerdown', onPointerDown);
-    };
-  }, [isActionsMenuOpen]);
-
-  useEffect(() => {
-    if (!isOverviewFieldsMenuOpen) {
-      return;
-    }
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (overviewFieldsMenuRef.current?.contains(event.target as Node)) {
-        return;
-      }
-
-      if (overviewFieldsPanelRef.current?.contains(event.target as Node)) {
-        return;
-      }
-
-      setIsOverviewFieldsMenuOpen(false);
-    };
-
-    window.addEventListener('pointerdown', onPointerDown);
-    return () => {
-      window.removeEventListener('pointerdown', onPointerDown);
-    };
-  }, [isOverviewFieldsMenuOpen]);
-
-  const positionOverviewFieldsMenu = useCallback(() => {
-    if (!isOverviewFieldsMenuOpen) {
-      return;
-    }
-
-    const anchor = overviewFieldsMenuRef.current;
-    const menu = overviewFieldsPanelRef.current;
-    if (!anchor || !menu) {
-      return;
-    }
-
-    const viewportPadding = 8;
-    const gap = 6;
-    const anchorRect = anchor.getBoundingClientRect();
-    const menuRect = menu.getBoundingClientRect();
-    const menuWidth = menuRect.width || 240;
-    const menuHeight = menuRect.height || 320;
-
-    let left = anchorRect.right - menuWidth;
-    left = Math.max(
-      viewportPadding,
-      Math.min(left, window.innerWidth - menuWidth - viewportPadding)
-    );
-
-    const spaceBelow = window.innerHeight - anchorRect.bottom - gap - viewportPadding;
-    const spaceAbove = anchorRect.top - gap - viewportPadding;
-
-    let top = anchorRect.bottom + gap;
-    let maxHeight = Math.max(160, spaceBelow);
-    if (spaceBelow < 220 && spaceAbove > spaceBelow) {
-      top = Math.max(viewportPadding, anchorRect.top - gap - Math.min(menuHeight, spaceAbove));
-      maxHeight = Math.max(160, spaceAbove);
-    }
-
-    setOverviewFieldsMenuStyle({
-      position: 'fixed',
-      left,
-      top,
-      right: 'auto',
-      bottom: 'auto',
-      maxHeight: `${Math.floor(maxHeight)}px`,
-      visibility: 'visible',
-    });
-  }, [isOverviewFieldsMenuOpen]);
-
-  useLayoutEffect(() => {
-    if (!isOverviewFieldsMenuOpen) {
-      setOverviewFieldsMenuStyle({});
-      return;
-    }
-
-    positionOverviewFieldsMenu();
-
-    const frameId = window.requestAnimationFrame(positionOverviewFieldsMenu);
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [isOverviewFieldsMenuOpen, overviewFieldsFilterQuery, positionOverviewFieldsMenu]);
-
-  useEffect(() => {
-    if (!isOverviewFieldsMenuOpen) {
-      return;
-    }
-
-    const reposition = () => {
-      positionOverviewFieldsMenu();
-    };
-
-    window.addEventListener('resize', reposition);
-    window.addEventListener('scroll', reposition, true);
-    return () => {
-      window.removeEventListener('resize', reposition);
-      window.removeEventListener('scroll', reposition, true);
-    };
-  }, [isOverviewFieldsMenuOpen, positionOverviewFieldsMenu]);
-
-  useEffect(() => {
-    if (!isFilterOpen) {
-      return;
-    }
-
-    filterInputRef.current?.focus();
-  }, [isFilterOpen]);
-
-  useEffect(() => {
-    setFilterDraftQuery(filterQuery);
-    if (filterQuery.trim().length > 0) {
-      setIsFilterOpen(true);
-    }
-  }, [filterQuery]);
-
-  useEffect(() => {
-    if (filterDraftQuery === filterQuery) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setFilterQuery(filterDraftQuery);
-    }, 320);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [filterDraftQuery, filterQuery, setFilterQuery]);
-
-  const breadcrumbSegments = useMemo(() => {
-    const normalized = selectedPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
-    if (!normalized) {
-      return [] as Array<{ label: string; path: string }>;
-    }
-
-    const segments = normalized.split('/');
-    return segments.map((segment, index) => ({
-      label: segment,
-      path: segments.slice(0, index + 1).join('/'),
-    }));
-  }, [selectedPath]);
-
-  const breadcrumbHintOptions = useMemo(() => {
-    const draft = breadcrumbDraft.trim().replace(/^\/+/, '');
-    const normalizedSelectedPath = selectedPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
-    const suggestions = new Set<string>();
-
-    suggestions.add('/');
-
-    const addSuggestion = (value: string) => {
-      const normalized = value.trim().replace(/^\/+/, '').replace(/\/+$/, '');
-      if (!normalized) {
-        suggestions.add('/');
-        return;
-      }
-
-      suggestions.add(`/${normalized}`);
-    };
-
-    for (const crumb of browse.data?.breadcrumbs ?? []) {
-      addSuggestion(crumb.path);
-    }
-
-    for (const bucketName of knownBucketNames) {
-      addSuggestion(bucketName);
-    }
-
-    for (const cachedPath of cachedDirectoryHintPaths) {
-      addSuggestion(cachedPath);
-    }
-
-    for (const item of browse.data?.items ?? []) {
-      if (item.type !== 'directory') {
-        continue;
-      }
-
-      addSuggestion(item.path);
-    }
-
-    const filtered = Array.from(suggestions).filter((value) => {
-      if (!draft) {
-        return true;
-      }
-
-      const normalizedValue = value.slice(1).toLowerCase();
-      const normalizedDraft = draft.toLowerCase();
-
-      if (normalizedValue.startsWith(normalizedDraft)) {
-        return true;
-      }
-
-      if (draft.includes('/')) {
-        return false;
-      }
-
-      const valueSegments = normalizedValue.split('/');
-      const leafSegment = valueSegments[valueSegments.length - 1] ?? '';
-      if (leafSegment.startsWith(normalizedDraft)) {
-        return true;
-      }
-
-      if (!normalizedSelectedPath) {
-        return false;
-      }
-
-      const selectedPrefix = `${normalizedSelectedPath.toLowerCase()}/`;
-      if (!normalizedValue.startsWith(selectedPrefix)) {
-        return false;
-      }
-
-      const relativeFromCurrent = normalizedValue.slice(selectedPrefix.length);
-      return relativeFromCurrent.startsWith(normalizedDraft);
-    });
-
-    filtered.sort((left, right) => left.localeCompare(right));
-    return filtered.slice(0, 12);
-  }, [
-    breadcrumbDraft,
-    browse.data?.breadcrumbs,
-    browse.data?.items,
-    cachedDirectoryHintPaths,
+    setSelectedPath,
     knownBucketNames,
-    selectedPath,
-  ]);
+    browseData: browse.data,
+  });
 
-  useEffect(() => {
-    if (!isBreadcrumbEditing) {
-      setActiveBreadcrumbHintIndex(-1);
-      return;
-    }
+  const zoom = useBrowserZoom();
 
-    setActiveBreadcrumbHintIndex((previous) => {
-      if (breadcrumbHintOptions.length === 0) {
-        return -1;
-      }
+  const sorting = useBrowserSorting();
 
-      if (previous < 0) {
-        return -1;
-      }
+  const filter = useFilterManagement({ filterQuery, setFilterQuery });
 
-      return Math.min(previous, breadcrumbHintOptions.length - 1);
-    });
-  }, [breadcrumbHintOptions, isBreadcrumbEditing]);
+  const overviewFields = useOverviewFieldsMenu();
 
   const isAnyPropertyBackedColumnVisible = useMemo(
     () =>
       overviewColumnDefinitions.some(
-        (column) => column.requiresProperties && overviewColumnVisibility[column.key]
+        (column) => column.requiresProperties && overviewFields.overviewColumnVisibility[column.key]
       ),
-    [overviewColumnVisibility]
+    [overviewFields.overviewColumnVisibility]
   );
 
-  const parsedFilterClauses = useMemo(() => parseFilterClauses(filterQuery), [filterQuery]);
-
-  const hasActiveAdvancedFilter = useMemo(
-    () =>
-      parsedFilterClauses.some((clause) =>
-        clause.kind === 'text' ? clause.value.trim().length > 0 : clause.value.trim().length > 0
-      ),
-    [parsedFilterClauses]
-  );
-
-  const shouldLoadPropertiesForFiltering = hasActiveAdvancedFilter;
-
-  useEffect(() => {
-    if (!isAnyPropertyBackedColumnVisible && !shouldLoadPropertiesForFiltering) {
-      return;
-    }
-
-    const missingPaths = (browse.data?.items ?? [])
-      .filter((item) => item.type === 'file')
-      .map((item) => item.path)
-      .filter((path) => propertiesByPath[path] === undefined && !propertiesLoadingPaths.has(path));
-
-    if (missingPaths.length === 0) {
-      return;
-    }
-
-    const loadMissingProperties = async () => {
-      await Promise.all(
-        missingPaths.map(async (path) => {
-          setPropertiesLoadingPaths((previous) => {
-            if (previous.has(path)) {
-              return previous;
-            }
-
-            const next = new Set(previous);
-            next.add(path);
-            return next;
-          });
-
-          try {
-            const details = await trpcProxyClient.s3.getProperties.query({ path });
-
-            setPropertiesByPath((previous) => {
-              if (previous[path] !== undefined) {
-                return previous;
-              }
-
-              return {
-                ...previous,
-                [path]: details,
-              };
-            });
-          } catch {
-            setPropertiesByPath((previous) => {
-              if (previous[path] !== undefined) {
-                return previous;
-              }
-
-              return {
-                ...previous,
-                [path]: null,
-              };
-            });
-          } finally {
-            setPropertiesLoadingPaths((previous) => {
-              if (!previous.has(path)) {
-                return previous;
-              }
-
-              const next = new Set(previous);
-              next.delete(path);
-              return next;
-            });
-          }
-        })
-      );
-    };
-
-    void loadMissingProperties();
-  }, [
-    browse.data?.items,
+  const properties = usePropertiesLoading({
+    browseItems: browse.data?.items ?? [],
     isAnyPropertyBackedColumnVisible,
-    shouldLoadPropertiesForFiltering,
-    propertiesByPath,
-    propertiesLoadingPaths,
-  ]);
+    filterQuery,
+  });
 
   const { parentPath, renderedItems } = useRenderedItems({
     browseItems: browse.data?.items ?? [],
     selectedPath,
     filterQuery,
-    parsedFilterClauses,
-    propertiesByPath,
+    parsedFilterClauses: properties.parsedFilterClauses,
+    propertiesByPath: properties.propertiesByPath,
     folderSizesByPath,
-    sortRules,
+    sortRules: sorting.sortRules,
   });
 
-  const setSortForColumn = (key: SortKey, additive: boolean) => {
-    setSortRules((previous) => {
-      const existing = previous.find((rule) => rule.key === key);
-      const nextDirection: SortDirection = existing?.direction === 'asc' ? 'desc' : 'asc';
+  const keyboard = useKeyboardNavigation({
+    renderedItems,
+    isExplorerGridView: zoom.isExplorerGridView,
+    selectedPath,
+    setSelectedPath,
+    parentPath,
+    onViewFile,
+    onRowDoubleClick,
+    onSelectItemOnly,
+    onToggleItemSelection,
+    onOpenItemContextMenu,
+    openFilter: filter.openFilter,
+    setIsShortcutsModalOpen,
+    onRefetch: browse.refetch,
+    nudgeExplorerZoom: zoom.nudgeExplorerZoom,
+    resetExplorerZoom: zoom.resetExplorerZoom,
+    contextMenu,
+    isActionsMenuOpen,
+    setIsActionsMenuOpen,
+    isShortcutsModalOpen,
+    isFilterHelpModalOpen,
+    rowRefs,
+  });
 
-      if (!additive) {
-        const next: SortRule[] = [{ key, direction: nextDirection }];
-        if (key !== 'type') {
-          next.push({ key: 'type', direction: 'asc' });
-        }
-        if (key !== 'name') {
-          next.push({ key: 'name', direction: 'asc' });
-        }
-        return next;
-      }
-
-      if (existing) {
-        return previous.map((rule) =>
-          rule.key === key ? { ...rule, direction: nextDirection } : rule
-        );
-      }
-
-      return [...previous, { key, direction: 'asc' }];
-    });
-  };
-
-  const getSortIndicator = (key: SortKey): ReactNode => {
-    const visibleSortRules = sortRules.filter((rule) => rule.key !== 'type');
-    const visibleIndex = visibleSortRules.findIndex((rule) => rule.key === key);
-    if (visibleIndex === -1) {
-      return null;
-    }
-    const direction = visibleSortRules[visibleIndex]?.direction;
-    return (
-      <>
-        {direction === 'asc' ? (
-          <ChevronUp size={13} className={styles.sortIndicatorIcon} />
-        ) : (
-          <ChevronDown size={13} className={styles.sortIndicatorIcon} />
-        )}
-        {visibleSortRules.length > 1 ? <span>{visibleIndex + 1}</span> : null}
-      </>
-    );
-  };
-
-  const getSortLabel = (key: SortKey): string => {
-    if (key === 'name') {
-      return 'Name';
-    }
-    if (key === 'size') {
-      return 'Size';
-    }
-    if (key === 'modified') {
-      return 'Modified';
-    }
-    if (key === 'key') {
-      return 'Key';
-    }
-    if (key === 'etag') {
-      return 'ETag';
-    }
-    if (key === 'versionId') {
-      return 'Version Id';
-    }
-    if (key === 'serverSideEncryption') {
-      return 'Server-side encryption';
-    }
-    if (key === 'contentType') {
-      return 'Content Type';
-    }
-    if (key === 'storageClass') {
-      return 'Storage Class';
-    }
-    if (key === 'cacheControl') {
-      return 'Cache Control';
-    }
-    if (key === 'contentDisposition') {
-      return 'Content Disposition';
-    }
-    if (key === 'contentEncoding') {
-      return 'Content Encoding';
-    }
-    if (key === 'contentLanguage') {
-      return 'Content Language';
-    }
-    if (key === 'expires') {
-      return 'Expires';
-    }
-    return 'Type';
-  };
-
-  const getSortTooltip = (key: SortKey): string => {
-    const visibleSortRules = sortRules.filter((rule) => rule.key !== 'type');
-    const visibleIndex = visibleSortRules.findIndex((rule) => rule.key === key);
-    if (visibleIndex === -1) {
-      return 'Click to sort. Shift+click to add this column as an extra compare level.';
-    }
-
-    const sequence = visibleSortRules
-      .map((rule, ruleIndex) => {
-        const directionLabel = rule.direction === 'asc' ? 'ascending' : 'descending';
-        return `${ruleIndex + 1}. ${getSortLabel(rule.key)} (${directionLabel})`;
-      })
-      .join(' -> ');
-
-    return `Number ${visibleIndex + 1} means compare priority. Current order: ${sequence}.`;
-  };
-
-  const selectedRecordsCount = selectedItems.size;
-  const visibleOverviewColumns = overviewColumnDefinitions.filter(
-    (column) => overviewColumnVisibility[column.key]
-  );
-  const visibleOverviewColumnsCount = visibleOverviewColumns.length;
-  const allOverviewColumnsSelected =
-    visibleOverviewColumnsCount === overviewColumnDefinitions.length;
-  const normalizedOverviewFieldsFilterQuery = overviewFieldsFilterQuery.trim().toLowerCase();
-  const filteredOverviewColumns = overviewColumnDefinitions.filter((column) =>
-    column.label.toLowerCase().includes(normalizedOverviewFieldsFilterQuery)
-  );
   const hasBucketContext = selectedPath.trim().replace(/^\/+/, '').length > 0;
   const uploadDisabled = !hasBucketContext;
 
@@ -1033,35 +328,6 @@ export const BrowserPage = ({
   const hasDeletableSelection = selectedBrowseItems.some(
     (item) => !(item.type === 'directory' && !item.path.includes('/'))
   );
-  const formatItemSize = (item: BrowseItem): string => {
-    if (item.type === 'directory') {
-      if (folderSizeLoadingPaths.has(item.path)) {
-        return 'Calculating...';
-      }
-
-      const folderSize = folderSizesByPath[item.path];
-      return typeof folderSize === 'number' ? formatBytes(folderSize) : '-';
-    }
-
-    if (item.size === null) {
-      return '-';
-    }
-
-    return formatBytes(item.size);
-  };
-
-  const getObjectKeyFromPath = (path: string): string => {
-    const parts = path.split('/');
-    return parts.slice(1).join('/') || path;
-  };
-
-  const getPropertiesForItem = (item: BrowseItem): ObjectPropertiesResult | null | undefined => {
-    if (item.type !== 'file') {
-      return undefined;
-    }
-
-    return propertiesByPath[item.path];
-  };
 
   const resolveOverviewFieldValue = (
     item: BrowseItem,
@@ -1073,7 +339,20 @@ export const BrowserPage = ({
     }
 
     if (columnKey === 'showSize') {
-      return formatItemSize(item);
+      if (item.type === 'directory') {
+        if (folderSizeLoadingPaths.has(item.path)) {
+          return 'Calculating...';
+        }
+
+        const folderSize = folderSizesByPath[item.path];
+        return typeof folderSize === 'number' ? formatBytes(folderSize) : '-';
+      }
+
+      if (item.size === null) {
+        return '-';
+      }
+
+      return formatBytes(item.size);
     }
 
     if (columnKey === 'showModified') {
@@ -1084,8 +363,8 @@ export const BrowserPage = ({
       return '-';
     }
 
-    const details = getPropertiesForItem(item);
-    const isLoading = propertiesLoadingPaths.has(item.path);
+    const details = properties.getPropertiesForItem(item);
+    const isLoading = properties.propertiesLoadingPaths.has(item.path);
 
     if (columnKey === 'showKey') {
       return details?.key ?? getObjectKeyFromPath(item.path);
@@ -1134,7 +413,7 @@ export const BrowserPage = ({
   };
 
   const isSortableColumn = (columnKey: OverviewColumnKey): boolean => {
-    return Object.hasOwn(overviewColumnSortKeyByColumn, columnKey);
+    return Object.prototype.hasOwnProperty.call(overviewColumnSortKeyByColumn, columnKey);
   };
 
   const resolveSortKey = (columnKey: OverviewColumnKey): SortKey => {
@@ -1158,11 +437,14 @@ export const BrowserPage = ({
     }
 
     const targetPath = contextMenu.item.path;
-    if (propertiesByPath[targetPath] !== undefined || propertiesLoadingPaths.has(targetPath)) {
+    if (
+      properties.propertiesByPath[targetPath] !== undefined ||
+      properties.propertiesLoadingPaths.has(targetPath)
+    ) {
       return;
     }
 
-    setPropertiesLoadingPaths((previous) => {
+    properties.setPropertiesLoadingPaths((previous) => {
       if (previous.has(targetPath)) {
         return previous;
       }
@@ -1180,7 +462,7 @@ export const BrowserPage = ({
           return;
         }
 
-        setPropertiesByPath((previous) => {
+        properties.setPropertiesByPath((previous) => {
           if (previous[targetPath] !== undefined) {
             return previous;
           }
@@ -1195,7 +477,7 @@ export const BrowserPage = ({
           return;
         }
 
-        setPropertiesByPath((previous) => {
+        properties.setPropertiesByPath((previous) => {
           if (previous[targetPath] !== undefined) {
             return previous;
           }
@@ -1206,7 +488,7 @@ export const BrowserPage = ({
           };
         });
       } finally {
-        setPropertiesLoadingPaths((previous) => {
+        properties.setPropertiesLoadingPaths((previous) => {
           if (!previous.has(targetPath)) {
             return previous;
           }
@@ -1223,7 +505,7 @@ export const BrowserPage = ({
     return () => {
       cancelled = true;
     };
-  }, [contextMenu, propertiesByPath, propertiesLoadingPaths]);
+  }, [contextMenu, properties]);
 
   const contextMenuActions = useMemo<ContextMenuAction[]>(() => {
     if (!contextMenu) {
@@ -1302,8 +584,8 @@ export const BrowserPage = ({
         },
       });
 
-      const details = propertiesByPath[contextMenu.item.path];
-      const isLoadingDetails = propertiesLoadingPaths.has(contextMenu.item.path);
+      const details = properties.propertiesByPath[contextMenu.item.path];
+      const isLoadingDetails = properties.propertiesLoadingPaths.has(contextMenu.item.path);
       const copyDetailActions: ContextMenuAction[] = [];
       const pushCopyDetailAction = (
         id: string,
@@ -1350,7 +632,7 @@ export const BrowserPage = ({
       const metadataEntries = details ? Object.entries(details.metadata) : [];
       for (const [metadataKey, metadataValue] of metadataEntries) {
         const metadataActionId = `copy-detail-metadata-${metadataKey.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-        pushCopyDetailAction(metadataActionId, `Metadata: ${metadataKey}`, metadataValue);
+        pushCopyDetailAction(metadataActionId, `Metadata: ${metadataKey}`, metadataValue as string);
       }
 
       if (isLoadingDetails) {
@@ -1459,75 +741,10 @@ export const BrowserPage = ({
     onPasteIntoPath,
     onRename,
     onViewFile,
-    propertiesByPath,
-    propertiesLoadingPaths,
+    properties.propertiesByPath,
+    properties.propertiesLoadingPaths,
     setSelectedPath,
   ]);
-
-  const openFilter = () => {
-    if (isFilterOpen) {
-      filterInputRef.current?.focus();
-      return;
-    }
-
-    setIsFilterOpen(true);
-  };
-
-  const closeFilter = () => {
-    setFilterDraftQuery('');
-    setFilterQuery('');
-    setIsFilterOpen(false);
-  };
-
-  const attachRelativePathToFile = (file: File, relativePath: string): File => {
-    try {
-      Object.defineProperty(file, 'webkitRelativePath', {
-        configurable: true,
-        value: relativePath,
-      });
-      return file;
-    } catch {
-      return file;
-    }
-  };
-
-  const collectFilesFromDirectoryHandle = async (
-    directoryHandle: { values: () => AsyncIterable<unknown> },
-    parentPath = ''
-  ): Promise<File[]> => {
-    const files: File[] = [];
-
-    for await (const entry of directoryHandle.values()) {
-      const entryRecord = entry as {
-        kind?: string;
-        name?: string;
-        getFile?: () => Promise<File>;
-        values?: () => AsyncIterable<unknown>;
-      };
-
-      if (entryRecord.kind === 'file' && typeof entryRecord.getFile === 'function') {
-        const file = await entryRecord.getFile();
-        const relativePath = parentPath
-          ? `${parentPath}/${entryRecord.name ?? file.name}`
-          : (entryRecord.name ?? file.name);
-        files.push(attachRelativePathToFile(file, relativePath));
-        continue;
-      }
-
-      if (entryRecord.kind === 'directory' && typeof entryRecord.values === 'function') {
-        const nextParentPath = parentPath
-          ? `${parentPath}/${entryRecord.name ?? ''}`
-          : (entryRecord.name ?? '');
-        const nestedFiles = await collectFilesFromDirectoryHandle(
-          { values: entryRecord.values.bind(entryRecord) },
-          nextParentPath
-        );
-        files.push(...nestedFiles);
-      }
-    }
-
-    return files;
-  };
 
   const onSelectFolderForUpload = async () => {
     const directoryPicker = (
@@ -1558,114 +775,26 @@ export const BrowserPage = ({
     }
   };
 
-  const focusRowAtIndex = useCallback(
-    (index: number) => {
-      if (renderedItems.length === 0) {
+  const selectedRecordsCount = selectedItems.size;
+
+  useEffect(() => {
+    if (!isActionsMenuOpen) {
+      return;
+    }
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (actionsMenuRef.current?.contains(event.target as Node)) {
         return;
       }
 
-      const nextIndex = Math.max(0, Math.min(index, renderedItems.length - 1));
-      setFocusedRowIndex(nextIndex);
-      rowRefs.current[nextIndex]?.focus();
-    },
-    [renderedItems.length]
-  );
+      setIsActionsMenuOpen(false);
+    };
 
-  const getGridColumnCount = useCallback((): number => {
-    const rowElements = rowRefs.current
-      .slice(0, renderedItems.length)
-      .filter((row): row is HTMLTableRowElement => row !== null);
-    if (rowElements.length <= 1) {
-      return 1;
-    }
-
-    const firstRow = rowElements[0];
-    if (!firstRow) {
-      return 1;
-    }
-
-    const firstRect = firstRow.getBoundingClientRect();
-    if (firstRect.width === 0 && firstRect.height === 0) {
-      return 1;
-    }
-
-    const firstTop = firstRect.top;
-    let columns = 1;
-    for (let index = 1; index < rowElements.length; index += 1) {
-      const rowElement = rowElements[index];
-      if (!rowElement) {
-        break;
-      }
-
-      const rect = rowElement.getBoundingClientRect();
-      if (Math.abs(rect.top - firstTop) > 2) {
-        break;
-      }
-
-      columns += 1;
-    }
-
-    return Math.max(1, columns);
-  }, [renderedItems.length]);
-
-  const getGridNavigationIndex = useCallback(
-    (currentIndex: number, key: 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown'): number => {
-      const totalItems = renderedItems.length;
-      if (totalItems <= 1) {
-        return currentIndex;
-      }
-
-      const columns = getGridColumnCount();
-      const totalRows = Math.ceil(totalItems / columns);
-      const currentRow = Math.floor(currentIndex / columns);
-      const currentColumn = currentIndex % columns;
-      const getRowLength = (rowIndex: number) => {
-        const rowStart = rowIndex * columns;
-        return Math.max(0, Math.min(columns, totalItems - rowStart));
-      };
-
-      const currentRowLength = getRowLength(currentRow);
-      const currentRowStart = currentRow * columns;
-
-      if (key === 'ArrowLeft') {
-        if (currentColumn > 0) {
-          return currentIndex - 1;
-        }
-
-        return currentRowStart + Math.max(0, currentRowLength - 1);
-      }
-
-      if (key === 'ArrowRight') {
-        if (currentColumn + 1 < currentRowLength) {
-          return currentIndex + 1;
-        }
-
-        return currentRowStart;
-      }
-
-      const direction = key === 'ArrowUp' ? -1 : 1;
-      for (let step = 1; step <= totalRows; step += 1) {
-        const nextRow = (currentRow + direction * step + totalRows) % totalRows;
-        const nextRowLength = getRowLength(nextRow);
-        if (nextRowLength > currentColumn) {
-          return nextRow * columns + currentColumn;
-        }
-      }
-
-      return currentIndex;
-    },
-    [getGridColumnCount, renderedItems.length]
-  );
-
-  const defaultRowIndex = useMemo(() => {
-    if (renderedItems.length === 0) {
-      return -1;
-    }
-    if (renderedItems[0]?.isParentNavigation && renderedItems.length > 1) {
-      return 1;
-    }
-    return 0;
-  }, [renderedItems]);
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [isActionsMenuOpen]);
 
   const isModalNavigationBlocked =
     isShortcutsModalOpen ||
@@ -1674,240 +803,7 @@ export const BrowserPage = ({
     pendingFolderUploadFiles.length > 0 ||
     createEntryModal !== null;
 
-  const hasOpenModalDialog = () =>
-    document.querySelector('[role="dialog"][aria-modal="true"]') !== null;
-
   useModalFocusTrapEffect(isModalNavigationBlocked, activeModalRef);
-
-  useEffect(() => {
-    if (renderedItems.length === 0 || defaultRowIndex < 0) {
-      setFocusedRowIndex(null);
-      return;
-    }
-
-    if (isModalNavigationBlocked || contextMenu !== null || isBreadcrumbEditing || isFilterOpen) {
-      return;
-    }
-
-    const activeElement = document.activeElement;
-    const isTypingInInput =
-      activeElement instanceof HTMLInputElement ||
-      activeElement instanceof HTMLTextAreaElement ||
-      activeElement instanceof HTMLSelectElement ||
-      Boolean((activeElement as HTMLElement | null)?.isContentEditable);
-
-    if (isTypingInInput) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      focusRowAtIndex(defaultRowIndex);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [
-    defaultRowIndex,
-    focusRowAtIndex,
-    isModalNavigationBlocked,
-    isBreadcrumbEditing,
-    contextMenu,
-    isFilterOpen,
-    isFilterHelpModalOpen,
-    isShortcutsModalOpen,
-    pendingFileUploadFiles.length,
-    pendingFolderUploadFiles.length,
-    createEntryModal,
-    selectedPath,
-    renderedItems,
-  ]);
-
-  useEffect(() => {
-    const onWheel = (event: WheelEvent) => {
-      if (!event.ctrlKey && !event.metaKey) {
-        return;
-      }
-
-      event.preventDefault();
-      if (event.deltaY === 0) {
-        return;
-      }
-
-      nudgeExplorerZoom(event.deltaY < 0 ? 1 : -1);
-    };
-
-    window.addEventListener('wheel', onWheel, { passive: false });
-    return () => {
-      window.removeEventListener('wheel', onWheel);
-    };
-  }, [nudgeExplorerZoom]);
-
-  useEffect(() => {
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.defaultPrevented) {
-        return;
-      }
-
-      const target = event.target;
-      const isTypingInInput =
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement ||
-        Boolean((target as HTMLElement | null)?.isContentEditable);
-
-      const hasZoomModifier = event.ctrlKey || event.metaKey;
-      const isZoomInKey = event.key === '=' || event.key === '+' || event.key === 'NumpadAdd';
-      const isZoomOutKey = event.key === '-' || event.key === '_' || event.key === 'NumpadSubtract';
-      const isZoomResetKey = event.key === '0';
-
-      if (hasZoomModifier && !event.altKey && (isZoomInKey || isZoomOutKey || isZoomResetKey)) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        if (isZoomResetKey) {
-          resetExplorerZoom();
-          return;
-        }
-
-        nudgeExplorerZoom(isZoomInKey ? 1 : -1);
-        return;
-      }
-
-      if (isShortcutsModalOpen && event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        setIsShortcutsModalOpen(false);
-        return;
-      }
-
-      if (isFilterHelpModalOpen && event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        setIsFilterHelpModalOpen(false);
-        return;
-      }
-
-      if (isActionsMenuOpen && event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        setIsActionsMenuOpen(false);
-        return;
-      }
-
-      if (hasOpenModalDialog()) {
-        return;
-      }
-
-      if (isTypingInInput) {
-        return;
-      }
-
-      if (contextMenu) {
-        return;
-      }
-
-      if (isActionsMenuOpen) {
-        return;
-      }
-
-      const isExplorerRefreshShortcut =
-        event.key === 'F5' && !event.ctrlKey && !event.metaKey && !event.altKey;
-
-      if (isExplorerRefreshShortcut) {
-        event.preventDefault();
-        void browse.refetch();
-        return;
-      }
-
-      if (event.key === '/') {
-        event.preventDefault();
-        openFilter();
-        return;
-      }
-
-      if (event.key === '?') {
-        event.preventDefault();
-        setIsShortcutsModalOpen(true);
-        return;
-      }
-
-      if (event.key === 'Backspace' && selectedPath) {
-        event.preventDefault();
-        setSelectedPath(parentPath);
-        return;
-      }
-
-      if (event.altKey && event.key === 'ArrowUp' && selectedPath) {
-        event.preventDefault();
-        setSelectedPath(parentPath);
-        return;
-      }
-
-      if (!isExplorerGridView && event.key === 'ArrowLeft' && selectedPath) {
-        event.preventDefault();
-        setSelectedPath(parentPath);
-        return;
-      }
-
-      const isExplorerNavigationKey =
-        event.key === 'ArrowDown' ||
-        event.key === 'ArrowUp' ||
-        event.key === 'ArrowRight' ||
-        event.key === 'ArrowLeft' ||
-        event.key === 'Home' ||
-        event.key === 'End';
-
-      if (!isExplorerNavigationKey || renderedItems.length === 0) {
-        return;
-      }
-
-      const activeElement = document.activeElement;
-      const focusedRow =
-        activeElement instanceof HTMLTableRowElement && rowRefs.current.includes(activeElement)
-          ? activeElement
-          : null;
-
-      if (focusedRow) {
-        return;
-      }
-
-      event.preventDefault();
-      if (event.key === 'End') {
-        focusRowAtIndex(renderedItems.length - 1);
-        return;
-      }
-
-      if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
-        focusRowAtIndex(defaultRowIndex > 0 ? defaultRowIndex : renderedItems.length - 1);
-        return;
-      }
-
-      focusRowAtIndex(defaultRowIndex >= 0 ? defaultRowIndex : 0);
-    };
-
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown, true);
-    };
-  }, [
-    defaultRowIndex,
-    focusRowAtIndex,
-    isFilterHelpModalOpen,
-    isModalNavigationBlocked,
-    isActionsMenuOpen,
-    isShortcutsModalOpen,
-    openFilter,
-    contextMenu,
-    isExplorerGridView,
-    parentPath,
-    browse,
-    renderedItems.length,
-    selectedPath,
-    setSelectedPath,
-    nudgeExplorerZoom,
-    resetExplorerZoom,
-  ]);
 
   useEffect(() => {
     if (!contextMenu || contextMenuActions.length === 0) {
@@ -2048,7 +944,7 @@ export const BrowserPage = ({
     focusableItems[wrappedIndex]?.focus();
   }, []);
 
-  const handleContextMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+  const handleContextMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -2185,584 +1081,66 @@ export const BrowserPage = ({
     }
   };
 
-  const handleRowKeyDown = (
-    event: ReactKeyboardEvent<HTMLTableRowElement>,
-    item: BrowseItem,
-    renderedIndex: number,
-    isParentNavigation: boolean
-  ) => {
-    if (hasOpenModalDialog()) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
-
-    if (
-      isExplorerGridView &&
-      (event.key === 'ArrowDown' ||
-        event.key === 'ArrowUp' ||
-        event.key === 'ArrowLeft' ||
-        event.key === 'ArrowRight')
-    ) {
-      event.preventDefault();
-      const nextIndex = getGridNavigationIndex(
-        renderedIndex,
-        event.key as 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown'
-      );
-      focusRowAtIndex(nextIndex);
-      return;
-    }
-
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      focusRowAtIndex(renderedIndex + 1);
-      return;
-    }
-
-    if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      focusRowAtIndex(renderedIndex - 1);
-      return;
-    }
-
-    if (event.key === 'Home') {
-      event.preventDefault();
-      focusRowAtIndex(0);
-      return;
-    }
-
-    if (event.key === 'End') {
-      event.preventDefault();
-      focusRowAtIndex(renderedItems.length - 1);
-      return;
-    }
-
-    if ((event.key === 'ArrowLeft' || event.key === 'Backspace') && selectedPath) {
-      event.preventDefault();
-      setSelectedPath(parentPath);
-      return;
-    }
-
-    if ((event.key === 'Enter' && !event.altKey) || event.key === 'ArrowRight') {
-      event.preventDefault();
-      if (isParentNavigation) {
-        setSelectedPath(parentPath);
-        return;
-      }
-
-      if (item.type === 'file') {
-        void onViewFile(item.path);
-        return;
-      }
-
-      onRowDoubleClick(item);
-      return;
-    }
-
-    if (event.key === ' ' || event.key === 'Spacebar') {
-      if (isParentNavigation) {
-        return;
-      }
-
-      event.preventDefault();
-      if (event.metaKey || event.ctrlKey) {
-        onToggleItemSelection(item.path, renderedIndex);
-      } else {
-        onSelectItemOnly(item.path, renderedIndex);
-      }
-      return;
-    }
-
-    if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') {
-      if (isParentNavigation) {
-        return;
-      }
-
-      event.preventDefault();
-      onOpenItemContextMenu(item);
-    }
-  };
-
   return (
     <>
-      <div
-        className={`${styles.browserToolbar} ${isExplorerGridView ? styles.browserToolbarGridView : ''}`}
-        style={explorerZoomStyle}
-        data-explorer-zoom={explorerZoomLevel}
-      >
-        <div className={styles.explorerChrome}>
-          <div className={styles.browserControls}>
-            <Button
-              variant="muted"
-              className={styles.iconButton}
-              onClick={() => setSelectedPath(parentPath)}
-              aria-label="Go back"
-              title="Back"
-              disabled={!selectedPath}
-            >
-              <Undo2 size={16} aria-hidden />
-            </Button>
-            <Button
-              variant="muted"
-              className={styles.iconButton}
-              onClick={() => setSelectedPath('')}
-              aria-label="Go to root"
-              title="Go to root"
-              disabled={!selectedPath}
-            >
-              <House size={16} aria-hidden />
-            </Button>
-
-            <div className={styles.breadcrumbField}>
-              <div
-                className={`${styles.breadcrumbTrail} ${
-                  isBrowseRefreshing ? styles.breadcrumbTrailRefreshing : ''
-                } ${breadcrumbValidationMessage ? styles.breadcrumbTrailInvalid : ''}`.trim()}
-                data-testid="breadcrumb-trail"
-                onDoubleClick={() => setIsBreadcrumbEditing(true)}
-                onClick={(event) => {
-                  if (event.target === event.currentTarget) {
-                    setIsBreadcrumbEditing(true);
-                  }
-                }}
-              >
-                {isBreadcrumbEditing ? (
-                  <div className={styles.breadcrumbInputWrap}>
-                    <Input
-                      ref={breadcrumbInputRef}
-                      className={styles.breadcrumbInput}
-                      value={breadcrumbDraft}
-                      onChange={(event) => {
-                        setBreadcrumbDraft(event.target.value);
-                        setActiveBreadcrumbHintIndex(-1);
-                      }}
-                      onBlur={(event) => {
-                        if (isBreadcrumbPathCommitAllowed(event.target.value)) {
-                          commitBreadcrumbPath(event.target.value);
-                        }
-                        setIsBreadcrumbEditing(false);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === 'ArrowDown') {
-                          if (breadcrumbHintOptions.length === 0) {
-                            return;
-                          }
-
-                          event.preventDefault();
-                          setActiveBreadcrumbHintIndex((previous) => {
-                            if (previous < 0) {
-                              return 0;
-                            }
-
-                            return Math.min(previous + 1, breadcrumbHintOptions.length - 1);
-                          });
-                          return;
-                        }
-
-                        if (event.key === 'ArrowUp') {
-                          if (breadcrumbHintOptions.length === 0) {
-                            return;
-                          }
-
-                          event.preventDefault();
-                          setActiveBreadcrumbHintIndex((previous) => {
-                            if (previous < 0) {
-                              return breadcrumbHintOptions.length - 1;
-                            }
-
-                            return Math.max(previous - 1, 0);
-                          });
-                          return;
-                        }
-
-                        if (event.key === 'Enter') {
-                          if (activeBreadcrumbHintIndex >= 0) {
-                            const highlighted = breadcrumbHintOptions[activeBreadcrumbHintIndex];
-                            if (highlighted) {
-                              setBreadcrumbDraft(highlighted);
-                              commitBreadcrumbPath(highlighted);
-                              setIsBreadcrumbEditing(false);
-                              return;
-                            }
-                          }
-
-                          const enteredValue = (event.target as HTMLInputElement).value;
-                          if (isBreadcrumbPathCommitAllowed(enteredValue)) {
-                            commitBreadcrumbPath(enteredValue);
-                          }
-                          setIsBreadcrumbEditing(false);
-                          return;
-                        }
-
-                        if (event.key === 'Tab' && activeBreadcrumbHintIndex >= 0) {
-                          const highlighted = breadcrumbHintOptions[activeBreadcrumbHintIndex];
-                          if (!highlighted) {
-                            return;
-                          }
-
-                          event.preventDefault();
-                          setBreadcrumbDraft(highlighted);
-                          if (isBreadcrumbPathCommitAllowed(highlighted)) {
-                            commitBreadcrumbPath(highlighted);
-                          }
-                          setIsBreadcrumbEditing(false);
-                          return;
-                        }
-
-                        if (event.key === 'Escape') {
-                          setBreadcrumbDraft(selectedPath ? `/${selectedPath}` : '/');
-                          setIsBreadcrumbEditing(false);
-                        }
-                      }}
-                      aria-label="Breadcrumb path"
-                      placeholder="/bucket/folder"
-                    />
-                    {breadcrumbHintOptions.length > 0 ? (
-                      <div
-                        className={styles.breadcrumbHints}
-                        data-testid="breadcrumb-hints"
-                        role="listbox"
-                      >
-                        {breadcrumbHintOptions.map((hint, index) => (
-                          <button
-                            key={hint}
-                            type="button"
-                            role="option"
-                            aria-selected={activeBreadcrumbHintIndex === index}
-                            className={`${styles.breadcrumbHintButton} ${
-                              activeBreadcrumbHintIndex === index
-                                ? styles.breadcrumbHintButtonActive
-                                : ''
-                            }`.trim()}
-                            onMouseDown={(event) => {
-                              event.preventDefault();
-                            }}
-                            onClick={() => {
-                              setBreadcrumbDraft(hint);
-                              if (isBreadcrumbPathCommitAllowed(hint)) {
-                                commitBreadcrumbPath(hint);
-                              }
-                              setIsBreadcrumbEditing(false);
-                            }}
-                          >
-                            {hint}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <>
-                    <button className={styles.breadcrumbLink} onClick={() => setSelectedPath('')}>
-                      /
-                    </button>
-                    {breadcrumbSegments.map((segment, index) => (
-                      <span key={segment.path} className={styles.breadcrumbPart}>
-                        {index > 0 ? <span className={styles.breadcrumbDivider}>/</span> : null}
-                        <button
-                          className={styles.breadcrumbLink}
-                          onClick={() => setSelectedPath(segment.path)}
-                        >
-                          {segment.label}
-                        </button>
-                      </span>
-                    ))}
-                  </>
-                )}
-              </div>
-              {breadcrumbValidationMessage ? (
-                <p className={styles.breadcrumbValidationError}>{breadcrumbValidationMessage}</p>
-              ) : null}
-            </div>
-
-            <div className={styles.browserFilterRow}>
-              <Button
-                variant="muted"
-                className={`${styles.iconButton} ${isFilterOpen ? styles.filterToggleConnected : ''}`}
-                onClick={openFilter}
-                aria-label="Open filter"
-                title="Open filter"
-              >
-                <Search size={16} aria-hidden />
-              </Button>
-              {isFilterOpen ? (
-                <div className={styles.tableFilterWrap}>
-                  <Input
-                    ref={filterInputRef}
-                    className={styles.tableFilterInput}
-                    value={filterDraftQuery}
-                    onChange={(event) => setFilterDraftQuery(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Escape') {
-                        closeFilter();
-                      }
-                    }}
-                    placeholder="Filter files and folders"
-                    aria-label="Filter files and folders"
-                  />
-                  <button
-                    className={styles.tableFilterClose}
-                    type="button"
-                    aria-label="Close filter"
-                    onClick={closeFilter}
-                  >
-                    <X size={14} aria-hidden />
-                  </button>
-                </div>
-              ) : null}
-            </div>
-
-            <div className={styles.overviewFieldsWrap} ref={overviewFieldsMenuRef}>
-              <Button
-                variant="muted"
-                className={styles.iconButton}
-                onClick={() => setIsOverviewFieldsMenuOpen((previous) => !previous)}
-                aria-label="Customize visible fields"
-                title="Customize visible fields"
-                aria-expanded={isOverviewFieldsMenuOpen}
-              >
-                <SlidersHorizontal size={16} aria-hidden />
-              </Button>
-              {isOverviewFieldsMenuOpen
-                ? createPortal(
-                    <div
-                      ref={overviewFieldsPanelRef}
-                      className={styles.overviewFieldsMenu}
-                      role="menu"
-                      aria-label="Visible fields menu"
-                      style={{ ...overviewFieldsMenuStyle, ...explorerZoomStyle }}
-                    >
-                      <div className={styles.overviewFieldsHeader}>
-                        <p className={styles.overviewFieldsTitle}>Visible fields</p>
-                        <Input
-                          className={styles.overviewFieldsSearchInput}
-                          value={overviewFieldsFilterQuery}
-                          onChange={(event) => setOverviewFieldsFilterQuery(event.target.value)}
-                          placeholder="Search fields"
-                          aria-label="Search visible fields"
-                        />
-                        <div className={styles.overviewFieldsActions}>
-                          <Button
-                            variant="muted"
-                            className={styles.overviewFieldsActionButton}
-                            onClick={() => {
-                              setOverviewColumnVisibility((previous) => {
-                                const next = { ...previous };
-                                for (const column of overviewColumnDefinitions) {
-                                  next[column.key] = !allOverviewColumnsSelected;
-                                }
-                                return next;
-                              });
-                            }}
-                          >
-                            {allOverviewColumnsSelected ? 'Toggle all off' : 'Toggle all on'}
-                          </Button>
-                        </div>
-                      </div>
-                      <div className={styles.overviewFieldsList}>
-                        {filteredOverviewColumns.length === 0 ? (
-                          <p className={styles.overviewFieldsEmptyState}>
-                            No fields match this search.
-                          </p>
-                        ) : null}
-                        {filteredOverviewColumns.map((column) => (
-                          <label key={column.key} className={styles.overviewFieldsOption}>
-                            <input
-                              className={styles.overviewFieldsCheckbox}
-                              type="checkbox"
-                              checked={overviewColumnVisibility[column.key]}
-                              onChange={(event) =>
-                                setOverviewColumnVisibility((previous) => ({
-                                  ...previous,
-                                  [column.key]: event.target.checked,
-                                }))
-                              }
-                            />
-                            <span>{column.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>,
-                    document.body
-                  )
-                : null}
-            </div>
-
-            {selectedRecordsCount > 0 ? (
-              <>
-                <span className={styles.selectionCount}>{selectedRecordsCount} selected</span>
-                <Button
-                  variant="muted"
-                  onClick={() => void onBulkDownload()}
-                  disabled={selectedFiles.length === 0}
-                  title={
-                    selectedFiles.length === 0
-                      ? 'Select at least one file'
-                      : 'Download selected files'
-                  }
-                >
-                  Download
-                </Button>
-                {canDelete ? (
-                  <Button
-                    variant="danger"
-                    onClick={() => void onBulkDelete()}
-                    disabled={!hasDeletableSelection}
-                    title={
-                      !hasDeletableSelection
-                        ? 'Bucket deletion is not supported'
-                        : 'Delete selected items'
-                    }
-                  >
-                    Delete
-                  </Button>
-                ) : null}
-                <Button variant="muted" onClick={onClearSelection}>
-                  Clear
-                </Button>
-              </>
-            ) : null}
-
-            <div className={styles.zoomControls} role="group" aria-label="Explorer zoom controls">
-              <Button
-                variant="muted"
-                className={styles.iconButton}
-                onClick={() => nudgeExplorerZoom(-1)}
-                aria-label="Zoom out explorer"
-                title="Zoom out (Ctrl/Cmd + -)"
-              >
-                -
-              </Button>
-              <Button
-                variant="muted"
-                onClick={resetExplorerZoom}
-                aria-label="Reset explorer zoom"
-                title="Reset zoom (Ctrl/Cmd + 0)"
-                className={styles.zoomResetButton}
-              >
-                {explorerZoomLevel}%
-              </Button>
-              <Button
-                variant="muted"
-                className={styles.iconButton}
-                onClick={() => nudgeExplorerZoom(1)}
-                aria-label="Zoom in explorer"
-                title="Zoom in (Ctrl/Cmd + +)"
-              >
-                +
-              </Button>
-            </div>
-
-            <Button
-              variant="muted"
-              className={`${styles.iconButton} ${styles.refreshButton} ${isBrowseRefreshing ? styles.refreshButtonBusy : ''}`}
-              onClick={() => {
-                void browse.refetch();
-              }}
-              aria-label="Refresh current location"
-              title={isBrowseRefreshing ? 'Refreshing...' : 'Refresh'}
-              aria-busy={isBrowseRefreshing}
-            >
-              <RefreshCw size={16} aria-hidden />
-            </Button>
-
-            {canWrite ? (
-              <div className={styles.actionsMenuWrap} ref={actionsMenuRef}>
-                <Button
-                  variant="muted"
-                  className={styles.actionsMenuTrigger}
-                  disabled={!hasBucketContext}
-                  onClick={() => setIsActionsMenuOpen((previous) => !previous)}
-                  aria-haspopup="menu"
-                  aria-expanded={isActionsMenuOpen}
-                  aria-label="Open actions menu"
-                  title={
-                    !hasBucketContext
-                      ? 'Navigate to a bucket before using file actions'
-                      : 'Open actions menu'
-                  }
-                >
-                  <MoreVertical size={14} aria-hidden />
-                </Button>
-                {isActionsMenuOpen ? (
-                  <div
-                    className={styles.actionsMenuPanel}
-                    role="menu"
-                    aria-label="File and folder actions"
-                  >
-                    <button
-                      className={styles.actionsMenuItem}
-                      type="button"
-                      role="menuitem"
-                      disabled={!hasBucketContext}
-                      onClick={() => {
-                        setIsActionsMenuOpen(false);
-                        openCreateEntryModal('file');
-                      }}
-                      title={
-                        !hasBucketContext
-                          ? 'Navigate to a bucket before creating files'
-                          : 'Create file'
-                      }
-                    >
-                      Create File
-                    </button>
-                    <button
-                      className={styles.actionsMenuItem}
-                      type="button"
-                      role="menuitem"
-                      disabled={!hasBucketContext}
-                      onClick={() => {
-                        setIsActionsMenuOpen(false);
-                        openCreateEntryModal('folder');
-                      }}
-                      title={
-                        !hasBucketContext
-                          ? 'Navigate to a bucket before creating folders'
-                          : 'Create folder'
-                      }
-                    >
-                      Create Folder
-                    </button>
-                    <button
-                      className={styles.actionsMenuItem}
-                      type="button"
-                      role="menuitem"
-                      disabled={uploadDisabled}
-                      onClick={() => {
-                        setIsActionsMenuOpen(false);
-                        uploadFilesInputRef.current?.click();
-                      }}
-                      title={
-                        !hasBucketContext ? 'Navigate to a bucket before uploading' : 'Upload files'
-                      }
-                    >
-                      Upload Files
-                    </button>
-                    <button
-                      className={styles.actionsMenuItem}
-                      type="button"
-                      role="menuitem"
-                      disabled={uploadDisabled}
-                      onClick={() => {
-                        setIsActionsMenuOpen(false);
-                        void onSelectFolderForUpload();
-                      }}
-                      title={
-                        !hasBucketContext
-                          ? 'Navigate to a bucket before uploading'
-                          : 'Upload folder'
-                      }
-                    >
-                      Upload Folder
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
+      <BrowserToolbar
+        selectedPath={selectedPath}
+        setSelectedPath={setSelectedPath}
+        parentPath={parentPath}
+        breadcrumbSegments={breadcrumb.breadcrumbSegments}
+        breadcrumbValidationMessage={breadcrumbValidationMessage}
+        isBrowseRefreshing={isBrowseRefreshing}
+        isBreadcrumbEditing={breadcrumb.isBreadcrumbEditing}
+        setIsBreadcrumbEditing={breadcrumb.setIsBreadcrumbEditing}
+        breadcrumbDraft={breadcrumb.breadcrumbDraft}
+        setBreadcrumbDraft={breadcrumb.setBreadcrumbDraft}
+        breadcrumbInputRef={breadcrumb.breadcrumbInputRef}
+        breadcrumbHintOptions={breadcrumb.breadcrumbHintOptions}
+        activeBreadcrumbHintIndex={breadcrumb.activeBreadcrumbHintIndex}
+        setActiveBreadcrumbHintIndex={breadcrumb.setActiveBreadcrumbHintIndex}
+        isBreadcrumbPathCommitAllowed={breadcrumb.isBreadcrumbPathCommitAllowed}
+        commitBreadcrumbPath={breadcrumb.commitBreadcrumbPath}
+        isFilterOpen={filter.isFilterOpen}
+        setIsFilterOpen={filter.setIsFilterOpen}
+        filterInputRef={filter.filterInputRef}
+        filterDraftQuery={filter.filterDraftQuery}
+        setFilterDraftQuery={filter.setFilterDraftQuery}
+        closeFilter={filter.closeFilter}
+        openFilter={filter.openFilter}
+        isOverviewFieldsMenuOpen={overviewFields.isOverviewFieldsMenuOpen}
+        setIsOverviewFieldsMenuOpen={overviewFields.setIsOverviewFieldsMenuOpen}
+        overviewFieldsMenuRef={overviewFields.overviewFieldsMenuRef}
+        overviewFieldsPanelRef={overviewFields.overviewFieldsPanelRef}
+        overviewFieldsMenuStyle={overviewFields.overviewFieldsMenuStyle}
+        overviewFieldsFilterQuery={overviewFields.overviewFieldsFilterQuery}
+        setOverviewFieldsFilterQuery={overviewFields.setOverviewFieldsFilterQuery}
+        overviewColumnVisibility={overviewFields.overviewColumnVisibility}
+        setOverviewColumnVisibility={overviewFields.setOverviewColumnVisibility}
+        allOverviewColumnsSelected={overviewFields.allOverviewColumnsSelected}
+        filteredOverviewColumns={overviewFields.filteredOverviewColumns}
+        selectedRecordsCount={selectedRecordsCount}
+        selectedFiles={selectedFiles}
+        onBulkDownload={onBulkDownload}
+        onBulkDelete={onBulkDelete}
+        onClearSelection={onClearSelection}
+        canDelete={canDelete}
+        hasDeletableSelection={hasDeletableSelection}
+        explorerZoomLevel={zoom.explorerZoomLevel}
+        explorerZoomStyle={zoom.explorerZoomStyle}
+        nudgeExplorerZoom={zoom.nudgeExplorerZoom}
+        resetExplorerZoom={zoom.resetExplorerZoom}
+        onRefetch={browse.refetch}
+        canWrite={canWrite}
+        hasBucketContext={hasBucketContext}
+        isActionsMenuOpen={isActionsMenuOpen}
+        setIsActionsMenuOpen={setIsActionsMenuOpen}
+        actionsMenuRef={actionsMenuRef}
+        uploadFilesInputRef={uploadFilesInputRef}
+        onSelectFolderForUpload={onSelectFolderForUpload}
+        openCreateEntryModal={openCreateEntryModal}
+        isExplorerGridView={zoom.isExplorerGridView}
+        uploadDisabled={uploadDisabled}
+      />
 
       {browse.isLoading ? (
         <p className={`${styles.state} ${styles.loadingState}`}>Loading objects...</p>
@@ -2814,397 +1192,69 @@ export const BrowserPage = ({
               event.target.value = '';
             }}
           />
-          {pendingFileUploadFiles.length > 0 ? (
-            <ModalPortal>
-              <div
-                className={styles.modalOverlay}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="file-upload-modal-title"
-                aria-describedby="file-upload-modal-description"
-                aria-label="Upload selected files?"
-              >
-                <div className={styles.modalCard} ref={activeModalRef} style={explorerZoomStyle}>
-                  <h3 id="file-upload-modal-title">Upload selected files?</h3>
-                  <p id="file-upload-modal-description">
-                    Upload {pendingFileUploadFiles.length} selected file(s) to this location.
-                  </p>
-                  <div className={styles.modalActions}>
-                    <Button
-                      variant="muted"
-                      onClick={() => {
-                        setPendingFileUploadFiles([]);
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        void onUploadFiles(pendingFileUploadFiles);
-                        setPendingFileUploadFiles([]);
-                      }}
-                    >
-                      Upload Files
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </ModalPortal>
-          ) : null}
-          {pendingFileUploadFiles.length === 0 && pendingFolderUploadFiles.length > 0 ? (
-            <ModalPortal>
-              <div
-                className={styles.modalOverlay}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="folder-upload-modal-title"
-                aria-describedby="folder-upload-modal-description"
-                aria-label="Confirm folder upload"
-              >
-                <div className={styles.modalCard} ref={activeModalRef}>
-                  <h3 id="folder-upload-modal-title">Upload selected folder?</h3>
-                  <p id="folder-upload-modal-description">
-                    Upload {pendingFolderUploadFiles.length} file(s) from the selected folder.
-                  </p>
-                  <div className={styles.modalActions}>
-                    <Button
-                      variant="muted"
-                      onClick={() => {
-                        setPendingFolderUploadFiles([]);
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        void onUploadFolder(pendingFolderUploadFiles);
-                        setPendingFolderUploadFiles([]);
-                      }}
-                    >
-                      Upload Folder
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </ModalPortal>
-          ) : null}
-          {createEntryModal ? (
-            <ModalPortal>
-              <div
-                className={styles.modalOverlay}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="create-entry-modal-title"
-                aria-describedby="create-entry-modal-description"
-                aria-label={createEntryModal.kind === 'file' ? 'Create file' : 'Create folder'}
-              >
-                <div className={styles.modalCard} ref={activeModalRef}>
-                  <h3 id="create-entry-modal-title">
-                    {createEntryModal.kind === 'file' ? 'Create file' : 'Create folder'}
-                  </h3>
-                  <p id="create-entry-modal-description">
-                    {createEntryModal.kind === 'file'
-                      ? 'Enter a file name to create an empty object in this location.'
-                      : 'Enter a folder name to create a virtual folder in this location.'}
-                  </p>
-                  <Input
-                    autoFocus
-                    value={createEntryModal.value}
-                    onChange={(event) => {
-                      const nextValue = event.target.value;
-                      setCreateEntryModal((previous) =>
-                        previous ? { ...previous, value: nextValue } : previous
-                      );
-                      if (createEntryError) {
-                        setCreateEntryError('');
-                      }
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        void submitCreateEntryModal();
-                      }
-                    }}
-                    placeholder={createEntryModal.kind === 'file' ? 'notes.txt' : 'assets'}
-                    aria-label={createEntryModal.kind === 'file' ? 'File name' : 'Folder name'}
-                  />
-                  {createEntryError ? (
-                    <p className={styles.modalError}>{createEntryError}</p>
-                  ) : null}
-                  <div className={styles.modalActions}>
-                    <Button variant="muted" onClick={closeCreateEntryModal}>
-                      Cancel
-                    </Button>
-                    <Button onClick={() => void submitCreateEntryModal()}>
-                      {createEntryModal.kind === 'file' ? 'Create File' : 'Create Folder'}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </ModalPortal>
-          ) : null}
+
+          <BrowserModals
+            pendingFileUploadFiles={pendingFileUploadFiles}
+            setPendingFileUploadFiles={setPendingFileUploadFiles}
+            pendingFolderUploadFiles={pendingFolderUploadFiles}
+            setPendingFolderUploadFiles={setPendingFolderUploadFiles}
+            onUploadFiles={onUploadFiles}
+            onUploadFolder={onUploadFolder}
+            createEntryModal={createEntryModal}
+            setCreateEntryModal={setCreateEntryModal}
+            createEntryError={createEntryError}
+            setCreateEntryError={setCreateEntryError}
+            closeCreateEntryModal={closeCreateEntryModal}
+            submitCreateEntryModal={submitCreateEntryModal}
+            activeModalRef={activeModalRef}
+            explorerZoomStyle={zoom.explorerZoomStyle}
+          />
+
           <div
             className={`${styles.itemsDropZone} ${isUploadDropActive ? styles.itemsDropZoneActive : ''}`}
             data-testid="browser-drop-zone"
-            style={explorerZoomStyle}
+            style={zoom.explorerZoomStyle}
             onDragEnter={handleUploadDropEnter}
             onDragOver={handleUploadDropOver}
             onDragLeave={handleUploadDropLeave}
             onDrop={handleUploadDrop}
           >
-            {renderedItems.length === 0 ? (
-              <div className={styles.emptyItemsState}>
-                <p>No items in this location.</p>
-                <span>Upload files to this path or navigate to another folder.</span>
-              </div>
-            ) : (
-              <div
-                className={`${styles.itemsTableWrap} ${
-                  isExplorerGridView ? styles.itemsTableWrapGrid : ''
-                }`.trim()}
-                data-view-mode={isExplorerGridView ? 'grid' : 'row'}
-                data-testid="items-view-container"
-              >
-                <table className={styles.itemsTable}>
-                  <thead>
-                    <tr>
-                      <th className={styles.nameColumn}>
-                        <button
-                          className={styles.sortHeaderButton}
-                          type="button"
-                          onClick={(event) => setSortForColumn('name', event.shiftKey)}
-                          title={getSortTooltip('name')}
-                        >
-                          <span>Name</span>
-                          <span className={styles.sortIndicator} aria-hidden>
-                            {getSortIndicator('name')}
-                          </span>
-                        </button>
-                      </th>
-                      {visibleOverviewColumns.map((column) => {
-                        const columnClassName =
-                          column.key === 'showSize'
-                            ? styles.sizeColumn
-                            : column.key === 'showModified'
-                              ? styles.modifiedColumn
-                              : styles.propertyColumn;
-
-                        if (!isSortableColumn(column.key)) {
-                          return (
-                            <th key={column.key} className={columnClassName}>
-                              {column.label}
-                            </th>
-                          );
-                        }
-
-                        const sortKey = resolveSortKey(column.key);
-                        return (
-                          <th key={column.key} className={columnClassName}>
-                            <button
-                              className={styles.sortHeaderButton}
-                              type="button"
-                              onClick={(event) => setSortForColumn(sortKey, event.shiftKey)}
-                              title={getSortTooltip(sortKey)}
-                            >
-                              <span>{column.label}</span>
-                              <span className={styles.sortIndicator} aria-hidden>
-                                {getSortIndicator(sortKey)}
-                              </span>
-                            </button>
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {renderedItems.map(({ item, isParentNavigation }, index) => (
-                      <tr
-                        key={`${item.type}:${isParentNavigation ? '__parent__' : item.path}`}
-                        ref={(element) => {
-                          rowRefs.current[index] = element;
-                        }}
-                        draggable={canWrite && !isParentNavigation}
-                        tabIndex={focusedRowIndex === index ? 0 : -1}
-                        data-focused={focusedRowIndex === index ? 'true' : 'false'}
-                        onFocus={() => setFocusedRowIndex(index)}
-                        className={(() => {
-                          if (isParentNavigation) {
-                            return '';
-                          }
-
-                          const classNames: string[] = [];
-                          if (selectedItems.has(item.path)) {
-                            if (styles.isSelected) {
-                              classNames.push(styles.isSelected);
-                            }
-                          }
-
-                          if (clipboardPaths.has(item.path)) {
-                            const clipboardClass =
-                              clipboardMode === 'cut'
-                                ? styles.isClipboardCut
-                                : styles.isClipboardCopy;
-                            if (clipboardClass) {
-                              classNames.push(clipboardClass);
-                            }
-                          }
-
-                          if (moveDropTargetPath === item.path) {
-                            if (styles.isDragMoveTarget) {
-                              classNames.push(styles.isDragMoveTarget);
-                            }
-                          }
-
-                          return classNames.join(' ');
-                        })()}
-                        onDragStart={(event) => {
-                          if (isParentNavigation || !canWrite) {
-                            event.preventDefault();
-                            return;
-                          }
-
-                          event.dataTransfer.effectAllowed = 'move';
-                          event.dataTransfer.setData(INTERNAL_MOVE_DRAG_TYPE, item.path);
-                          setDraggedMovePath(item.path);
-                          setMoveDropTargetPath(null);
-                        }}
-                        onDragOver={(event) => {
-                          if (
-                            isParentNavigation ||
-                            item.type !== 'directory' ||
-                            !canWrite ||
-                            !isInternalMoveDrag(event.dataTransfer)
-                          ) {
-                            return;
-                          }
-
-                          const sourcePath = getDraggedMovePath(event.dataTransfer);
-                          if (!canMoveToDestination(sourcePath, item.path)) {
-                            if (moveDropTargetPath === item.path) {
-                              setMoveDropTargetPath(null);
-                            }
-                            return;
-                          }
-
-                          event.preventDefault();
-                          event.dataTransfer.dropEffect = 'move';
-                          if (moveDropTargetPath !== item.path) {
-                            setMoveDropTargetPath(item.path);
-                          }
-                        }}
-                        onDragLeave={(event) => {
-                          if (moveDropTargetPath !== item.path) {
-                            return;
-                          }
-
-                          const nextTarget = event.relatedTarget;
-                          if (
-                            nextTarget instanceof Node &&
-                            event.currentTarget.contains(nextTarget)
-                          ) {
-                            return;
-                          }
-
-                          setMoveDropTargetPath(null);
-                        }}
-                        onDrop={(event) => {
-                          if (
-                            isParentNavigation ||
-                            item.type !== 'directory' ||
-                            !canWrite ||
-                            !isInternalMoveDrag(event.dataTransfer)
-                          ) {
-                            return;
-                          }
-
-                          event.preventDefault();
-                          const sourcePath = getDraggedMovePath(event.dataTransfer);
-                          setMoveDropTargetPath(null);
-                          if (!canMoveToDestination(sourcePath, item.path)) {
-                            return;
-                          }
-
-                          onMove(sourcePath, item.path);
-                          setDraggedMovePath(null);
-                        }}
-                        onDragEnd={() => {
-                          setDraggedMovePath(null);
-                          setMoveDropTargetPath(null);
-                        }}
-                        onClick={(event) => {
-                          if (isParentNavigation) {
-                            return;
-                          }
-
-                          onRowClick(item, index, event);
-                        }}
-                        onDoubleClick={() => {
-                          if (isParentNavigation) {
-                            setSelectedPath(parentPath);
-                            return;
-                          }
-
-                          if (item.type === 'file') {
-                            void onViewFile(item.path);
-                            return;
-                          }
-
-                          onRowDoubleClick(item);
-                        }}
-                        onContextMenu={(event) => {
-                          if (isParentNavigation) {
-                            event.preventDefault();
-                            return;
-                          }
-
-                          onOpenContextMenu(item, event);
-                        }}
-                        onKeyDown={(event) =>
-                          handleRowKeyDown(event, item, index, isParentNavigation)
-                        }
-                      >
-                        <td className={`${styles.nameCell} ${styles.nameColumn}`}>
-                          <div className={styles.itemMainButton}>
-                            <span className={styles.itemIcon} aria-hidden>
-                              {renderBrowseItemIcon(item)}
-                            </span>
-                            <strong>{item.name}</strong>
-                            <span className={styles.itemGridMeta}>
-                              {isParentNavigation
-                                ? 'Open parent folder'
-                                : item.type === 'directory'
-                                  ? 'Folder'
-                                  : `${item.size === null ? '-' : formatBytes(item.size)}${
-                                      item.lastModified ? ` • ${formatDate(item.lastModified)}` : ''
-                                    }`}
-                            </span>
-                            {!isParentNavigation && clipboardPaths.has(item.path) ? (
-                              <span className={styles.clipboardTag}>
-                                {clipboardMode === 'cut' ? 'Cut' : 'Copy'}
-                              </span>
-                            ) : null}
-                          </div>
-                        </td>
-                        {visibleOverviewColumns.map((column) => {
-                          const columnClassName =
-                            column.key === 'showSize'
-                              ? styles.sizeColumn
-                              : column.key === 'showModified'
-                                ? styles.modifiedColumn
-                                : styles.propertyColumn;
-
-                          return (
-                            <td key={column.key} className={columnClassName}>
-                              {resolveOverviewFieldValue(item, column.key, isParentNavigation)}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <BrowserItemsTable
+              renderedItems={renderedItems}
+              visibleOverviewColumns={overviewFields.visibleOverviewColumns}
+              rowRefs={rowRefs}
+              focusedRowIndex={keyboard.focusedRowIndex}
+              setFocusedRowIndex={keyboard.setFocusedRowIndex}
+              selectedItems={selectedItems}
+              clipboardPaths={clipboardPaths}
+              clipboardMode={clipboardMode}
+              moveDropTargetPath={moveDropTargetPath}
+              canWrite={canWrite}
+              draggedMovePath={draggedMovePath}
+              setDraggedMovePath={setDraggedMovePath}
+              setMoveDropTargetPath={setMoveDropTargetPath}
+              isInternalMoveDrag={isInternalMoveDrag}
+              getDraggedMovePath={getDraggedMovePath}
+              canMoveToDestination={canMoveToDestination}
+              onRowClick={onRowClick}
+              onRowDoubleClick={onRowDoubleClick}
+              onOpenContextMenu={onOpenContextMenu}
+              handleRowKeyDown={keyboard.handleRowKeyDown}
+              onMove={onMove}
+              onViewFile={onViewFile}
+              setSelectedPath={setSelectedPath}
+              parentPath={parentPath}
+              folderSizesByPath={folderSizesByPath}
+              folderSizeLoadingPaths={folderSizeLoadingPaths}
+              resolveOverviewFieldValue={resolveOverviewFieldValue}
+              sortRules={sorting.sortRules}
+              setSortForColumn={sorting.setSortForColumn}
+              getSortIndicator={sorting.getSortIndicator}
+              getSortTooltip={sorting.getSortTooltip}
+              isSortableColumn={isSortableColumn}
+              resolveSortKey={resolveSortKey}
+              isExplorerGridView={zoom.isExplorerGridView}
+            />
             {isUploadDropActive ? (
               <div className={styles.uploadDropOverlay} aria-live="polite">
                 <p className={styles.uploadDropOverlayTitle}>DROP TO START UPLOAD</p>
