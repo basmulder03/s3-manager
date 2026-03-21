@@ -1,4 +1,4 @@
-FROM oven/bun:1.3.10 AS builder
+FROM oven/bun:1.3.11 AS builder
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ COPY packages/web ./packages/web
 RUN bun run build
 
 
-FROM oven/bun:1.3.10 AS runtime
+FROM oven/bun:1.3.11 AS runtime
 
 WORKDIR /app
 
